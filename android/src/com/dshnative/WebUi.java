@@ -32,6 +32,28 @@ public final class WebUi {
     private static Thread acceptor;
     private static final List<String> LOG = new ArrayList<>();
 
+    /**
+     * 给真实前端注入启动门面。
+     *
+     * 电脑版由 dsh web 在 index.html 里注入 __ModuleLoader__ / __DSH_BOOT__ / __DSH_TRANSPORT__，
+     * 前端缺了它直接报 "bootstrap facade is missing"。这里先给一个最小实现：
+     * 能创建 loader、给出空插件清单，让界面先起来——缺什么它会自己点名，按名字补。
+     */
+    private static final String BOOT_SHIM =
+        "<script>(function(){"
+      + "globalThis.__DSH_BOOT_READY__={promise:Promise.resolve()};"
+      + "globalThis.__DSH_BOOT__={version:'0.0.0-native',sessions:[],plugins:[],settings:{}};"
+      + "globalThis.__DSH_TRANSPORT__={};"
+      + "globalThis.__ModuleLoader__={create:function(o){"
+      + "  o=o||{};"
+      + "  return {manifest:{plugins:[],version:'0.0.0-native'},"
+      + "    load:function(){return Promise.resolve();},"
+      + "    loadEntry:function(){return Promise.resolve();},"
+      + "    resolve:function(){return null;},"
+      + "    entries:[]};"
+      + "}};"
+      + "})();</script>";
+
     public static synchronized int start(Context context) {
         if (server != null && !server.isClosed()) return port;
         final Context ctx = context.getApplicationContext();
@@ -136,6 +158,7 @@ public final class WebUi {
             String method = parts[0];
             String path = parts[1];
             int q = path.indexOf('?');
+            boolean wantRaw = q >= 0 && path.substring(q).contains("raw=1");
             String query = q >= 0 ? path.substring(q + 1) : "";
             String file = q >= 0 ? path.substring(0, q) : path;
 
@@ -189,6 +212,12 @@ public final class WebUi {
                 return;
             }
             if (file.equals("/") || file.isEmpty()) file = "/index.html";
+            boolean isIndex = file.equals("/index.html");
+            if (isIndex && !wantRaw) {
+                byte[] raw = serveIndex(ctx);
+                fileLog("serveIndex -> " + (raw == null ? "null" : raw.length + "B (含 shim=" + (new String(raw, "UTF-8").contains("__ModuleLoader__")) + ")"));
+                if (raw != null) { respond(socket, 200, "text/html; charset=utf-8", raw); return; }
+            }
 
             // 静态资源
             byte[] content = readAsset(ctx, "webdist" + file);
@@ -281,6 +310,25 @@ public final class WebUi {
         } catch (Throwable t) {
             fileLog("  ERR " + path + " " + t);
             return null;
+        }
+    }
+
+    /** index.html 里插一段启动门面；其它资源原样返回。 */
+    private static byte[] serveIndex(Context ctx) {
+        byte[] raw = readAsset(ctx, "/webdist/index.html");
+        if (raw == null) return null;
+        try {
+            String html = new String(raw, "UTF-8");
+            StringBuilder sb = new StringBuilder();
+            sb.append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"/>")
+              .append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\"/>")
+              .append(BOOT_SHIM).append("</head><body><div id=\"root\"></div>")
+              .append("<script type=\"module\" crossorigin src=\"./assets/index-CN7NIWNw.js\"></script>")
+              .append("</body></html>");
+            return sb.toString().getBytes("UTF-8");
+        } catch (Throwable t) {
+            fileLog("serveIndex 失败：" + t);
+            return raw;
         }
     }
 
