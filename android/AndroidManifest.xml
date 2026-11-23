@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.dshnative"
     android:versionCode="1"
-    android:versionName="12.1">
+    android:versionName="12.2">
 
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -25,7 +25,7 @@
         android:extractNativeLibs="true"
         android:hardwareAccelerated="true"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@style/AppTheme">
 
 
 

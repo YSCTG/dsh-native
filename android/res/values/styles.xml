@@ -35,4 +35,14 @@
         <item name="android:textColorSecondary">@color/label_tertiary</item>
     </style>
 
+    <!-- 应用主题：窗口底色直接给深色，冷启动第一帧就不是白的。
+         父主题仍用 Material.Light，其余控件继承它；只覆盖 windowBackground。 -->
+    <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/bg_base</item>
+        <item name="android:colorBackground">@color/bg_base</item>
+        <item name="android:statusBarColor">@color/bg_base</item>
+        <item name="android:navigationBarColor">@color/bg_base</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
 </resources>

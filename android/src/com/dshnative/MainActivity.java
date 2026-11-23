@@ -150,6 +150,9 @@ public class MainActivity extends Activity implements Agent.Listener {
             finish();
             return;
         }
+        // 冷启动底色：主题是 Material.Light，窗口先白一下再被内容盖住，
+// 看起来就像"闪了一下旧界面"。先把窗口刷成页面底色。
+        getWindow().setBackgroundDrawableResource(R.color.bg_base);
         setContentView(withDrawer(buildUi()));
         initSession();
         refreshBalance();
@@ -1888,6 +1891,17 @@ public class MainActivity extends Activity implements Agent.Listener {
             prefs.edit().putString("session_id", session.id).apply();
         }
         if (Session.body(this, session.id).isFile()) {
+            // 有历史就别先闪一下空状态：把"DSH Native + 建议"先撤掉，
+            // 换成一行极轻的"正在载入"，等 renderHistory 顶上来。
+            if (transcript != null && transcript.findViewWithTag("empty") != null) {
+                transcript.removeAllViews();
+                TextView loading = new TextView(this);
+                loading.setText("载入中…");
+                loading.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+                loading.setTextColor(getColor(R.color.label_caption));
+                loading.setPadding(dp(2), dp(20), dp(2), dp(20));
+                transcript.addView(loading);
+            }
             new Thread(new Runnable() {
                 @Override public void run() {
                     ensureAgent();
