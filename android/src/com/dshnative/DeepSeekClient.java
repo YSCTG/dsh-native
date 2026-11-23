@@ -122,8 +122,70 @@ public final class DeepSeekClient {
 
     public boolean isCancelled() { return cancelled; }
 
-    /** 阻塞直到完成。UI 增量通过 hooks 回调（调用方负责切主线程）。 */
+    /**
+     * 请求模型，断了就重试。
+     *
+     * 为什么必须重试：长思考的 SSE 连接会持续几十秒，运营商 NAT 超时、
+     * Wi-Fi 切换、基站切换都会让连接"Socket closed"。以前这直接判死整轮任务，
+     * 用户看到的就是"任务卡住了"。
+     *
+     * 只在**还没吐出任何内容**时重试：已经流式显示过的部分不能重放，
+     * 那种情况如实报错，让用户决定。
+     */
     public Result complete(JSONArray messages, JSONArray tools, Hooks hooks) throws Exception {
+        Exception last = null;
+        for (int attempt = 1; attempt <= 3 && !cancelled; attempt++) {
+            final int[] emitted = {0};
+            Hooks counted = new Hooks() {
+                @Override public void onContent(String d) {
+                    emitted[0] += d == null ? 0 : d.length();
+                    hooks.onContent(d);
+                }
+
+                @Override public void onReasoning(String d) {
+                    emitted[0] += d == null ? 0 : d.length();
+                    hooks.onReasoning(d);
+                }
+
+                @Override public void onNote(String note) { hooks.onNote(note); }
+            };
+            try {
+                if (attempt > 1) {
+                    hooks.onNote("网络中断，正在重试（第 " + attempt + " 次）");
+                    android.util.Log.i("DSHN", "模型请求重试 #" + attempt + "：" + last);
+                }
+                return completeOnce(messages, tools, counted);
+            } catch (Exception e) {
+                last = e;
+                if (cancelled) throw e;
+                if (!retryable(e) || emitted[0] > 0) {
+                    if (emitted[0] > 0 && retryable(e)) {
+                        throw new RuntimeException("连接中断（已收到部分回复，未重试）：" + msg(e));
+                    }
+                    throw e;
+                }
+                try { Thread.sleep(attempt == 1 ? 800 : 2000); } catch (InterruptedException ignored) {}
+            }
+        }
+        throw last == null ? new RuntimeException("请求失败") : last;
+    }
+
+    /** 值得重试的：网络层的，以及 5xx。4xx 重试也没用。 */
+    private static boolean retryable(Exception e) {
+        if (e instanceof java.io.IOException) return true;
+        String m = String.valueOf(e.getMessage());
+        if (m.contains("Socket closed") || m.contains("timed out") || m.contains("Connection")) return true;
+        if (m.startsWith("HTTP 5")) return true;
+        return false;
+    }
+
+    private static String msg(Exception e) {
+        String m = e.getMessage();
+        return m == null ? e.toString() : m;
+    }
+
+    /** 阻塞直到完成。UI 增量通过 hooks 回调（调用方负责切主线程）。 */
+    private Result completeOnce(JSONArray messages, JSONArray tools, Hooks hooks) throws Exception {
         Result result = new Result();
 
         JSONObject body = new JSONObject();

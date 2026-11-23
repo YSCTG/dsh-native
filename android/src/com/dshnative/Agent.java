@@ -787,6 +787,16 @@ public final class Agent {
             if (cancelled) listener.onError("已中止");
         } catch (Exception e) {
             String msg = e.getMessage() == null ? e.toString() : e.getMessage();
+            // 网络类错误说人话：它不代表任务出错，也不该让用户盯着 "Socket closed" 发呆
+            String low = msg.toLowerCase();
+            boolean net = msg.contains("Socket closed") || msg.contains("连接中断")
+                    || e instanceof java.io.IOException
+                    || low.contains("timed out") || low.contains("connection")
+                    || low.contains("unreachable");
+            if (net) {
+                msg = "网络中断（" + msg + "）。这不是任务出错，是连接被掐断了。"
+                        + "回一句「继续」，我从断的地方接着跑。";
+            }
             listener.onError(msg);
         } finally {
             repairHistory();
