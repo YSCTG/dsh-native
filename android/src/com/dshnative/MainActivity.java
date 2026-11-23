@@ -340,6 +340,10 @@ public class MainActivity extends Activity implements Agent.Listener {
         // 对话流
         scroller = new ScrollView(this);
         scroller.setFillViewport(true);
+        // 桌面版右侧有一条常驻的细指示条，这里用系统滚动条实现（常显、细、低对比）
+        scroller.setVerticalScrollBarEnabled(true);
+        scroller.setScrollbarFadingEnabled(false);
+        scroller.setScrollBarSize(dp(3));
         scroller.setClipToPadding(false);
         transcript = new LinearLayout(this);
         transcript.setOrientation(LinearLayout.VERTICAL);
@@ -740,9 +744,11 @@ public class MainActivity extends Activity implements Agent.Listener {
         if (tool == null) { a = "正在调用工具"; b = "调用了工具"; }
         else if ("sh".equals(tool)) { a = "正在运行命令"; b = "运行了命令"; }
         else if ("python".equals(tool)) { a = "正在跑 Python"; b = "跑了 Python"; }
+        // 文件类用桌面的措辞：读取 / 编辑 / 写入（不带"了"）
         else if ("fs_read".equals(tool) || "fs_list".equals(tool)
-                || "fs_glob".equals(tool) || "fs_grep".equals(tool)) { a = "正在读取"; b = "读取了"; }
-        else if ("fs_write".equals(tool) || "fs_edit".equals(tool)) { a = "正在写入"; b = "写入了"; }
+                || "fs_glob".equals(tool) || "fs_grep".equals(tool)) { a = "正在读取"; b = "读取"; }
+        else if ("fs_edit".equals(tool)) { a = "正在编辑"; b = "编辑"; }
+        else if ("fs_write".equals(tool)) { a = "正在写入"; b = "写入"; }
         else if ("web_search".equals(tool)) { a = "正在搜索网页"; b = "搜索了网页"; }
         else if ("net_fetch".equals(tool)) { a = "正在抓取网页"; b = "抓取了网页"; }
         else if ("screenshot".equals(tool)) { a = "正在读取图片"; b = "已读取图片"; }
@@ -2022,13 +2028,22 @@ public class MainActivity extends Activity implements Agent.Listener {
         drawerPanel.setBackgroundColor(getColor(R.color.bg_base));
 
         LinearLayout head = new LinearLayout(this);
-        head.setOrientation(LinearLayout.VERTICAL);
-        head.setPadding(dp(18), dp(20), dp(18), dp(10));
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.setPadding(dp(18), dp(18), dp(18), dp(10));
+
+        // 自己的字标：应用图标 + DSH Native（不是电脑版那个 deepseek 标志）
+        android.widget.ImageView logo = new android.widget.ImageView(this);
+        try { logo.setImageResource(R.mipmap.ic_launcher); } catch (Throwable ignored) {}
+        LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(dp(26), dp(26));
+        logoLp.rightMargin = dp(9);
+        head.addView(logo, logoLp);
+
         TextView title = new TextView(this);
         title.setText("DSH Native");
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        title.setLetterSpacing(0.06f);
+        title.setLetterSpacing(0.04f);
         title.setTextColor(getColor(R.color.label_primary));
         head.addView(title);
 
