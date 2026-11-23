@@ -227,6 +227,10 @@ public final class Session {
             if (a.length() == 0) return false;
             JSONObject last = a.getJSONObject(a.length() - 1);
             String role = last.optString("role", "");
+            // 最后一条是用户消息：说明这一轮连第一个响应都没写下来就被打断了
+            // （进程死在模型请求/流式传输期间）。这种情况也要能自动接上，
+            // 否则用户只能自己再发一句"继续"。
+            if ("user".equals(role)) return true;
             if ("tool".equals(role)) return true;
             if ("assistant".equals(role)) {
                 JSONArray calls = last.optJSONArray("tool_calls");
