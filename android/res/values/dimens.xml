@@ -6,8 +6,8 @@
     <dimen name="gap_tight">8dp</dimen>
 
     <dimen name="radius_bubble">14dp</dimen>
-    <dimen name="radius_card">10dp</dimen>
-    <dimen name="radius_input">14dp</dimen>
+    <dimen name="radius_card">8dp</dimen>
+    <dimen name="radius_input">16dp</dimen>
 
     <dimen name="text_body">15sp</dimen>
     <dimen name="text_small">13sp</dimen>

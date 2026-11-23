@@ -368,20 +368,21 @@ public class MainActivity extends Activity implements Agent.Listener {
         });
         root.addView(genWrap);
 
-        // 输入区
+        // 输入区：一个圆角卡片，上面输入、下面一排操作（对齐桌面版的结构）
         LinearLayout composer = new LinearLayout(this);
-        composer.setOrientation(LinearLayout.HORIZONTAL);
-        composer.setGravity(Gravity.BOTTOM);
-        composer.setPadding(dp(14), dp(10), dp(14), dp(6));
-
-        LinearLayout inputWrap = new LinearLayout(this);
-        inputWrap.setOrientation(LinearLayout.VERTICAL);
-        inputWrap.setBackgroundResource(R.drawable.bg_input);
-        inputWrap.setPadding(dp(12), dp(9), dp(12), dp(9));
+        composer.setOrientation(LinearLayout.VERTICAL);
+        composer.setBackgroundResource(R.drawable.bg_input);
+        composer.setPadding(dp(12), dp(8), dp(10), dp(8));
+        LinearLayout.LayoutParams composerLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        composerLp.leftMargin = dp(12);
+        composerLp.rightMargin = dp(12);
+        composerLp.topMargin = dp(4);
 
         input = new EditText(this);
         input.setBackground(null);
-         input.setHint("说点什么…");
+        input.setHint("说点什么…");
         input.addTextChangedListener(new android.text.TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
             @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
@@ -390,33 +391,67 @@ public class MainActivity extends Activity implements Agent.Listener {
         input.setHintTextColor(getColor(R.color.label_caption));
         input.setTextColor(getColor(R.color.label_primary));
         input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-        input.setPadding(0, 0, 0, 0);
+        input.setPadding(dp(2), dp(2), dp(2), dp(2));
         input.setMaxLines(5);
         input.setInputType(InputType.TYPE_CLASS_TEXT
                 | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
                 | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         input.setImeOptions(EditorInfo.IME_ACTION_NONE);
-        inputWrap.addView(input);
-        LinearLayout.LayoutParams iw = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        iw.rightMargin = dp(10);
-        composer.addView(inputWrap, iw);
+        composer.addView(input);
+
+        // 卡片内部的底排
+        LinearLayout tools = new LinearLayout(this);
+        tools.setOrientation(LinearLayout.HORIZONTAL);
+        tools.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams toolsLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        toolsLp.topMargin = dp(4);
+
+        TextView plus = new TextView(this);
+        plus.setText("+");
+        plus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        plus.setTextColor(getColor(R.color.label_secondary));
+        plus.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams plusLp = new LinearLayout.LayoutParams(dp(32), dp(32));
+        tools.addView(plus, plusLp);
+        plus.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { pickFile(); }
+        });
+
+        // 权限胶囊：和桌面版一样放在卡片内，而不是单独一行
+        chipTier = chip(tiers(true) + " ▾", new View.OnClickListener() {
+            @Override public void onClick(View v) { showTierSheet(); }
+        });
+        TextView modePill = chipTier;
+        LinearLayout.LayoutParams mpLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        mpLp.leftMargin = dp(4);
+        tools.addView(modePill, mpLp);
+        modePill.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showQuickSettings(); }
+        });
+
+        View gap = new View(this);
+        tools.addView(gap, new LinearLayout.LayoutParams(0, dp(1), 1f));
 
         sendBtn = new TextView(this);
         sendBtn.setText("↑");
-        sendBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+        sendBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
         sendBtn.setTypeface(Typeface.DEFAULT_BOLD);
         sendBtn.setGravity(Gravity.CENTER);
-        sendBtn.setTextColor(getColor(R.color.brand_fg));
+        sendBtn.setTextColor(0xFFFFFFFF);
         sendBtn.setBackgroundResource(R.drawable.bg_send);
-        LinearLayout.LayoutParams sb = new LinearLayout.LayoutParams(dp(44), dp(44));
-        composer.addView(sendBtn, sb);
+        tools.addView(sendBtn, new LinearLayout.LayoutParams(dp(36), dp(36)));
         sendBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 if (running) onAbort(); else onSend();
             }
         });
 
-        root.addView(composer);
+        composer.addView(tools, toolsLp);
+        root.addView(composer, composerLp);
 
         // 底部开关（低对比，桌面版那种"不抢戏"的工具条）
         LinearLayout bar = new LinearLayout(this);
@@ -440,11 +475,6 @@ public class MainActivity extends Activity implements Agent.Listener {
 
         View s2 = new View(this);
         bar.addView(s2, new LinearLayout.LayoutParams(0, 1, 1f));
-
-        TextView attach = chip("📎", new View.OnClickListener() {
-            @Override public void onClick(View v) { pickFile(); }
-        });
-        bar.addView(attach, chipLp());
 
         TextView gear = chip("⚙", new View.OnClickListener() {
             @Override public void onClick(View v) { openSettings(); }
@@ -1368,7 +1398,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         } else {
             sendBtn.setText("↑");
             sendBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
-            sendBtn.setTextColor(getColor(R.color.brand_fg));
+            sendBtn.setTextColor(0xFFFFFFFF);
             sendBtn.setBackgroundResource(R.drawable.bg_send);
         }
     }
@@ -1380,7 +1410,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         if (hasText) {
             sendBtn.setText("↪");
             sendBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-            sendBtn.setTextColor(getColor(R.color.brand_fg));
+            sendBtn.setTextColor(0xFFFFFFFF);
             sendBtn.setBackgroundResource(R.drawable.bg_send);
         } else {
             sendBtn.setText("■");
@@ -1657,6 +1687,27 @@ public class MainActivity extends Activity implements Agent.Listener {
     }
 
     /** 顶栏第二行点开的快捷面板：卡片式，模型 + 推理等级一屏选完。 */
+    /** 权限胶囊点开：三种模式的说明 + 切换，和快速设置里保持同一套话术。 */
+    private void showTierSheet() {
+        String[] items = {
+                "完全权限（app + 无障碍）",
+                "仅 app（不碰界面）",
+                "全部开放（含 root/ADB）"
+        };
+        new AlertDialog.Builder(this, R.style.DshDialog)
+                .setTitle("权限范围")
+                .setItems(items, new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int which) {
+                        if (which == 0) { setRoot(false); toast("已切到完全权限（app + 无障碍）"); }
+                        else if (which == 1) { toast("无障碍开关在系统设置里，这里只切 root"); }
+                        else { setRoot(true); toast("已尝试启用 root / ADB 通道"); }
+                        if (chipTier != null) chipTier.setText(tiers(true) + " ▾");
+                        agent = null;
+                    }
+                })
+                .show();
+    }
+
     private void showQuickSettings() {
         final AlertDialog[] holder = new AlertDialog[1];
 
