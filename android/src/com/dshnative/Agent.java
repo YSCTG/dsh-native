@@ -48,6 +48,8 @@ public final class Agent {
         void onTool(String name, String detail);
         /** 工具执行完，带上耗时（毫秒）。桌面版每一步都有时间，这里补上。 */
         void onToolDone(String name, long ms);
+        /** 每次请求后的用量：命中 / 未命中 / 输出 token、花费（美元）。 */
+        void onUsage(int hit, int miss, int out, double costUsd);
         /** 本轮改动过的文件（绝对路径）。用来在回答下面附卡片。 */
         void onFilesTouched(java.util.List<String> paths);
         void onStatus(String status);
@@ -90,6 +92,10 @@ public final class Agent {
     /** 会话开始时冻结的档位：账本要显示"这一轮真正有哪些工具"，不是此刻的实时状态。 */
     private final String frozenTiers;
     private volatile boolean cancelled;
+    /** 上一次请求实际发出去的 prompt token，用来判断要不要压缩。 */
+    private volatile int lastPromptTokens;
+    /** 本轮压过几次（避免每轮都压缩）。 */
+    private int compactions;
     /** 本轮实际用掉了几轮（撞上限时要说清楚）。 */
     private int turnsUsed;
 
@@ -682,8 +688,11 @@ public final class Agent {
                 });
 
                 sessionUsage.add(r.usage);
+                lastPromptTokens = r.usage.promptTokens();
                 listener.onStatus(statusLine(r.usage));
+                listener.onUsage(r.usage.hit, r.usage.miss, r.usage.out, r.usage.costUsd());
                 addMessage(r.assistant);
+                autoCompact();
 
                 // 闸二：预算。大 ctx 下慢慢烧钱比跑飞更难察觉。
                 if (sessionUsage.costUsd() > BUDGET_USD) {
@@ -886,6 +895,29 @@ public final class Agent {
             if (!f.isAbsolute()) f = new File(Ws.active(ctx), p);
             if (f.isFile()) touched.add(f.getAbsolutePath());
         } catch (Throwable ignored) {}
+    }
+    /**
+     * 到点自动压缩上下文（桌面版的行为）。
+     *
+     * 触发条件：上一次请求的 prompt 已经吃掉上限的 65%。
+     * 压缩后模型看到的是一份更短但结构合法的历史，会话文件同步重写。
+     */
+    private void autoCompact() {
+        try {
+            int lim = contextLimit();
+            if (lim <= 0) return;
+            if (lastPromptTokens < lim * 0.65) return;
+            int before = History.chars(messages);
+            if (!History.compact(messages, 14)) return;
+            compactions++;
+            Session.saveAll(ctx, session.id, messages);
+            String note = "上下文已压缩：" + before + " → " + History.chars(messages)
+                    + " 字符（第 " + compactions + " 次）";
+            android.util.Log.i("DSHN", note);
+            listener.onStatus(note);
+        } catch (Throwable e) {
+            android.util.Log.i("DSHN", "压缩失败: " + e);
+        }
     }
     private String executeGuarded(final String name, final String args) {
         final String[] box = new String[1];

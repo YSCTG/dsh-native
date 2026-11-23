@@ -57,7 +57,6 @@ public class MainActivity extends Activity implements Agent.Listener {
 
     private TextView headerTitle;
     private TextView headerMeta;
-    private TextView ledger;
     private View drawerScrim;
     private LinearLayout drawerPanel;
     private LinearLayout drawerBody;
@@ -69,6 +68,7 @@ public class MainActivity extends Activity implements Agent.Listener {
     private TextView chipSh;
     private TextView chipCtx;
     private TextView chipWs;
+    private TextView chipHit;
     private android.app.AlertDialog currentDialog;
     private static final int REQ_PICK = 1001;
     private final java.util.List<String> pendingImages = new java.util.ArrayList<>();
@@ -284,29 +284,6 @@ public class MainActivity extends Activity implements Agent.Listener {
         metaRow.addView(headerMeta, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        // 右：实时余额，点一下刷新
-        ledger = new TextView(this);
-        ledger.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        ledger.setTextColor(getColor(R.color.label_secondary));
-        ledger.setBackgroundResource(R.drawable.bg_chip);
-        ledger.setPadding(dp(11), dp(6), dp(11), dp(6));
-        ledger.setSingleLine(true);
-        ledger.setGravity(Gravity.CENTER);
-        ledger.setText("余额 –");
-        ledger.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                if (!Secret.hasKey(prefs)) { askKey(); return; }
-                balanceAge = 0;
-                refreshBalance();
-        if (migratedNote != null) note(migratedNote);
-        autoResumeIfNeeded();
-                toast("正在查余额…");
-            }
-        });
-        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        blp.leftMargin = dp(8);
-        metaRow.addView(ledger, blp);
         root.addView(metaRow);
 
         View div1 = new View(this);
@@ -403,6 +380,10 @@ public class MainActivity extends Activity implements Agent.Listener {
         bar.addView(chipCtx, chipLp());
 
         // 工作区选项卡：完全权限 / 自建工作区，会话历史按它分开
+        chipHit = chip("命中 —", null);
+        chipHit.setBackground(null);
+        bar.addView(chipHit, chipLp());
+
         chipWs = chip(Workspaces.current(this).name + " ▾", new View.OnClickListener() {
             @Override public void onClick(View v) { showWorkspaceSheet(); }
         });
@@ -1709,18 +1690,12 @@ public class MainActivity extends Activity implements Agent.Listener {
             } else {
                 int used = agent.contextUsed();
                 int lim = agent.contextLimit();
-                String show = used < 1000 ? String.valueOf(used) : String.format("%.1fK", used / 1000.0);
-                String cap = lim >= 1000000 ? (lim / 1000000) + "M" : (lim / 1000) + "K";
-                chipCtx.setText("ctx " + show + "/" + (agent.contextLimitExact() ? "" : "≈") + cap);
-                chipCtx.setTextColor(getColor(used > lim * 0.8 ? R.color.danger : R.color.label_tertiary));
+                // 百分比比绝对 token 更有意义：用户关心的是"还剩多少空间"
+                int pct = lim <= 0 ? 0 : (int) Math.round(used * 100.0 / lim);
+                chipCtx.setText("ctx " + pct + "%");
+                chipCtx.setTextColor(getColor(pct >= 80 ? R.color.danger
+                        : pct >= 60 ? R.color.label_primary : R.color.label_tertiary));
             }
-        }
-        if (!Secret.hasKey(prefs)) {
-            ledger.setText("未设置 key");
-            ledger.setTextColor(getColor(R.color.danger));
-        } else {
-            ledger.setText(balance == null ? "余额 –" : "余额 " + balance);
-            ledger.setTextColor(getColor(R.color.label_secondary));
         }
         refreshDrawer();
         if (envBanner != null) {
@@ -1850,6 +1825,14 @@ public class MainActivity extends Activity implements Agent.Listener {
                 closeDrawer();
                 try { startActivity(new android.content.Intent(MainActivity.this, FilesActivity.class)); }
                 catch (Exception e) { toast("打不开：" + e.getMessage()); }
+            }
+        }));
+        footer.addView(drawerRow("余额", balance == null ? "点这里刷新" : balance, new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                closeDrawer();
+                if (!Secret.hasKey(prefs)) { askKey(); return; }
+                balanceAge = 0;
+                refreshBalance();
             }
         }));
         footer.addView(drawerRow("检查更新", "当前 " + Updater.currentVersion(this), new View.OnClickListener() {
@@ -2851,8 +2834,23 @@ public class MainActivity extends Activity implements Agent.Listener {
     }
 
     @Override public void onStatus(final String status) {
+        // 状态行不再占用界面（原来挂在顶部的余额胶囊上）。
+        // 有需要时它仍然会被写进日志，便于排查。
+        android.util.Log.i("DSHN", "status: " + status);
+    }
+
+    /** 每次请求后的用量：更新底栏的缓存命中率。 */
+    @Override public void onUsage(final int hit, final int miss, final int out, final double costUsd) {
         ui.post(new Runnable() {
-            @Override public void run() { ledger.setText(status); }
+            @Override public void run() {
+                if (chipHit == null) return;
+                int total = hit + miss;
+                if (total <= 0) { chipHit.setText("命中 —"); return; }
+                int pct = (int) Math.round(hit * 100.0 / total);
+                chipHit.setText("命中 " + pct + "%");
+                chipHit.setTextColor(getColor(pct >= 80 ? R.color.label_secondary
+                        : pct >= 40 ? R.color.label_tertiary : R.color.danger));
+            }
         });
     }
 

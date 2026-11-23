@@ -14,6 +14,11 @@ import java.util.Set;
  */
 final class History {
 
+    /** 单个 tool 结果最多留多少字符。 */
+    private static final int TOOL_KEEP = 1500;
+    /** 全部消息加起来超过这个字符数就继续收缩。 */
+    private static final int KEEP_CHARS = 120000;
+
     private History() {}
 
     /**
@@ -24,6 +29,64 @@ final class History {
      *
      * @return 丢掉了几条
      */
+    /**
+     * 上下文压缩：像桌面版那样，快到上限时自动收缩历史。
+     *
+     * 两步，从温和到激进：
+     *  1. 把很长的 tool 结果截短（它们通常占九成以上）；
+     *  2. 还不够就丢掉最老的一批对话，但保留 system、第一条用户消息和最近若干条。
+     *
+     * @return 有没有真的改动
+     */
+    static boolean compact(JSONArray messages, int keepRecent) {
+        if (messages == null || messages.length() == 0) return false;
+        boolean changed = false;
+
+        // 第一步：截断超长工具结果
+        for (int i = 0; i < messages.length(); i++) {
+            JSONObject m = messages.optJSONObject(i);
+            if (m == null || !"tool".equals(m.optString("role"))) continue;
+            String c = m.optString("content", "");
+            if (c.length() <= TOOL_KEEP) continue;
+            try {
+                m.put("content", c.substring(0, TOOL_KEEP)
+                        + "\n…（已压缩：原来 " + c.length() + " 字符）");
+                changed = true;
+            } catch (Throwable ignored) {}
+        }
+        if (chars(messages) <= KEEP_CHARS) return changed;
+
+        // 第二步：丢最老的对话，保留 system / 第一条用户消息 / 最近 keepRecent 条
+        int n = messages.length();
+        int from = Math.max(2, n - keepRecent);
+        JSONArray kept = new JSONArray();
+        for (int i = 0; i < n; i++) {
+            JSONObject m = messages.optJSONObject(i);
+            if (m == null) continue;
+            String role = m.optString("role");
+            boolean firstUser = "user".equals(role) && kept.length() <= 1;
+            if (i < 2 || i >= from || "system".equals(role) || firstUser) kept.put(m);
+        }
+        if (kept.length() < n) {
+            while (messages.length() > 0) messages.remove(messages.length() - 1);
+            for (int i = 0; i < kept.length(); i++) messages.put(kept.opt(i));
+            changed = true;
+        }
+        // 丢掉老的之后可能又出现孤儿 tool 消息
+        if (dropOrphans(messages) > 0) changed = true;
+        return changed;
+    }
+
+    /** 粗略字数：用来判断"够不够小"，不需要精确 token。 */
+    static int chars(JSONArray messages) {
+        int total = 0;
+        for (int i = 0; i < messages.length(); i++) {
+            JSONObject m = messages.optJSONObject(i);
+            if (m == null) continue;
+            total += m.optString("content", "").length();
+        }
+        return total;
+    }
     static int dropOrphans(JSONArray messages) {
         if (messages == null) return 0;
         Set<String> declared = new HashSet<>();

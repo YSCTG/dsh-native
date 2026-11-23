@@ -56,6 +56,7 @@ public final class SelfCheck {
         checkWorkspaces(out, c);
         checkSession(out, c);
         checkJsonPairing(out);
+        checkCompact(out);
 
         clean(dir);
         return out;
@@ -220,6 +221,45 @@ public final class SelfCheck {
     }
 
     /** tool 消息必须跟在它对应的 tool_calls 后面，否则 API 直接 400。 */
+    /** 上下文压缩：超长工具结果要截断，历史要能收缩。 */
+    private static void checkCompact(List<Item> out) {
+        try {
+            JSONArray msgs = new JSONArray();
+            JSONObject sys = new JSONObject();
+            sys.put("role", "system");
+            sys.put("content", "sys");
+            msgs.put(sys);
+            for (int i = 0; i < 40; i++) {
+                JSONObject u = new JSONObject();
+                u.put("role", "user");
+                u.put("content", "第" + i + "轮提问");
+                msgs.put(u);
+                JSONObject a = new JSONObject();
+                a.put("role", "assistant");
+                a.put("content", "第" + i + "轮回答");
+                msgs.put(a);
+                JSONObject t = new JSONObject();
+                t.put("role", "tool");
+                t.put("content", repeat('x', 30000));   // 每轮 3 万字符的输出
+                msgs.put(t);
+            }
+            int before = History.chars(msgs);
+            boolean changed = History.compact(msgs, 14);
+            int after = History.chars(msgs);
+            boolean shorten = after < before / 2;
+            boolean keptSys = "system".equals(msgs.optJSONObject(0).optString("role"));
+            out.add(new Item("上下文压缩", changed && shorten && keptSys,
+                    before + " → " + after + " 字符"));
+        } catch (Throwable e) {
+            out.add(new Item("上下文压缩", false, e.toString()));
+        }
+    }
+
+    private static String repeat(char c, int n) {
+        StringBuilder sb = new StringBuilder(n);
+        for (int i = 0; i < n; i++) sb.append(c);
+        return sb.toString();
+    }
     private static void checkJsonPairing(List<Item> out) {
         try {
             JSONArray msgs = new JSONArray();
