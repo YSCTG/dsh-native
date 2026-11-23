@@ -59,6 +59,26 @@ public final class WebUi {
         acceptor.setDaemon(true);
         acceptor.start();
         android.util.Log.i("DSHWEB", "本地 UI 起在 http://127.0.0.1:" + port + "/");
+        // 自检：App 自己看到的 zip 里到底有什么
+        try {
+            java.util.zip.ZipFile z = new java.util.zip.ZipFile(ctx.getPackageCodePath());
+            StringBuilder sb = new StringBuilder("zip 条目样例：");
+            int seen = 0, assets = 0;
+            java.util.Enumeration<? extends java.util.zip.ZipEntry> en = z.entries();
+            while (en.hasMoreElements() && seen < 4000) {
+                String n = en.nextElement().getName();
+                seen++;
+                if (n.startsWith("assets/")) {
+                    assets++;
+                    if (assets <= 6) sb.append(n).append(' ');
+                }
+            }
+            sb.append("| total=").append(seen).append(" assets=").append(assets);
+            z.close();
+            fileLog(sb.toString());
+        } catch (Throwable t) {
+            fileLog("zip 打不开：" + t);
+        }
         return port;
     }
 
@@ -84,6 +104,17 @@ public final class WebUi {
         } catch (Throwable t) {
             return "写失败：" + t.getMessage();
         }
+    }
+
+    private static void fileLog(String line) {
+        try {
+            java.io.File f = new java.io.File("/sdcard/DSHNative/webui.log");
+            f.getParentFile().mkdirs();
+            java.io.FileWriter w = new java.io.FileWriter(f, true);
+            w.write(new java.text.SimpleDateFormat("HH:mm:ss")
+                    .format(new java.util.Date()) + "  " + line + "\n");
+            w.close();
+        } catch (Throwable ignored) {}
     }
 
     private static synchronized void record(String line) {
@@ -131,6 +162,32 @@ public final class WebUi {
                     : "  body=" + body.substring(0, Math.min(body.length(), 160))));
 
             android.util.Log.i("DSHWEB", "handle " + method + " " + file);
+            if (file.equals("/__test")) {
+                String probe = "";
+                for (String cand : new String[]{"skills.json", "webdist/index.html",
+                        "assets/webdist/index.html", "webdist", "webdist/assets",
+                        "assets/webdist/assets/index-CN7NIWNw.js"}) {
+                    try {
+                        InputStream t = ctx.getAssets().open(cand);
+                        probe += cand + "=OK(" + t.available() + ") ";
+                        t.close();
+                    } catch (Throwable e) {
+                        probe += cand + "=" + e.getClass().getSimpleName() + " ";
+                    }
+                }
+                StringBuilder roots = new StringBuilder();
+                try {
+                    String[] w = ctx.getAssets().list("webdist");
+                    roots.append("|webdist 下: ");
+                    for (String a : w) roots.append(a).append(',');
+                } catch (Throwable t) {
+                    roots.append("|webdist 列不出: ").append(t);
+                }
+                roots.append("|包名: ").append(ctx.getPackageName());
+                respond(socket, 200, "text/plain; charset=utf-8",
+                        (probe + "|assets 根: " + roots).getBytes("UTF-8"));
+                return;
+            }
             if (file.equals("/") || file.isEmpty()) file = "/index.html";
 
             // 静态资源
@@ -184,17 +241,45 @@ public final class WebUi {
         socket.close();
     }
 
+    /**
+     * 从 APK 的 zip 里直接取资源，不走 AssetManager。
+     *
+     * 实测 AssetManager 读不到这 90 个文件（open/list 都说没有），但 APK 里明明有；
+     * 与其猜它的压缩/索引规则，不如直接读自己的 APK——路径稳定，行为可预期。
+     */
+    private static java.util.zip.ZipFile apk;
+    private static String apkPath;
+
     private static byte[] readAsset(Context ctx, String path) {
-        AssetManager am = ctx.getAssets();
         try {
-            InputStream in = am.open(path.substring(1));
+            if (apk == null || !ctx.getPackageCodePath().equals(apkPath)) {
+                apkPath = ctx.getPackageCodePath();
+                apk = new java.util.zip.ZipFile(apkPath);
+            }
+            String entryName = path.startsWith("/") ? "assets" + path : "assets/" + path;
+            fileLog("read " + entryName + " apk=" + ctx.getPackageCodePath());
+            java.util.zip.ZipEntry e = apk.getEntry(entryName);
+            if (e == null) {
+                // Windows 上的 aapt2 会把嵌套目录写成反斜杠：assets/webdist\index.html
+                e = apk.getEntry(entryName.replace('/', '\\'));
+            }
+            if (e == null) {
+                e = apk.getEntry("assets/" + path.replace("/", "\\"));
+            }
+            if (e == null) {
+                fileLog("  MISS " + entryName);
+                return null;
+            }
+            InputStream in = apk.getInputStream(e);
             ByteArrayOutputStream bo = new ByteArrayOutputStream();
             byte[] buf = new byte[16384];
             int n;
             while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
             in.close();
+            fileLog("  OK " + entryName + " " + bo.size() + "B");
             return bo.toByteArray();
         } catch (Throwable t) {
+            fileLog("  ERR " + path + " " + t);
             return null;
         }
     }
