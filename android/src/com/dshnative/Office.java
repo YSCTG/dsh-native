@@ -452,14 +452,16 @@ public final class Office {
             return "错误：pdf 需要 pages 或 cover";
         }
 
+        // 先取预设（style），再允许 theme 逐项覆盖
+        Design d = Design.of(spec.optString("style", "report"));
         JSONObject theme = spec.optJSONObject("theme");
-        int accent = colorOf(theme, "accent", 0xFF2F6FEB);
-        int ink = colorOf(theme, "ink", 0xFF111418);
-        int muted = colorOf(theme, "muted", 0xFF6B7280);
+        d.accent = colorOf(theme, "accent", d.accent);
+        d.ink = colorOf(theme, "ink", d.ink);
+        d.muted = colorOf(theme, "muted", d.muted);
+        if (spec.has("margin")) d.margin = spec.optInt("margin", d.margin);
 
-        int margin = spec.optInt("margin", 56);
         PdfDocument doc = new PdfDocument();
-        Pw pw = new Pw(doc, margin, accent, ink, muted);
+        Pw pw = new Pw(doc, d);
 
         // 封面：大标题 + 副标题 + 一版元信息，左上一条色块
         if (cover != null) {
@@ -492,7 +494,15 @@ public final class Office {
             }
         }
         int total = pw.finish();
+        // 画完必须写盘。这里曾经漏过一次，症状是"返回已生成、文件 0 字节"。
+        FileOutputStream os = new FileOutputStream(out);
+        doc.writeTo(os);
+        os.close();
         doc.close();
+        if (!out.isFile() || out.length() < 8) {
+            return "错误：PDF 写出来是空的（" + total + " 页，"
+                    + (out.isFile() ? out.length() : -1) + " 字节）";
+        }
         return "已生成 pdf：" + out.getAbsolutePath() + "（" + out.length() / 1024 + " KB，"
                 + total + " 页）";
     }
@@ -505,21 +515,95 @@ public final class Office {
     }
 
     /** PDF 画布封装：管理分页、字号层级、页脚。 */
+    /**
+     * 一套"设计系统"：颜色、字号阶梯、行距、留白。
+     *
+     * 为什么要它：以前所有样式都靠模型当场挑颜色和字号，出来永远是"默认蓝 + 一把黑字"。
+     * 现在给几套调好的预设，模型只负责内容结构，好看由预设保证。
+     */
+    static final class Design {
+        int page = 0xFFFFFFFF, ink = 0xFF111418, muted = 0xFF6B7280;
+        int accent = 0xFF2F6FEB, tableHead = 0xFFF3F4F6;
+        int margin = 56;
+        float fTitle = 28, fH1 = 15, fH2 = 12.5f, fBody = 10.5f, fSmall = 9.5f;
+        float lead = 16.5f;
+        boolean serifTitle;
+
+        static Design of(String style) {
+            Design d = new Design();
+            if (style == null) style = "report";
+            switch (style) {
+                case "editorial":   // 编辑风：米白纸、墨黑字、赭石色，留白大
+                    d.page = 0xFFFBF8F3;
+                    d.ink = 0xFF1A1A1A;
+                    d.muted = 0xFF7A7269;
+                    d.accent = 0xFFB4531F;
+                    d.tableHead = 0xFFF1EBE1;
+                    d.margin = 64;
+                    d.fTitle = 30;
+                    d.fH1 = 16;
+                    d.fBody = 11;
+                    d.lead = 18;
+                    d.serifTitle = true;
+                    break;
+                case "swiss":       // 瑞士风：纯白、黑、一个几何红，字号对比大
+                    d.page = 0xFFFFFFFF;
+                    d.ink = 0xFF000000;
+                    d.muted = 0xFF6E6E6E;
+                    d.accent = 0xFFD7263D;
+                    d.tableHead = 0xFFF0F0F0;
+                    d.margin = 52;
+                    d.fTitle = 34;
+                    d.fH1 = 17;
+                    d.fH2 = 13;
+                    d.fBody = 10;
+                    d.lead = 16;
+                    break;
+                case "magazine":    // 杂志风：象牙底、衬线标题、暖灰
+                    d.page = 0xFFFDFCF8;
+                    d.ink = 0xFF15130F;
+                    d.muted = 0xFF857F72;
+                    d.accent = 0xFF8C6A3F;
+                    d.tableHead = 0xFFF4F0E6;
+                    d.margin = 60;
+                    d.fTitle = 32;
+                    d.fH1 = 15.5f;
+                    d.fBody = 10.5f;
+                    d.lead = 17.5f;
+                    d.serifTitle = true;
+                    break;
+                case "minimal":     // 极简：纯黑白，只靠字重和留白
+                    d.page = 0xFFFFFFFF;
+                    d.ink = 0xFF141414;
+                    d.muted = 0xFF8A8A8A;
+                    d.accent = 0xFF141414;
+                    d.tableHead = 0xFFF5F5F5;
+                    d.margin = 64;
+                    d.fTitle = 26;
+                    d.fH1 = 14;
+                    d.fBody = 10.5f;
+                    d.lead = 17;
+                    break;
+                default:            // report：白底、深蓝、浅灰表头（默认）
+                    break;
+            }
+            return d;
+        }
+    }
+
+    /** PDF 画布封装：管理分页、字号层级、页脚。 */
     private static final class Pw {
         final PdfDocument doc;
-        final int margin, accent, ink, muted;
+        final Design d;
         final int w = 595, h = 842;
         PdfDocument.Page page;
         Canvas cv;
         float y;
         int index;
 
-        Pw(PdfDocument doc, int margin, int accent, int ink, int muted) {
+        Pw(PdfDocument doc, Design d) {
             this.doc = doc;
-            this.margin = margin;
-            this.accent = accent;
-            this.ink = ink;
-            this.muted = muted;
+            this.d = d;
         }
 
         Paint p(float size, boolean bold, int color, boolean mono) {
@@ -527,9 +611,20 @@ public final class Office {
             p.setTextSize(size);
             p.setColor(color);
             p.setFakeBoldText(bold);
-            if (mono) p.setTypeface(android.graphics.Typeface.MONOSPACE);
-            else p.setTypeface(android.graphics.Typeface.create(
-                    "sans-serif", android.graphics.Typeface.NORMAL));
+            p.setTypeface(android.graphics.Typeface.create(
+                    mono ? "monospace" : "sans-serif", android.graphics.Typeface.NORMAL));
+            return p;
+        }
+
+        /** 标题字体：编辑风/杂志风用衬线，其余用无衬线。 */
+        Paint titlePaint(float size) {
+            Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+            p.setTextSize(size);
+            p.setColor(d.ink);
+            p.setFakeBoldText(!d.serifTitle);
+            p.setTypeface(d.serifTitle
+                    ? android.graphics.Typeface.create("serif", android.graphics.Typeface.BOLD)
+                    : android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL));
             return p;
         }
 
@@ -539,67 +634,65 @@ public final class Office {
             PdfDocument.PageInfo info = new PdfDocument.PageInfo.Builder(w, h, index).create();
             page = doc.startPage(info);
             cv = page.getCanvas();
-            cv.drawColor(Color.WHITE);
-            y = margin;
+            cv.drawColor(d.page);
+            y = d.margin;
         }
 
         void closePage() {
             if (page == null) return;
-            // 页脚：细线 + 页码
-            Paint foot = p(8.5f, false, muted, false);
+            Paint foot = p(d.fSmall - 1, false, d.muted, false);
             Paint line = new Paint();
             line.setColor(0xFFE5E7EB);
             line.setStrokeWidth(0.8f);
-            cv.drawLine(margin, h - margin + 12, w - margin, h - margin + 12, line);
+            cv.drawLine(d.margin, h - d.margin + 12, w - d.margin, h - d.margin + 12, line);
             String no = String.valueOf(index);
-            cv.drawText(no, w - margin - foot.measureText(no), h - margin + 26, foot);
+            cv.drawText(no, w - d.margin - foot.measureText(no), h - d.margin + 26, foot);
             doc.finishPage(page);
             page = null;
         }
 
         void ensure(float need) {
-            if (y + need > h - margin - 18) newPage();
+            if (y + need > h - d.margin - 18) newPage();
         }
 
         void cover(JSONObject c, int pages) {
-            cv.drawRect(0, 0, w, 6, paintFill(accent));
+            cv.drawRect(0, 0, w, 6, paintFill(d.accent));
             float cy = h * 0.30f;
-            // 色条画在标题**上方**：画在下方会跟副标题挤在一起，看起来像删除线
-            cv.drawRect(margin, cy - 28, margin + 48, cy - 24, paintFill(accent));
+            cv.drawRect(d.margin, cy - 28, d.margin + 48, cy - 24, paintFill(d.accent));
             String t = c.optString("title", "");
-            Paint pt = p(30, true, ink, false);
-            for (String s : wrap(t, pt, w - margin * 2)) {
-                cv.drawText(s, margin, cy, pt);
-                cy += 42;
+            Paint pt = titlePaint(d.fTitle);
+            for (String s : wrap(t, pt, w - d.margin * 2)) {
+                cv.drawText(s, d.margin, cy, pt);
+                cy += d.fTitle * 1.4f;
             }
             cy += 10;
             String sub = c.optString("subtitle", "");
             if (!sub.isEmpty()) {
-                Paint ps = p(13, false, muted, false);
-                for (String s : wrap(sub, ps, w - margin * 2)) {
-                    cv.drawText(s, margin, cy, ps);
-                    cy += 20;
+                Paint ps = p(d.fBody + 2.5f, false, d.muted, false);
+                for (String s : wrap(sub, ps, w - d.margin * 2)) {
+                    cv.drawText(s, d.margin, cy, ps);
+                    cy += d.lead + 3;
                 }
             }
             String meta = c.optString("meta", "");
             if (!meta.isEmpty()) {
-                Paint pm = p(9.5f, false, muted, false);
-                float my = h - margin - 40;
-                for (String s : wrap(meta, pm, w - margin * 2)) {
-                    cv.drawText(s, margin, my, pm);
+                Paint pm = p(d.fSmall, false, d.muted, false);
+                float my = h - d.margin - 40;
+                for (String s : wrap(meta, pm, w - d.margin * 2)) {
+                    cv.drawText(s, d.margin, my, pm);
                     my += 14;
                 }
             }
         }
 
         void pageTitle(String t) {
-            Paint pt = p(17, true, ink, false);
-            for (String s : wrap(t, pt, w - margin * 2)) {
-                cv.drawText(s, margin, y + 14, pt);
-                y += 24;
+            Paint pt = titlePaint(d.fH1 + 2);
+            for (String s : wrap(t, pt, w - d.margin * 2)) {
+                cv.drawText(s, d.margin, y + 14, pt);
+                y += d.fH1 + 9;
             }
             y += 6;
-            cv.drawRect(margin, y, margin + 40, y + 3, paintFill(accent));
+            cv.drawRect(d.margin, y, d.margin + 40, y + 3, paintFill(d.accent));
             y += 22;
         }
 
@@ -608,46 +701,47 @@ public final class Office {
             switch (type) {
                 case "h1": {
                     ensure(50);
-                    Paint pt = p(15, true, ink, false);
-                    for (String s : wrap(b.optString("text"), pt, w - margin * 2)) {
-                        cv.drawText(s, margin, y + 12, pt);
-                        y += 22;
+                    Paint pt = titlePaint(d.fH1);
+                    for (String s : wrap(b.optString("text"), pt, w - d.margin * 2)) {
+                        cv.drawText(s, d.margin, y + 12, pt);
+                        y += d.fH1 + 7;
                     }
                     y += 8;
                     break;
                 }
                 case "h2": {
                     ensure(40);
-                    Paint pt = p(12.5f, true, ink, false);
-                    for (String s : wrap(b.optString("text"), pt, w - margin * 2)) {
-                        cv.drawText(s, margin, y + 10, pt);
-                        y += 19;
+                    Paint pt = p(d.fH2, true, d.ink, false);
+                    for (String s : wrap(b.optString("text"), pt, w - d.margin * 2)) {
+                        cv.drawText(s, d.margin, y + 10, pt);
+                        y += d.fH2 + 6;
                     }
                     y += 4;
                     break;
                 }
                 case "bullet": {
-                    Paint pb = p(10.5f, false, ink, false);
-                    java.util.List<String> ls = wrap(b.optString("text"), pb, w - margin * 2 - 16);
-                    ensure(ls.size() * 17 + 6);
-                    cv.drawCircle(margin + 3, y + 4, 1.8f, paintFill(accent));
+                    Paint pb = p(d.fBody, false, d.ink, false);
+                    java.util.List<String> ls = wrap(b.optString("text"), pb, w - d.margin * 2 - 16);
+                    ensure(ls.size() * d.lead + 6);
+                    cv.drawCircle(d.margin + 3, y + 4, 1.8f, paintFill(d.accent));
                     float ly = y;
                     for (String s : ls) {
-                        cv.drawText(s, margin + 14, ly + 8, pb);
-                        ly += 17;
+                        cv.drawText(s, d.margin + 14, ly + 8, pb);
+                        ly += d.lead;
                     }
                     y = ly + 5;
                     break;
                 }
                 case "quote": {
-                    Paint pq = p(10.5f, false, muted, false);
-                    java.util.List<String> ls = wrap(b.optString("text"), pq, w - margin * 2 - 14);
-                    ensure(ls.size() * 17 + 10);
-                    cv.drawRect(margin, y, margin + 2.5f, y + ls.size() * 17 + 2, paintFill(accent));
+                    Paint pq = p(d.fBody, false, d.muted, false);
+                    java.util.List<String> ls = wrap(b.optString("text"), pq, w - d.margin * 2 - 14);
+                    ensure(ls.size() * d.lead + 10);
+                    cv.drawRect(d.margin, y, d.margin + 2.5f, y + ls.size() * d.lead + 2,
+                            paintFill(d.accent));
                     float ly = y;
                     for (String s : ls) {
-                        cv.drawText(s, margin + 12, ly + 8, pq);
-                        ly += 17;
+                        cv.drawText(s, d.margin + 12, ly + 8, pq);
+                        ly += d.lead;
                     }
                     y = ly + 8;
                     break;
@@ -657,7 +751,7 @@ public final class Office {
                     Paint line = new Paint();
                     line.setColor(0xFFE5E7EB);
                     line.setStrokeWidth(0.8f);
-                    cv.drawLine(margin, y + 4, w - margin, y + 4, line);
+                    cv.drawLine(d.margin, y + 4, w - d.margin, y + 4, line);
                     y += 14;
                     break;
                 }
@@ -668,16 +762,16 @@ public final class Office {
                 case "kv": {
                     JSONArray rows = b.optJSONArray("rows");
                     if (rows == null) break;
-                    Paint pk = p(10.5f, true, ink, false);
-                    Paint pv = p(10.5f, false, ink, false);
+                    Paint pk = p(d.fBody, true, d.ink, false);
+                    Paint pv = p(d.fBody, false, d.ink, false);
                     for (int i = 0; i < rows.length(); i++) {
                         JSONArray r = rows.optJSONArray(i);
                         if (r == null) continue;
                         ensure(20);
-                        cv.drawText(r.optString(0, ""), margin, y + 10, pk);
+                        cv.drawText(r.optString(0, ""), d.margin, y + 10, pk);
                         cv.drawText(r.optString(1, ""),
-                                margin + (w - margin * 2) * 0.34f, y + 10, pv);
-                        y += 19;
+                                d.margin + (w - d.margin * 2) * 0.34f, y + 10, pv);
+                        y += d.lead + 2;
                     }
                     y += 5;
                     break;
@@ -694,11 +788,11 @@ public final class Office {
 
         void paragraph(String text) {
             if (text == null || text.isEmpty()) return;
-            Paint pb = p(10.5f, false, ink, false);
-            for (String s : wrap(text, pb, w - margin * 2)) {
+            Paint pb = p(d.fBody, false, d.ink, false);
+            for (String s : wrap(text, pb, w - d.margin * 2)) {
                 ensure(18);
-                cv.drawText(s, margin, y + 9, pb);
-                y += 16.5f;
+                cv.drawText(s, d.margin, y + 9, pb);
+                y += d.lead;
             }
             y += 6;
         }
@@ -711,27 +805,27 @@ public final class Office {
                 if (r != null) cols = Math.max(cols, r.length());
             }
             if (cols == 0) return;
-            float tw = w - margin * 2;
+            float tw = w - d.margin * 2;
             float cw = tw / cols;
-            Paint ph = p(9.5f, true, ink, false);
-            Paint pc = p(9.5f, false, ink, false);
+            Paint ph = p(d.fSmall, true, d.ink, false);
+            Paint pc = p(d.fSmall, false, d.ink, false);
             for (int i = 0; i < rows.length(); i++) {
                 JSONArray r = rows.optJSONArray(i);
                 if (r == null) continue;
                 ensure(22);
                 if (i == 0) {
-                    cv.drawRect(margin, y, margin + tw, y + 20, paintFill(0xFFF3F4F6));
+                    cv.drawRect(d.margin, y, d.margin + tw, y + 20, paintFill(d.tableHead));
                 }
                 cv.drawText(clip(r.optString(0, ""), i == 0 ? ph : pc, cw - 10),
-                        margin + 5, y + 14, i == 0 ? ph : pc);
+                        d.margin + 5, y + 14, i == 0 ? ph : pc);
                 for (int c = 1; c < cols; c++) {
                     cv.drawText(clip(r.optString(c, ""), pc, cw - 10),
-                            margin + cw * c + 5, y + 14, pc);
+                            d.margin + cw * c + 5, y + 14, pc);
                 }
                 Paint line = new Paint();
                 line.setColor(0xFFE5E7EB);
                 line.setStrokeWidth(0.6f);
-                cv.drawLine(margin, y + 20, margin + tw, y + 20, line);
+                cv.drawLine(d.margin, y + 20, d.margin + tw, y + 20, line);
                 y += 20;
             }
             y += 10;

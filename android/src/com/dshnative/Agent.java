@@ -179,7 +179,10 @@ public final class Agent {
                 "- sh 直接执行，不需要用户确认（只有 rm -rf / 这类不可回滚的命令才会问一次）。\n" +
                 "- **不要在 sh 里前台启动常驻进程**（http.server、nc -l、node server、tail -f、watch…）：\n" +
                 "  它们永远不返回，会把这轮任务挂死。需要后台就用 `nohup cmd >/tmp/x.log 2>&1 &`，并立刻返回。\n" +
-                "- 想看一个 HTML 的渲染效果，用 browser_open 传 `file:///sdcard/.../x.html`（内置 WebView 支持 file://），\n" +
+                "- 想看一个 HTML 的渲染效果，用 browser_open 传 `file:///sdcard/.../x.html`（内置 WebView 支持 file://），\n"                +
+                "- **生成文档和媒体一律用 office_write**（docx/xlsx/pptx/pdf/wav/m4a/mp4）。\n" +
+                "  不要自己写 Python 去拼 OOXML、PDF、AAC —— 那是重复实现，慢、贵，还容易出错。\n" +
+                "  想看排版效果就用 office_preview 渲染成图，再据此调整一次。\n" +
                 "  不要自己起静态服务器。需要看整页就用 browser_text 读文字，或 screenshot 截屏。\n" +
                 "- python 工具是内置的 Python 3.14.10：完整标准库（json/re/math/datetime/sqlite3/zipfile/zlib…），\n" +
                 "  网络可通（urllib/socket 实测可用），但没有预装 pip 和第三方包（requests/numpy 不存在）。\n" +
@@ -261,7 +264,8 @@ public final class Agent {
                             + "  （数字写成数字、公式以 = 开头）\n"
                             + "pptx: spec={slides:[{title, bullets:[\"第一条\",\"第二条\"]}]}  （16:9 页面里的普通文本框）\n"
                             + "pdf:  排好版的 A4。**要好看就用 blocks，不要只用 lines**：\n"
-                            + "      spec={cover:{title, subtitle, meta}, theme:{accent:'#2F6FEB', ink:'#111418', muted:'#6B7280'},\n"
+                            + "      spec={style:'report|editorial|swiss|magazine|minimal', cover:{title, subtitle, meta},\n"
+                            + "            theme:{accent, ink, muted}（可选，覆盖预设的个别颜色）,\n"
                             + "            margin:56, pages:[{title:'章节名', blocks:[\n"
                             + "              {type:'h1',text:'小标题'}, {type:'h2',text:'更小的标题'}, {type:'p',text:'正文'},\n"
                             + "              {type:'bullet',text:'要点'}, {type:'quote',text:'引用'},\n"

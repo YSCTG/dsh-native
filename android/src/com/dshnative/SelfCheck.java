@@ -132,11 +132,14 @@ public final class SelfCheck {
 
     private static void checkPdf(List<Item> out, Context c, File dir) {
         File f = new File(dir, "t.pdf");
-        Office.write(c, "pdf", f.getAbsolutePath(),
+        // 把写入器返回的原文带出来：失败时要能直接看到原因，而不是"文件头不对"
+        String msg = Office.write(c, "pdf", f.getAbsolutePath(),
                 "{\"pages\":[{\"title\":\"标题\",\"lines\":[\"第一行\",\"第二行\"]}]}");
         byte[] head = head(f, 5);
         boolean ok = head != null && new String(head).startsWith("%PDF");
-        out.add(new Item("pdf 生成", ok, ok ? "" : "文件头不是 %PDF"));
+        String detail = ok ? (f.length() / 1024) + " KB"
+                : (msg == null ? "" : msg.replace("\n", " "));
+        out.add(new Item("pdf 生成", ok, detail));
         //noinspection ResultOfMethodCallIgnored
         f.delete();
     }
