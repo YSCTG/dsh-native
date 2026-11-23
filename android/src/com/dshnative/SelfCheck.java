@@ -5,8 +5,11 @@ import android.content.Context;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.ZipEntry;
@@ -50,6 +53,8 @@ public final class SelfCheck {
         checkXlsx(out, c, dir);
         checkPptx(out, c, dir);
         checkPdf(out, c, dir);
+        checkTypography(out, c, dir);
+        checkAttach(out, c, dir);
         checkWav(out, c, dir);
         checkM4a(out, c, dir);
         checkMp4(out, c, dir);
@@ -305,6 +310,62 @@ public final class SelfCheck {
             f.delete();
     }
 
+    /** 排版与附件规则：这些都是"悄悄坏掉"的类型，必须有断言盯着。 */
+    private static void checkTypography(List<Item> out, Context c, File dir) {
+        File d = new File(dir, "typo.docx");
+        String r1 = Office.write(c, "docx", d.getAbsolutePath(),
+                "{\"title\":\"标题\",\"blocks\":[{\"type\":\"h1\",\"text\":\"小标题\"},"
+                        + "{\"type\":\"p\",\"text\":\"正文\"},{\"type\":\"table\",\"rows\":[[\"a\",\"b\"]]}]}");
+        String xml = unzipEntry(d, "word/document.xml");
+        boolean ok = xml != null && xml.contains("<w:color w:val=") && xml.contains("<w:spacing")
+                && xml.contains("<w:pgMar");
+        out.add(new Item("docx 排版", ok, ok ? "颜色/间距/页边距" : r1));
+
+        File p = new File(dir, "typo.pptx");
+        String r2 = Office.write(c, "pptx", p.getAbsolutePath(),
+                "{\"slides\":[{\"title\":\"第一页\",\"bullets\":[\"要点\"]},{\"title\":\"第二页\"}]}");
+        String s1 = unzipEntry(p, "ppt/slides/slide1.xml");
+        File side = new File(dir, "typo.preview.html");
+        boolean ok2 = s1 != null && s1.contains("srgbClr") && s1.contains(">1 / 2<")
+                && side.isFile() && side.length() > 200;
+        out.add(new Item("pptx 排版与预览", ok2, ok2 ? "色条/页码/配套 HTML" : r2));
+    }
+
+    /** 附件规则：脚本和中间产物不能挂卡片，成品必须能挂。 */
+    private static void checkAttach(List<Item> out, Context c, File dir) {
+        File script = new File(dir, "build_ppt.py");
+        File probe = new File(dir, "probe_min.docx");
+        File pdf = new File(dir, "报告.pdf");
+        File dex = new File(dir, "sheet.xlsx");
+        try {
+            for (File f : new File[]{script, probe, pdf, dex}) {
+                FileOutputStream os = new FileOutputStream(f);
+                os.write("x".getBytes("UTF-8"));
+                os.close();
+            }
+        } catch (Throwable ignored) {}
+        boolean ok = !Attach.worth(script) && !Attach.worth(probe)
+                && Attach.worth(pdf) && Attach.worth(dex);
+        out.add(new Item("附件筛选", ok, ok ? "挡掉脚本/探针，放行成品" : "规则漏了"));
+    }
+
+    private static String unzipEntry(File zipF, String name) {
+        try {
+            ZipFile z = new ZipFile(zipF);
+            ZipEntry e = z.getEntry(name);
+            if (e == null) { z.close(); return null; }
+            InputStream in = z.getInputStream(e);
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            in.close();
+            z.close();
+            return bo.toString("UTF-8");
+        } catch (Throwable t) {
+            return null;
+        }
+    }
     private static byte[] head(File f, int n) {
         try {
             FileInputStream in = new FileInputStream(f);

@@ -92,9 +92,6 @@ public final class DeepSeekClient {
         return 131072;
     }
 
-    public static boolean contextLimitExact(String model) {
-        return "deepseek-flash".equals(model);
-    }
 
     /** none / low / medium / high / max —— 实测服务端认这个字段（推理长度随等级单调变化）。 */
     public String reasoningEffort = "";

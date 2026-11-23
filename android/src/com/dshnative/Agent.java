@@ -1961,14 +1961,6 @@ public final class Agent {
 
     public int contextLimit() { return DeepSeekClient.contextLimit(model); }
 
-    public boolean contextLimitExact() { return DeepSeekClient.contextLimitExact(model); }
-
-    public String sessionSummary() {
-        return String.format("%d 工具（%s）· %d in（命中 %.0f%%）/ %d out · $%.4f",
-                tools.length(), frozenTiers,
-                sessionUsage.promptTokens(), sessionUsage.hitRate() * 100,
-                sessionUsage.out, sessionUsage.costUsd());
-    }
 
     public String tiers() {
         StringBuilder sb = new StringBuilder("app");

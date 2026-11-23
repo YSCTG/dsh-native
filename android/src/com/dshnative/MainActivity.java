@@ -865,7 +865,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         for (String p : paths) {
             if (fileCardsShown.contains(p)) continue;
             File f = new File(p);
-            if (!worthAttaching(f)) continue;      // 正文里提到的脚本/中间文件也不挂
+            if (!Attach.worth(f)) continue;      // 正文里提到的脚本/中间文件也不挂
             fileCardsShown.add(p);
             addView(buildFileCard(f));
         }
@@ -879,22 +879,6 @@ public class MainActivity extends Activity implements Agent.Listener {
      * pv_1.html 这些中间产物也出现在回答下面，真正要交付的东西反而被淹没。
      * 规则：只留"成品类型"，并且排除明显是工作文件的命名。
      */
-    private static boolean worthAttaching(File f) {
-        if (f == null || !f.isFile()) return false;
-        String n = f.getName().toLowerCase();
-        // 中间产物/脚本/日志：不是给用户的东西
-        String[] junkExt = {".py", ".sh", ".js", ".json", ".jsonl", ".log", ".tmp", ".bak",
-                ".class", ".zip", ".tar", ".gz"};
-        for (String e : junkExt) if (n.endsWith(e)) return false;
-        String[] junkPrefix = {"probe", "pv_", "preview-", "test-", "tmp-", "build_",
-                "session-", "update-", "."};
-        for (String p : junkPrefix) if (n.startsWith(p)) return false;
-        // 成品类型
-        String[] good = {".docx", ".xlsx", ".pptx", ".pdf", ".wav", ".m4a", ".mp4",
-                ".png", ".jpg", ".jpeg", ".webp", ".md", ".html", ".csv", ".txt"};
-        for (String g : good) if (n.endsWith(g)) return true;
-        return false;
-    }
     private View buildFileCard(final File f) {
         final LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -2852,7 +2836,7 @@ public class MainActivity extends Activity implements Agent.Listener {
             if (shown >= 4) break;                      // 最多 4 张，别刷屏
             if (fileCardsShown.contains(p)) continue;
             File f = new File(p);
-            if (!worthAttaching(f)) continue;           // 中间产物不挂
+            if (!Attach.worth(f)) continue;           // 中间产物不挂
             fileCardsShown.add(p);
             addView(buildFileCard(f));
             shown++;

@@ -58,9 +58,14 @@ public final class Office {
     // ---------------- docx ----------------
 
     private static String docx(File out, JSONObject spec) throws Exception {
+        Design d = Design.of(spec.optString("style", "report"));
+        JSONObject theme = spec.optJSONObject("theme");
+        d.accent = colorOf(theme, "accent", d.accent);
+        d.ink = colorOf(theme, "ink", d.ink);
+
         StringBuilder body = new StringBuilder();
         String title = spec.optString("title", "");
-        if (!title.isEmpty()) body.append(para(title, true, 32));
+        if (!title.isEmpty()) body.append(para(title, true, 36, d.accent, 0, 240));
         JSONArray blocks = spec.optJSONArray("blocks");
         if (blocks != null) {
             for (int i = 0; i < blocks.length(); i++) {
@@ -70,19 +75,27 @@ public final class Office {
                 if ("table".equals(type)) {
                     body.append(table(b.optJSONArray("rows")));
                 } else if ("h1".equals(type)) {
-                    body.append(para(b.optString("text", ""), true, 30));
+                    body.append(para(b.optString("text", ""), true, 30, d.accent, 240, 120));
                 } else if ("h2".equals(type)) {
-                    body.append(para(b.optString("text", ""), true, 26));
+                    body.append(para(b.optString("text", ""), true, 26, d.ink, 200, 100));
                 } else if ("bullet".equals(type)) {
-                    body.append(para("• " + b.optString("text", ""), false, 22));
+                    body.append(para("• " + b.optString("text", ""), false, 22, d.ink, 0, 60));
+                } else if ("divider".equals(type)) {
+                    body.append("<w:p><w:pPr><w:pBdr><w:bottom w:val=\"single\" w:sz=\"4\" "
+                            + "w:color=\"DDDDDD\"/></w:pBdr></w:pPr></w:p>");
+                } else if ("spacer".equals(type)) {
+                    body.append("<w:p><w:pPr><w:spacing w:after=\"" + b.optInt("h", 12) * 20
+                            + "\"/></w:pPr></w:p>");
                 } else {
-                    body.append(para(b.optString("text", ""), false, 22));
+                    body.append(para(b.optString("text", ""), false, 22, d.ink, 0, 120));
                 }
             }
         }
         String doc = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                 + "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
-                + "<w:body>" + body + "</w:body></w:document>";
+                + "<w:body>" + body
+                + "<w:sectPr><w:pgMar w:top=\"1134\" w:right=\"1134\" w:bottom=\"1134\" w:left=\"1134\"/></w:sectPr>"
+                + "</w:body></w:document>";
 
         List<String[]> files = new ArrayList<>();
         files.add(new String[]{"[Content_Types].xml",
@@ -102,9 +115,17 @@ public final class Office {
         return "已生成 docx：" + out.getAbsolutePath() + "（" + out.length() / 1024 + " KB）";
     }
 
-    private static String para(String text, boolean bold, int sizeHalfPt) {
-        String rPr = "<w:rPr>" + (bold ? "<w:b/>" : "") + "<w:sz w:val=\"" + sizeHalfPt + "\"/></w:rPr>";
-        return "<w:p><w:r>" + rPr + "<w:t xml:space=\"preserve\">" + esc(text) + "</w:t></w:r></w:p>";
+    /** 段落：字号用半磅，颜色是 ARGB，段前段后单位 twips（1/20 磅）。 */
+    private static String para(String text, boolean bold, int sizeHalfPt, int colorArgb,
+                               int spaceBefore, int spaceAfter) {
+        String hex = String.format("%06X", colorArgb & 0xFFFFFF);
+        String rPr = "<w:rPr>" + (bold ? "<w:b/>" : "")
+                + "<w:sz w:val=\"" + sizeHalfPt + "\"/>"
+                + "<w:color w:val=\"" + hex + "\"/></w:rPr>";
+        String pPr = "<w:pPr><w:spacing w:before=\"" + spaceBefore + "\" w:after=\""
+                + spaceAfter + "\" w:line=\"320\" w:lineRule=\"auto\"/></w:pPr>";
+        return "<w:p>" + pPr + "<w:r>" + rPr
+                + "<w:t xml:space=\"preserve\">" + esc(text) + "</w:t></w:r></w:p>";
     }
 
     private static String table(JSONArray rows) {
@@ -270,6 +291,11 @@ public final class Office {
     private static String pptx(File out, JSONObject spec) throws Exception {
         JSONArray slides = spec.optJSONArray("slides");
         if (slides == null || slides.length() == 0) return "错误：pptx 需要至少一张 slide";
+        Design d = Design.of(spec.optString("style", "report"));
+        JSONObject theme = spec.optJSONObject("theme");
+        d.accent = colorOf(theme, "accent", d.accent);
+        d.ink = colorOf(theme, "ink", d.ink);
+        d.muted = colorOf(theme, "muted", d.muted);
 
         List<String[]> files = new ArrayList<>();
         StringBuilder types = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
@@ -301,7 +327,7 @@ public final class Office {
             presRels.append("<Relationship Id=\"rId").append(n + 10)
                     .append("\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide")
                     .append(n).append(".xml\"/>");
-            files.add(new String[]{"ppt/slides/slide" + n + ".xml", slideXml(s)});
+            files.add(new String[]{"ppt/slides/slide" + n + ".xml", slideXml(s, d, n, slides.length())});
             files.add(new String[]{"ppt/slides/_rels/slide" + n + ".xml.rels",
                     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                             + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
@@ -336,22 +362,97 @@ public final class Office {
         files.add(new String[]{"ppt/theme/theme1.xml", THEME});
 
         zip(out, files);
-        return "已生成 pptx：" + out.getAbsolutePath() + "（" + out.length() / 1024 + " KB，" + slides.length() + " 页）";
+        // 配套写一份同版式的 HTML 预览：pptx 本身没法在手机上渲染，
+        // 有了它 office_preview 就能把幻灯片画成图给模型看。
+        String side = "";
+        try {
+            String base = out.getName().replaceAll("\\.[^.]+$", "");
+            File html = new File(out.getParentFile(), base + ".preview.html");
+            writeText(html, slidesHtml(spec, slides, d));
+            // 同时写一份 spec JSON：office_preview 直接用它画图，不依赖 WebView 截图
+            JSONObject pv = new JSONObject();
+            pv.put("slides", slides);
+            pv.put("accent", String.format("#%06X", d.accent & 0xFFFFFF));
+            pv.put("ink", String.format("#%06X", d.ink & 0xFFFFFF));
+            pv.put("muted", String.format("#%06X", d.muted & 0xFFFFFF));
+            pv.put("page", String.format("#%06X", d.page & 0xFFFFFF));
+            writeText(new File(out.getParentFile(), base + ".preview.json"), pv.toString());
+            side = "，预览 " + html.getName();
+        } catch (Throwable ignored) {}
+        return "已生成 pptx：" + out.getAbsolutePath() + "（" + out.length() / 1024 + " KB，"
+                + slides.length() + " 页" + side + "）";
     }
 
-    private static String slideXml(JSONObject s) {
+    /** 幻灯片 → HTML（只用于预览渲染，不进 pptx）。 */
+    private static String slidesHtml(JSONObject spec, JSONArray slides, Design d) {
+        String accent = String.format("#%06X", d.accent & 0xFFFFFF);
+        String ink = String.format("#%06X", d.ink & 0xFFFFFF);
+        String muted = String.format("#%06X", d.muted & 0xFFFFFF);
+        String page = String.format("#%06X", d.page & 0xFFFFFF);
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!doctype html><html><head><meta charset=\"utf-8\">")
+          .append("<meta name=\"viewport\" content=\"width=960,initial-scale=1\">")
+          .append("<style>body{margin:0;background:#222;font-family:sans-serif}")
+          .append(".s{width:960px;height:540px;background:").append(page)
+          .append(";position:relative;box-sizing:border-box;padding:56px 64px;margin:12px auto}")
+          .append(".band{position:absolute;left:0;top:0;right:0;height:8px;background:")
+          .append(accent).append("}")
+          .append("h1{font-size:38px;margin:0 0 28px;color:").append(accent).append(";font-weight:700}")
+          .append("li{font-size:22px;line-height:1.7;color:").append(ink).append(";margin:0 0 6px}")
+          .append("ul{margin:0;padding-left:26px}")
+          .append(".n{position:absolute;right:48px;bottom:28px;font-size:14px;color:")
+          .append(muted).append("}")
+          .append("</style></head><body>");
+        for (int i = 0; i < slides.length(); i++) {
+            JSONObject s = slides.optJSONObject(i);
+            if (s == null) continue;
+            sb.append("<div class=\"s\"><div class=\"band\"></div><h1>")
+              .append(esc(s.optString("title", ""))).append("</h1><ul>");
+            JSONArray b = s.optJSONArray("bullets");
+            if (b != null) {
+                for (int k = 0; k < b.length(); k++) {
+                    sb.append("<li>").append(esc(b.optString(k, ""))).append("</li>");
+                }
+            }
+            sb.append("</ul><div class=\"n\">").append(i + 1).append(" / ")
+              .append(slides.length()).append("</div></div>");
+        }
+        sb.append("</body></html>");
+        return sb.toString();
+    }
+
+    private static void writeText(File f, String s) throws Exception {
+        FileOutputStream os = new FileOutputStream(f);
+        os.write(s.getBytes("UTF-8"));
+        os.close();
+    }
+
+    /** 幻灯片：顶部色条 + 主题色标题 + 要点缩进 + 页码。 */
+    private static String slideXml(JSONObject s, Design d, int index, int total) {
         String title = esc(s.optString("title", ""));
         JSONArray bullets = s.optJSONArray("bullets");
+        String accent = String.format("%06X", d.accent & 0xFFFFFF);
+        String ink = String.format("%06X", d.ink & 0xFFFFFF);
+        String muted = String.format("%06X", d.muted & 0xFFFFFF);
         StringBuilder body = new StringBuilder();
-        body.append(shape(2, "标题", 457200, 274638, 8229600, 1143000, title, 2800, true));
+        body.append("<p:sp><p:nvSpPr><p:cNvPr id=\"9\" name=\"band\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
+                + "<p:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"9144000\" cy=\"91440\"/></a:xfrm>"
+                + "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>"
+                + "<a:solidFill><a:srgbClr val=\"" + accent + "\"/></a:solidFill>"
+                + "<a:ln><a:noFill/></a:ln></p:spPr></p:sp>");
+        body.append(shapeColored(2, 457200, 274638, 8229600, 1143000, title, 2800, true, accent));
         if (bullets != null && bullets.length() > 0) {
             StringBuilder t = new StringBuilder();
             for (int i = 0; i < bullets.length(); i++) {
-                t.append("<a:p><a:r><a:rPr lang=\"zh-CN\" sz=\"1800\"/><a:t>")
-                 .append(esc(bullets.optString(i, ""))).append("</a:t></a:r></a:p>");
+                t.append("<a:p><a:pPr marL=\"285750\" indent=\"-285750\"/><a:r><a:rPr lang=\"zh-CN\" sz=\"1800\">")
+                 .append("<a:solidFill><a:srgbClr val=\"" + ink + "\"/></a:solidFill></a:rPr>")
+                 .append("<a:t>• ").append(esc(bullets.optString(i, "")))
+                 .append("</a:t></a:r></a:p>");
             }
             body.append(shapeRaw(3, 457200, 1600200, 8229600, 4525963, t.toString()));
         }
+        body.append(shapeColored(4, 7772400, 6248400, 1100000, 300000,
+                index + " / " + total, 1100, false, muted));
         return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                 + "<p:sld xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
                 + "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
@@ -369,6 +470,18 @@ public final class Office {
         StringBuilder p = new StringBuilder();
         p.append("<a:p><a:pPr algn=\"ctr\"/><a:r><a:rPr lang=\"zh-CN\" sz=\"").append(size)
          .append("\"").append(bold ? " b=\"1\"" : "").append("/><a:t>").append(text)
+         .append("</a:t></a:r></a:p>");
+        return shapeRaw(id, x, y, cx, cy, p.toString());
+    }
+
+    /** 带颜色的文本框（十六进制 RRGGBB）。 */
+    private static String shapeColored(int id, int x, int y, int cx, int cy,
+                                       String text, int size, boolean bold, String hex) {
+        StringBuilder p = new StringBuilder();
+        p.append("<a:p><a:r><a:rPr lang=\"zh-CN\" sz=\"").append(size).append("\"")
+         .append(bold ? " b=\"1\"" : "")
+         .append("><a:solidFill><a:srgbClr val=\"").append(hex)
+         .append("\"/></a:solidFill></a:rPr><a:t>").append(esc(text))
          .append("</a:t></a:r></a:p>");
         return shapeRaw(id, x, y, cx, cy, p.toString());
     }
