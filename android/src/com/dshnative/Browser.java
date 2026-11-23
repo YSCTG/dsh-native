@@ -107,6 +107,11 @@ public final class Browser {
                             done.countDown();
                         }
                     });
+                    try {
+                        view.getSettings().setAllowFileAccess(true);
+                        view.getSettings().setAllowFileAccessFromFileURLs(true);
+                        view.getSettings().setAllowUniversalAccessFromFileURLs(true);
+                    } catch (Throwable ignored) {}
                     view.loadUrl(url);
                 } catch (Throwable t) {
                     err.set("打不开：" + t.getMessage());

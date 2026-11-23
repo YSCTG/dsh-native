@@ -177,6 +177,10 @@ public final class Agent {
                 "\n" +
                 "环境：\n" +
                 "- sh 直接执行，不需要用户确认（只有 rm -rf / 这类不可回滚的命令才会问一次）。\n" +
+                "- **不要在 sh 里前台启动常驻进程**（http.server、nc -l、node server、tail -f、watch…）：\n" +
+                "  它们永远不返回，会把这轮任务挂死。需要后台就用 `nohup cmd >/tmp/x.log 2>&1 &`，并立刻返回。\n" +
+                "- 想看一个 HTML 的渲染效果，用 browser_open 传 `file:///sdcard/.../x.html`（内置 WebView 支持 file://），\n" +
+                "  不要自己起静态服务器。需要看整页就用 browser_text 读文字，或 screenshot 截屏。\n" +
                 "- python 工具是内置的 Python 3.14.10：完整标准库（json/re/math/datetime/sqlite3/zipfile/zlib…），\n" +
                 "  网络可通（urllib/socket 实测可用），但没有预装 pip 和第三方包（requests/numpy 不存在）。\n" +
                 "  算数、解析、生成文件都用它，不要心算。\n" +
@@ -247,7 +251,15 @@ public final class Agent {
                             + "xlsx: spec={sheets:[{name, header:true, widths:[12,20], rows:[[\"表头\",\"值\"],[1,2]]}]}"
                             + "  （数字写成数字、公式以 = 开头）\n"
                             + "pptx: spec={slides:[{title, bullets:[\"第一条\",\"第二条\"]}]}  （16:9 页面里的普通文本框）\n"
-                            + "pdf:  spec={pages:[{title, lines:[\"一行\",\"另一行\"]}]}  （A4，自动折行，中文正常）\n"
+                            + "pdf:  排好版的 A4。**要好看就用 blocks，不要只用 lines**：\n"
+                            + "      spec={cover:{title, subtitle, meta}, theme:{accent:'#2F6FEB', ink:'#111418', muted:'#6B7280'},\n"
+                            + "            margin:56, pages:[{title:'章节名', blocks:[\n"
+                            + "              {type:'h1',text:'小标题'}, {type:'h2',text:'更小的标题'}, {type:'p',text:'正文'},\n"
+                            + "              {type:'bullet',text:'要点'}, {type:'quote',text:'引用'},\n"
+                            + "              {type:'kv',rows:[['指标','数值']]}, {type:'table',rows:[['表头','值'],['a','b']]},\n"
+                            + "              {type:'divider'}, {type:'spacer',h:16}\n"
+                            + "            ]}]}\n"
+                            + "      自带封面页、标题下色条、表格斑马底、页脚页码；主题色贯穿全篇。\n"
                             + "wav/m4a: spec={notes:[{freq:440,dur:0.4},{freq:523,dur:0.4}], waveform:'sine|square|saw|noise', volume:0.5}\n"
                             + "         或 spec={tone:440, seconds:1} —— m4a 是 AAC 编码（平台没有 MP3 编码器）\n"
                             + "mp4:  spec={size:[1280,720], fps:30, slides:[{title, bullets:[\"要点\"], seconds:2.5, bg:'#101418', fg:'#FFFFFF', accent:'#7FB2FF'}]}"
@@ -1907,7 +1919,15 @@ public final class Agent {
 
 
     /** 最近一次请求实际吃掉的上下文（输入侧），用来显示"还剩多少"。 */
-    public int contextUsed() { return sessionUsage.promptTokens(); }
+    /**
+     * 当前上下文占用 = **上一次请求**实际发出去的 prompt token。
+     *
+     * 以前返回的是 sessionUsage.promptTokens()，那是整场会话的累计值，
+     * 跑久了会超过模型窗口（界面上出现 ctx 113% 这种没意义的数）。
+     */
+    public int contextUsed() {
+        return lastPromptTokens > 0 ? lastPromptTokens : sessionUsage.promptTokens();
+    }
 
     public int contextLimit() { return DeepSeekClient.contextLimit(model); }
 
