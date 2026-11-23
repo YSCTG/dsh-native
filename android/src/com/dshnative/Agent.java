@@ -50,6 +50,9 @@ public final class Agent {
         void onToolDone(String name, long ms);
         /** 每次请求后的用量：命中 / 未命中 / 输出 token、花费（美元）。 */
         void onUsage(int hit, int miss, int out, double costUsd);
+
+        /** 这一轮的输出 token 与耗时（毫秒），用来算 tok/s。 */
+        default void onTurnStats(int outTokens, long ms) {}
         /** 本轮改动过的文件（绝对路径）。用来在回答下面附卡片。 */
         void onFilesTouched(java.util.List<String> paths);
         /** 待办清单变化（渲染好的一行摘要，空串表示清空）。 */
@@ -830,6 +833,7 @@ public final class Agent {
                 lastPromptTokens = r.usage.promptTokens();
                 listener.onStatus(statusLine(r.usage));
                 listener.onUsage(r.usage.hit, r.usage.miss, r.usage.out, r.usage.costUsd());
+                listener.onTurnStats(r.usage.out, r.elapsedMs);
                 addMessage(r.assistant);
                 autoCompact();
 

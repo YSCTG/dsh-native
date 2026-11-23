@@ -49,6 +49,8 @@ public final class DeepSeekClient {
         public JSONObject assistant;   // 要追加进历史的那条 assistant 消息
         public Usage usage = new Usage();
         public String finish = "";
+        /** 这次请求花了多久（毫秒），用来算 tok/s。 */
+        public long elapsedMs;
     }
 
     /** 查账户余额（GET /user/balance）。失败返回 null，不要在 UI 上编一个数字。 */
@@ -318,7 +320,8 @@ public final class DeepSeekClient {
                 a.put("tool_calls", arr);
             }
             result.assistant = a;
-            return result;
+            result.elapsedMs = System.currentTimeMillis() - t0;
+        return result;
         } finally {
             try { c.disconnect(); } catch (Exception ignored) {}
             conn = null;

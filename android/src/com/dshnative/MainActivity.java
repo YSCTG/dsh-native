@@ -70,6 +70,11 @@ public class MainActivity extends Activity implements Agent.Listener {
     private TextView chipCtx;
     private TextView chipWs;
     private TextView chipHit;
+    /** 输出速度（tok/s）与电量，对应桌面版状态栏那几项。 */
+    private TextView chipSpeed;
+    private TextView chipBattery;
+    /** 子代理 / 后台任务计数（对应桌面端「N 个子智能体」「N 个后台任务」）。 */
+    private TextView chipAgents;
     /** 待办摘要（模型更新清单时变化）。 */
     private String todoSummary = "";
 
@@ -474,6 +479,16 @@ public class MainActivity extends Activity implements Agent.Listener {
         chipHit.setBackground(null);
         bar.addView(chipHit, chipLp());
 
+        chipAgents = chip("", null);
+        chipAgents.setBackground(null);
+        chipAgents.setVisibility(View.GONE);
+        bar.addView(chipAgents, chipLp());
+
+        chipSpeed = chip("— tok/s", null);
+        chipSpeed.setBackground(null);
+        chipSpeed.setVisibility(View.GONE);
+        bar.addView(chipSpeed, chipLp());
+
         chipWs = chip(Workspaces.current(this).name + " ▾", new View.OnClickListener() {
             @Override public void onClick(View v) { showWorkspaceSheet(); }
         });
@@ -483,12 +498,21 @@ public class MainActivity extends Activity implements Agent.Listener {
         View s2 = new View(this);
         bar.addView(s2, new LinearLayout.LayoutParams(0, 1, 1f));
 
+        chipBattery = chip(batteryLabel(), null);
+        chipBattery.setBackground(null);
+        bar.addView(chipBattery, chipLp());
+
         TextView gear = chip("⚙", new View.OnClickListener() {
             @Override public void onClick(View v) { openSettings(); }
         });
         bar.addView(gear, chipLp());
 
-        root.addView(bar);
+        // 状态项在窄屏上排不下：整条做成横向可滚动，比换行、比删项都实在
+        android.widget.HorizontalScrollView barScroll = new android.widget.HorizontalScrollView(this);
+        barScroll.setHorizontalScrollBarEnabled(false);
+        barScroll.setFillViewport(false);
+        barScroll.addView(bar);
+        root.addView(barScroll);
         return root;
     }
 
@@ -500,7 +524,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         t.setTextColor(getColor(R.color.label_tertiary));
         t.setBackgroundResource(R.drawable.bg_chip);
-        t.setPadding(dp(11), dp(6), dp(11), dp(6));
+        t.setPadding(dp(9), dp(5), dp(9), dp(5));
         t.setGravity(Gravity.CENTER);
         t.setOnClickListener(l);
         return t;
@@ -1753,6 +1777,54 @@ public class MainActivity extends Activity implements Agent.Listener {
                     }
                 })
                 .show();
+    }
+
+    /** 本轮输出速度：out / 秒。没有数据就不显示，不编数字。 */
+    @Override public void onTurnStats(final int outTokens, final long ms) {
+        ui.post(new Runnable() {
+            @Override public void run() {
+                if (chipSpeed == null) return;
+                if (ms < 500 || outTokens <= 0) {
+                    chipSpeed.setVisibility(View.GONE);
+                    return;
+                }
+                double tps = outTokens * 1000.0 / ms;
+                chipSpeed.setText(String.format("%.0f tok/s", tps));
+                chipSpeed.setVisibility(View.VISIBLE);
+            }
+        });
+    }
+
+    /** 电量：桌面版状态栏里有，手机上也该有。 */
+    private String batteryLabel() {
+        try {
+            android.os.BatteryManager bm = (android.os.BatteryManager)
+                    getSystemService(BATTERY_SERVICE);
+            int pct = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
+            return pct + "%";
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    /** 有子代理或后台任务在跑时才显示，别占着状态栏。 */
+    private void refreshAgentCounts() {
+        if (chipAgents == null) return;
+        int subs = 0, jobs = 0;
+        try { subs = Team.list().split("\n").length; } catch (Throwable ignored) {}
+        try { jobs = Jobs.all().size(); } catch (Throwable ignored) {}
+        if (subs <= 0 && jobs <= 0) {
+            chipAgents.setVisibility(View.GONE);
+            return;
+        }
+        StringBuilder sb = new StringBuilder();
+        if (subs > 0) sb.append(subs).append(" 个子代理");
+        if (jobs > 0) {
+            if (sb.length() > 0) sb.append(" · ");
+            sb.append(jobs).append(" 个任务");
+        }
+        chipAgents.setText(sb.toString());
+        chipAgents.setVisibility(View.VISIBLE);
     }
 
     private void showQuickSettings() {
@@ -3106,6 +3178,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                     hit.view.setTextColor(getColor(R.color.label_secondary));
                     hit.meta.setText(hit.base + "   " + dur);
                     pendingTools.remove(hit);
+                refreshAgentCounts();
                 } else if (lastToolName != null && lastToolLabel != null) {
                     lastToolName.setText("✓ " + lastToolLabel);
                     if (lastToolMeta != null) {
