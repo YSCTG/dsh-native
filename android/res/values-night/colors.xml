@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 暗色：对齐桌面版 data-ds-dark-theme 的 alias token -->
+<resources>
+    <color name="bg_base">#FF151517</color>
+    <color name="bg_layer">#FF232324</color>
+    <color name="bg_subtle">#FF1B1B1C</color>
+    <color name="bg_code_inline">#FF292929</color>
+    <color name="bg_bubble">#FF2C2C2E</color>
+    <color name="bg_bubble_alt">#FF43454A</color>
+
+    <color name="label_primary">#FFF9FAFB</color>
+    <color name="label_secondary">#FFCFD3D6</color>
+    <color name="label_tertiary">#FFADB2B8</color>
+    <color name="label_caption">#FF81858C</color>
+
+    <color name="border_l1">#0AFFFFFF</color>
+    <color name="border_l2">#1FFFFFFF</color>
+    <color name="border_l3">#29FFFFFF</color>
+
+    <color name="brand">#FFF9FAFB</color>
+    <color name="brand_fg">#FF0F1115</color>
+    <color name="accent">#FF7AAAFF</color>
+    <color name="danger">#FFF25A5A</color>
+    <color name="success">#FF4ED17E</color>
+</resources>

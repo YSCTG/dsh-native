@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 间距：桌面版正文左右留白 24px 级别，手机按 dp 缩放 -->
+    <dimen name="gutter">20dp</dimen>
+    <dimen name="gap_block">14dp</dimen>
+    <dimen name="gap_tight">8dp</dimen>
+
+    <dimen name="radius_bubble">14dp</dimen>
+    <dimen name="radius_card">10dp</dimen>
+    <dimen name="radius_input">14dp</dimen>
+
+    <dimen name="text_body">15sp</dimen>
+    <dimen name="text_small">13sp</dimen>
+    <dimen name="text_caption">11sp</dimen>
+    <dimen name="text_code">12sp</dimen>
+
+    <dimen name="line_extra">5dp</dimen>
+</resources>

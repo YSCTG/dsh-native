@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 亮色：对齐桌面版 design-platform.css 的 alias token -->
+<resources>
+    <color name="bg_base">#FFFFFFFF</color>
+    <color name="bg_layer">#FFFFFFFF</color>
+    <color name="bg_subtle">#FFF9FAFB</color>
+    <color name="bg_code_inline">#FFFAFAFA</color>
+    <color name="bg_bubble">#FFEDF3FE</color>
+    <color name="bg_bubble_alt">#FFD3E2FF</color>
+
+    <color name="label_primary">#FF0F1115</color>
+    <color name="label_secondary">#FF61666B</color>
+    <color name="label_tertiary">#FF81858C</color>
+    <color name="label_caption">#FFADB2B8</color>
+
+    <color name="border_l1">#0A000000</color>
+    <color name="border_l2">#1A000000</color>
+    <color name="border_l3">#1F000000</color>
+
+    <color name="brand">#FF0F1115</color>
+    <color name="brand_fg">#FFFFFFFF</color>
+    <color name="accent">#FF4176E6</color>
+    <color name="danger">#FFEC1313</color>
+    <color name="success">#FF22C55E</color>
+</resources>

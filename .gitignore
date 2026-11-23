@@ -1,0 +1,13 @@
+# 构建产物
+build/
+*.apk
+*.idsig
+
+# 工具链压缩包（65MB，用 tools/fetch-tools.ps1 现拉）
+android/assets/tools.zip
+
+# 签名与本地配置
+*.keystore
+*.jks
+local.properties
+.DS_Store

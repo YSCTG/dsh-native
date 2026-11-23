@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- parent="" 必须显式写：aapt2 会把 "Text.Body" 的隐式父样式解析成不存在的 "Text" 而报错 -->
+    <style name="Text.Body" parent="">
+        <item name="android:textSize">@dimen/text_body</item>
+        <item name="android:textColor">@color/label_primary</item>
+        <item name="android:lineSpacingExtra">@dimen/line_extra</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="Text.Small" parent="">
+        <item name="android:textSize">@dimen/text_small</item>
+        <item name="android:textColor">@color/label_secondary</item>
+        <item name="android:lineSpacingExtra">3dp</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="Text.Caption" parent="">
+        <item name="android:textSize">@dimen/text_caption</item>
+        <item name="android:textColor">@color/label_tertiary</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="Text.Mono" parent="">
+        <item name="android:textSize">@dimen/text_code</item>
+        <item name="android:textColor">@color/label_secondary</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+    <!-- 对话框：跟随 values-night，背景用圆角 bg_sheet -->
+    <style name="DshDialog" parent="android:Theme.Material.Light.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/bg_sheet</item>
+        <item name="android:textColorPrimary">@color/label_primary</item>
+        <item name="android:textColorSecondary">@color/label_tertiary</item>
+    </style>
+
+</resources>
