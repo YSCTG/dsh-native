@@ -58,7 +58,7 @@ public final class Agent {
         boolean confirm(String title, String body);
     }
 
-    private static final int MAX_TURNS = 12;
+    private static final int MAX_TURNS = 40;
     private static final int READ_LIMIT = 200;
     private static final int READ_MAX_BYTES = 64 * 1024;
     private static final int UI_MAX_NODES = 120;
@@ -89,6 +89,8 @@ public final class Agent {
     /** 会话开始时冻结的档位：账本要显示"这一轮真正有哪些工具"，不是此刻的实时状态。 */
     private final String frozenTiers;
     private volatile boolean cancelled;
+    /** 本轮实际用掉了几轮（撞上限时要说清楚）。 */
+    private int turnsUsed;
 
     public Agent(Context ctx, String apiKey, String model, String baseUrl,
                  Mode mode, Session session, boolean root, Listener listener) {
@@ -658,7 +660,9 @@ public final class Agent {
             addMessage(u);
             }
 
+            turnsUsed = 0;
             for (int turn = 0; turn < MAX_TURNS && !cancelled; turn++) {
+                turnsUsed = turn + 1;
                 // 插话：上一轮工具跑完、下一次请求还没发时把它接进来。
                 // 只在这个位置注入，消息序列才合法（tool 结果紧跟着它的 tool_calls）。
                 drainSteers();
@@ -720,6 +724,19 @@ public final class Agent {
                         pendingShot = null;
                     }
                 }
+            }
+            // 撞上限不能静默退出：用户会以为"任务自己断了"
+            if (!cancelled && turnsUsed >= MAX_TURNS) {
+                String note = "⚠ 已经连续执行 " + MAX_TURNS
+                        + " 轮工具调用，本轮到此为止（不是出错，是上限）。"
+                        + "任务还没完的话回一句「继续」，我接着跑。";
+                try {
+                    JSONObject m = new JSONObject();
+                    m.put("role", "assistant");
+                    m.put("content", note);
+                    addMessage(m);
+                } catch (Throwable ignored) {}
+                listener.onAssistant("\n\n" + note);
             }
             if (cancelled) listener.onError("已中止");
         } catch (Exception e) {
