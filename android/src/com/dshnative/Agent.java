@@ -60,6 +60,9 @@ public final class Agent {
         /** 渲染卡片：html 优先，其次 url。无人值守时会被忽略。 */
         void onRender(String html, String url);
         boolean confirm(String title, String body);
+
+        /** 让用户从选项里选（多选用「 / 」连接）。null 表示没选。 */
+        default String askChoice(String title, String[] options, boolean multi) { return null; }
     }
 
     private static final int MAX_TURNS = 80;      // 轮次兜底（数的是模型往返，不是工具数）
@@ -199,7 +202,11 @@ public final class Agent {
                 "。gh 是 GitHub CLI，凭据从设置里的 GitHub token 注入到 GH_TOKEN；" +
                 "没配 token 时 gh 会报未登录，先问用户要，不要瞎试。" +
                 "。git 的 HOME 是应用私有目录，clone 到工作区即可；curl 有完整 TLS。";
-        String sys = base + (mode.promptExtra.isEmpty() ? "" : "\n\n" + mode.promptExtra);
+        // 目标写进系统提示：会话内冻结是既有设计，所以只在建提示时读一次
+        String goalNow = Goal.get(ctx, session == null ? "" : session.id);
+        String sys = base + (mode.promptExtra.isEmpty() ? "" : "\n\n" + mode.promptExtra)
+                + (goalNow.isEmpty() ? "" : "\n\n【本轮目标】" + goalNow
+                   + "\n（用户确认过的终点，别偏离；做完用 goal_clear 清掉。）");
         if (Plugin.isOn(ctx, "builtin.skills")) {
             String cat = Skill.catalog(ctx);
             if (!cat.isEmpty()) {
@@ -414,6 +421,55 @@ public final class Agent {
                                      new String[]{"array", "boolean"},
                                      new String[]{"整张清单 [{text,status}]", "true 表示清空"}),
                                new String[]{})));
+            }
+
+            if (Plugin.isOn(ctx, "builtin.core")) {
+                add("notify", tool("schedule_list", "列出已配置的定时任务。",
+                        schema(props(new String[]{}, new String[]{}, new String[]{}), new String[]{})));
+                add("notify", tool("schedule_add",
+                        "建一个周期性任务：每隔 N 分钟自动在一个新会话里跑这段 prompt，结果发通知。",
+                        schema(props(new String[]{"name", "prompt", "minutes"},
+                                     new String[]{"string", "string", "integer"},
+                                     new String[]{"任务名", "要跑的指令", "间隔分钟数，默认 60"}),
+                               new String[]{"name", "prompt"})));
+                add("notify", tool("schedule_remove", "删掉一个定时任务。",
+                        schema(props(new String[]{"id"}, new String[]{"string"},
+                                     new String[]{"任务 id"}), new String[]{"id"})));
+                add("notify", tool("goal_set",
+                        "设定本轮任务的目标（一句话讲清做什么、什么算完成）。会写进系统提示，\n"
+                                + "后来轮次你都看得到，用来防止长任务跑偏。",
+                        schema(props(new String[]{"text"}, new String[]{"string"},
+                                     new String[]{"目标"}), new String[]{"text"})));
+                add("notify", tool("goal_get", "读当前目标。",
+                        schema(props(new String[]{}, new String[]{}, new String[]{}), new String[]{})));
+                add("notify", tool("goal_clear", "清掉当前目标（任务做完时调用）。",
+                        schema(props(new String[]{}, new String[]{}, new String[]{}), new String[]{})));
+                add("agent.spawn", tool("workflow",
+                        "并行跑多个子任务并汇总：tasks=[{name, task}]，最多 6 个，同时开跑。\n"
+                                + "适合同一件事分几个方向分别查；要做成串行依赖请自己分多轮。",
+                        schema(props(new String[]{"tasks"}, new String[]{"array"},
+                                     new String[]{"[{name, task}]"}), new String[]{"tasks"})));
+                add("notify", tool("ask_user",
+                        "让用户做选择：给 title + 若干 options，界面会弹按钮，返回用户选中的那个。\n"
+                                + "需要确认方向、方案二选一时用它，比在正文里问更明确。",
+                        schema(props(new String[]{"title", "options", "multi"},
+                                     new String[]{"string", "array", "boolean"},
+                                     new String[]{"问题", "选项文本数组", "true 表示可多选"}),
+                               new String[]{"title", "options"})));
+                add("notify", tool("plan_present",
+                        "把计划交给用户确认：给 plan 文本，界面弹出计划 + 「执行 / 再想想」。\n"
+                                + "用户点执行才继续动手。大改动前先过一遍，比做完再返工便宜。",
+                        schema(props(new String[]{"plan"}, new String[]{"string"},
+                                     new String[]{"计划正文"}), new String[]{"plan"})));
+                add("mcp.call", tool("mcp_resources",
+                        "列出一个 MCP 服务暴露的资源（resources/list）。",
+                        schema(props(new String[]{"server"}, new String[]{"string"},
+                                     new String[]{"服务名"}), new String[]{"server"})));
+                add("mcp.call", tool("mcp_read",
+                        "读一个 MCP 资源（resources/read），返回其文本内容。",
+                        schema(props(new String[]{"server", "uri"},
+                                     new String[]{"string", "string"},
+                                     new String[]{"服务名", "资源 uri"}), new String[]{"server", "uri"})));
             }
 
             if (Plugin.isOn(ctx, "builtin.terminal")) {
@@ -1149,6 +1205,72 @@ public final class Agent {
                 return "NOT_FOUND".equals(r) ? "没找到这个输入框：" + a.optString("selector", "")
                         : "已填入（" + r + "）";
             }
+            if ("schedule_list".equals(name)) {
+                java.util.List<Schedule.Task> all = Schedule.list(ctx);
+                if (all.isEmpty()) return "没有定时任务。";
+                StringBuilder sb = new StringBuilder();
+                for (Schedule.Task t : all) {
+                    sb.append(t.id).append("  ").append(t.name)
+                      .append("  每 ").append(t.intervalMin).append(" 分钟")
+                      .append(t.enabled ? "" : "  （已停用）").append('\n');
+                }
+                return sb.toString();
+            }
+            if ("schedule_add".equals(name)) {
+                String nm = a.optString("name", "").trim();
+                String pr = a.optString("prompt", "").trim();
+                int mins = Math.max(1, a.optInt("minutes", 60));
+                if (nm.isEmpty() || pr.isEmpty()) return "错误：name 和 prompt 都要给";
+                Schedule.Task t = Schedule.add(ctx, nm, pr, mins);
+                listener.onTool("schedule_add", nm);
+                return "已建定时任务 " + (t == null ? "" : t.id) + "（" + nm + "，每 " + mins + " 分钟）。";
+            }
+            if ("schedule_remove".equals(name)) {
+                Schedule.remove(ctx, a.optString("id", "").trim());
+                Schedule.arm(ctx);
+                return "已删除。";
+            }
+            if ("goal_set".equals(name)) {
+                String g = a.optString("text", "").trim();
+                if (g.isEmpty()) return "错误：text 不能为空";
+                Goal.set(ctx, session == null ? "" : session.id, g);
+                listener.onTool("goal", g.length() > 20 ? g.substring(0, 20) + "…" : g);
+                return "目标已记下：" + g + "\n（后面的轮次都会带着它，做完记得 goal_clear）";
+            }
+            if ("goal_get".equals(name)) {
+                String g = Goal.get(ctx, session == null ? "" : session.id);
+                return g.isEmpty() ? "当前没有设定目标。" : "当前目标：" + g;
+            }
+            if ("goal_clear".equals(name)) {
+                Goal.clear(ctx, session == null ? "" : session.id);
+                return "目标已清除。";
+            }
+            if ("ask_user".equals(name)) {
+                JSONArray opts = a.optJSONArray("options");
+                if (opts == null || opts.length() == 0) return "错误：options 不能为空";
+                String[] arr = new String[opts.length()];
+                for (int i = 0; i < opts.length(); i++) arr[i] = opts.optString(i, "");
+                String pick = listener.askChoice(a.optString("title", "请选择"), arr,
+                        a.optBoolean("multi", false));
+                return pick == null || pick.isEmpty() ? "用户没有选择。" : ("用户选择：" + pick);
+            }
+            if ("plan_present".equals(name)) {
+                String plan = a.optString("plan", "").trim();
+                if (plan.isEmpty()) return "错误：plan 不能为空";
+                boolean go = listener.confirm("计划确认", plan);
+                return go ? "用户同意，按计划执行。" : "用户没有同意，先别动手——问清楚要改哪里。";
+            }
+            if ("mcp_resources".equals(name)) {
+                return Mcp.listResources(ctx, a.optString("server", ""));
+            }
+            if ("mcp_read".equals(name)) {
+                return Mcp.readResource(ctx, a.optString("server", ""), a.optString("uri", ""));
+            }
+            if ("workflow".equals(name)) {
+                JSONArray tasks = a.optJSONArray("tasks");
+                if (tasks == null || tasks.length() == 0) return "错误：tasks 不能为空";
+                return runFanOut(tasks);
+            }
             if ("subagent".equals(name)) return runSubAgent(a.optString("task", ""), 1);
             if ("loop".equals(name)) return runLoop(a.optString("instruction", ""), a.optInt("rounds", 3));
             if ("team_spawn".equals(name)) return teamSpawn(a.optString("name", ""), a.optString("task", ""));
@@ -1596,6 +1718,44 @@ public final class Agent {
 
     private static String stripTags(String s) {
         return s.replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim();
+    }
+
+    /** 并行跑多个子任务，各自独立上下文，只回收结论。 */
+    private String runFanOut(JSONArray tasks) {
+        java.util.List<String> names = new java.util.ArrayList<>();
+        java.util.List<Thread> threads = new java.util.ArrayList<>();
+        final java.util.Map<String, String> results = new java.util.concurrent.ConcurrentHashMap<>();
+        int n = Math.min(tasks.length(), 6);
+        for (int i = 0; i < n; i++) {
+            JSONObject t = tasks.optJSONObject(i);
+            if (t == null) continue;
+            final String nm = t.optString("name", "task" + i);
+            final String body = t.optString("task", "");
+            if (body.isEmpty()) continue;
+            names.add(nm);
+            Thread th = new Thread(new Runnable() {
+                @Override public void run() {
+                    try {
+                        results.put(nm, runSubAgent(body, 1));
+                    } catch (Throwable e) {
+                        results.put(nm, "失败：" + e.getMessage());
+                    }
+                }
+            }, "fan-" + nm);
+            th.setDaemon(true);
+            threads.add(th);
+            th.start();
+        }
+        for (Thread th : threads) {
+            try { th.join(180_000); } catch (InterruptedException ignored) {}
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String nm : names) {
+            sb.append("## ").append(nm).append('\n')
+              .append(results.containsKey(nm) ? results.get(nm) : "（超时未返回）")
+              .append("\n\n");
+        }
+        return sb.toString().trim();
     }
 
     private String runSubAgent(String task, int depth) {

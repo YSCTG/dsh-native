@@ -2717,16 +2717,123 @@ public class MainActivity extends Activity implements Agent.Listener {
 
     // ---------------- Agent.Listener ----------------
 
-    /** 点状态行看完整清单（模型在推进，用户也该看得见全部条目）。 */
+    /**
+     * 待办的详情面板。
+     *
+     * 第一版是 AlertDialog 里塞纯文本（"1. [ ] xxx"），简陋得不像这个 App 的一部分。
+     * 这版按界面语言重画：进度条 + 每项一个状态圆点 + 完成项划掉、进行项用强调色。
+     */
     private void showTodoSheet() {
         String sid = session == null ? "" : session.id;
-        String body = Todo.render(this, sid);
-        if (todoSummary.isEmpty() && body.contains("空的")) return;
-        new AlertDialog.Builder(this, R.style.DshDialog)
-                .setTitle("待办 · " + (todoSummary.isEmpty() ? "当前清单" : todoSummary))
-                .setMessage(body)
+        java.util.List<Todo.Item> items = Todo.load(this, sid);
+        if (items.isEmpty()) {
+            toast("当前没有待办");
+            return;
+        }
+        int done = 0;
+        for (Todo.Item it : items) if ("done".equals(it.status)) done++;
+
+        ScrollView sc = new ScrollView(this);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(20);
+        box.setPadding(pad, dp(16), pad, dp(8));
+
+        // 头部：完成度
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        TextView t1 = new TextView(this);
+        t1.setText("待办");
+        t1.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        t1.setTextColor(getColor(R.color.label_primary));
+        t1.setTypeface(t1.getTypeface(), Typeface.BOLD);
+        head.addView(t1, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        TextView t2 = new TextView(this);
+        t2.setText(done + " / " + items.size());
+        t2.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        t2.setTextColor(getColor(R.color.label_tertiary));
+        head.addView(t2);
+        box.addView(head);
+
+        // 进度条：两条 View 叠出来的细条，比 ProgressBar 更贴合界面
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setBackgroundColor(getColor(R.color.border_l2));
+        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(4));
+        barLp.topMargin = dp(12);
+        barLp.bottomMargin = dp(18);
+        box.addView(bar, barLp);
+        View fill = new View(this);
+        fill.setBackgroundColor(getColor(R.color.accent));
+        bar.addView(fill, new LinearLayout.LayoutParams(0, dp(4),
+                items.isEmpty() ? 0f : (float) done / items.size()));
+        View rest = new View(this);
+        bar.addView(rest, new LinearLayout.LayoutParams(0, dp(4),
+                items.isEmpty() ? 1f : 1f - (float) done / items.size()));
+
+        // 每项一行：圆点 + 文本 + 右侧状态
+        for (Todo.Item it : items) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.TOP);
+            row.setPadding(0, dp(9), 0, dp(9));
+
+            View dot = new View(this);
+            android.graphics.drawable.GradientDrawable g =
+                    new android.graphics.drawable.GradientDrawable();
+            g.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            boolean isDone = "done".equals(it.status);
+            boolean isDoing = "doing".equals(it.status);
+            g.setColor(isDone ? getColor(R.color.success)
+                    : (isDoing ? getColor(R.color.accent) : getColor(R.color.border_l3)));
+            dot.setBackground(g);
+            LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dp(9), dp(9));
+            dotLp.topMargin = dp(6);
+            dotLp.rightMargin = dp(10);
+            row.addView(dot, dotLp);
+
+            TextView tx = new TextView(this);
+            tx.setText(it.text);
+            tx.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            if (isDone) {
+                tx.setTextColor(getColor(R.color.label_caption));
+                tx.setPaintFlags(tx.getPaintFlags() | android.graphics.Paint.STRIKE_THRU_TEXT_FLAG);
+            } else if (isDoing) {
+                tx.setTextColor(getColor(R.color.label_primary));
+                tx.setTypeface(tx.getTypeface(), Typeface.BOLD);
+            } else {
+                tx.setTextColor(getColor(R.color.label_secondary));
+            }
+            row.addView(tx, new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+            if (isDoing || isDone) {
+                TextView tag = new TextView(this);
+                tag.setText(isDoing ? "在做" : "完成");
+                tag.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+                tag.setTextColor(isDoing ? getColor(R.color.accent) : getColor(R.color.label_caption));
+                LinearLayout.LayoutParams tagLp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT);
+                tagLp.leftMargin = dp(8);
+                tagLp.topMargin = dp(2);
+                row.addView(tag, tagLp);
+            }
+            box.addView(row);
+        }
+        sc.addView(box);
+
+        currentDialog = new AlertDialog.Builder(this, R.style.DshDialog)
+                .setView(sc)
                 .setPositiveButton("关闭", null)
-                .show();
+                .create();
+        currentDialog.show();
+        try {
+            currentDialog.getWindow().setBackgroundDrawableResource(R.drawable.bg_sheet);
+        } catch (Exception ignored) {}
     }
 
     /** 把「生成进度」和「待办进度」合成一行，空着就整行隐藏。 */
@@ -2964,6 +3071,73 @@ public class MainActivity extends Activity implements Agent.Listener {
                 }
             }
         });
+    }
+
+    /**
+     * 让用户从选项里选一个。阻塞式：后台线程等结果，主线程弹按钮。
+     * 多选时把选中的拼成「A / B」返回。
+     */
+    @Override public String askChoice(final String title, final String[] options, final boolean multi) {
+        if (options == null || options.length == 0) return null;
+        final CountDownLatch latch = new CountDownLatch(1);
+        final String[] picked = new String[1];
+        runOnUiThread(new Runnable() {
+            @Override public void run() {
+                if (multi) {
+                    final boolean[] sel = new boolean[options.length];
+                    new AlertDialog.Builder(MainActivity.this, R.style.DshDialog)
+                            .setTitle(title)
+                            .setMultiChoiceItems(options, sel,
+                                    new android.content.DialogInterface.OnMultiChoiceClickListener() {
+                                        @Override public void onClick(android.content.DialogInterface d,
+                                                                      int which, boolean on) {
+                                            sel[which] = on;
+                                        }
+                                    })
+                            .setPositiveButton("确定", new android.content.DialogInterface.OnClickListener() {
+                                @Override public void onClick(android.content.DialogInterface d, int w) {
+                                    StringBuilder sb = new StringBuilder();
+                                    for (int i = 0; i < options.length; i++) {
+                                        if (!sel[i]) continue;
+                                        if (sb.length() > 0) sb.append(" / ");
+                                        sb.append(options[i]);
+                                    }
+                                    picked[0] = sb.toString();
+                                    latch.countDown();
+                                }
+                            })
+                            .setNegativeButton("取消", new android.content.DialogInterface.OnClickListener() {
+                                @Override public void onClick(android.content.DialogInterface d, int w) {
+                                    latch.countDown();
+                                }
+                            })
+                            .setOnCancelListener(new android.content.DialogInterface.OnCancelListener() {
+                                @Override public void onCancel(android.content.DialogInterface d) {
+                                    latch.countDown();
+                                }
+                            })
+                            .show();
+                } else {
+                    new AlertDialog.Builder(MainActivity.this, R.style.DshDialog)
+                            .setTitle(title)
+                            .setItems(options, new android.content.DialogInterface.OnClickListener() {
+                                @Override public void onClick(android.content.DialogInterface d, int which) {
+                                    picked[0] = options[which];
+                                    latch.countDown();
+                                }
+                            })
+                            .setOnCancelListener(new android.content.DialogInterface.OnCancelListener() {
+                                @Override public void onCancel(android.content.DialogInterface d) {
+                                    latch.countDown();
+                                }
+                            })
+                            .show();
+                }
+            }
+        });
+        try { latch.await(120, java.util.concurrent.TimeUnit.SECONDS); }
+        catch (InterruptedException ignored) {}
+        return picked[0];
     }
 
     @Override public boolean confirm(String title, String body) {

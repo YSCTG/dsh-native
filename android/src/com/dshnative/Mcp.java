@@ -377,6 +377,80 @@ public final class Mcp {
         }
     }
 
+
+    // ---------------- resources ----------------
+
+    /** 列资源：resources/list。 */
+    public static String listResources(Context c, String serverName) {
+        Server sv = find(c, serverName);
+        if (sv == null) return "错误：没有配置这个 MCP 服务 " + serverName;
+        try {
+            JSONObject r = request(sv, "resources/list", new JSONObject());
+            JSONArray arr = r.optJSONArray("resources");
+            if (arr == null || arr.length() == 0) return "这个服务没有暴露资源。";
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                sb.append("- ").append(o.optString("uri")).append("  ")
+                  .append(o.optString("name")).append('\n');
+            }
+            return sb.toString();
+        } catch (Throwable e) {
+            return "错误：" + e.getMessage();
+        }
+    }
+
+    /** 读资源：resources/read，取第一个 text 内容。 */
+    public static String readResource(Context c, String serverName, String uri) {
+        Server sv = find(c, serverName);
+        if (sv == null) return "错误：没有配置这个 MCP 服务 " + serverName;
+        try {
+            JSONObject params = new JSONObject();
+            params.put("uri", uri);
+            JSONObject r = request(sv, "resources/read", params);
+            JSONArray contents = r.optJSONArray("contents");
+            if (contents == null) return r.toString();
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < contents.length(); i++) {
+                JSONObject o = contents.optJSONObject(i);
+                if (o == null) continue;
+                if (o.has("text")) sb.append(o.optString("text"));
+                else sb.append("[").append(o.optString("mimeType", "binary")).append("]");
+            }
+            return sb.toString();
+        } catch (Throwable e) {
+            return "错误：" + e.getMessage();
+        }
+    }
+
+    private static Server find(Context c, String name) {
+        for (Server s : servers(c)) if (s.name.equals(name)) return s;
+        return null;
+    }
+
+    /** 统一发一个 JSON-RPC 请求，按传输类型分流。 */
+    private static JSONObject request(Server s, String method, JSONObject params) throws Exception {
+        if (s.isStdio()) {
+            Stdio p = stdio(null, s);
+            p.ensureInit();
+            return p.rpc(method, params, false);
+        }
+        JSONObject req = new JSONObject();
+        req.put("jsonrpc", "2.0");
+        req.put("id", nextHttpId());
+        req.put("method", method);
+        req.put("params", params == null ? new JSONObject() : params);
+        JSONObject resp = post(s.url, req, session.get(s.url));
+        if (resp == null) throw new Exception("MCP server 没响应");
+        if (resp.has("error")) throw new Exception("MCP 错误：" + resp.optJSONObject("error"));
+        JSONObject result = resp.optJSONObject("result");
+        return result == null ? new JSONObject() : result;
+    }
+
+    private static long httpSeq = 100;
+    private static long nextHttpId() { return ++httpSeq; }
+
     private static JSONObject post(String url, JSONObject body, String sessionId) {
         HttpURLConnection c = null;
         try {
