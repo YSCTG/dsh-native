@@ -85,6 +85,8 @@ public class MainActivity extends Activity implements Agent.Listener {
     private static final int REQ_PICK = 1001;
     private final java.util.List<String> pendingImages = new java.util.ArrayList<>();
     private TextView chipNew;
+    /** 侧栏会话列表是否已展开（桌面版有「展开其余 N 个会话」）。 */
+    private boolean sessionsExpanded;
 
     private Agent agent;
     private Mode mode;
@@ -2146,13 +2148,24 @@ public class MainActivity extends Activity implements Agent.Listener {
         return row;
     }
 
-    /** 会话最近一次活动 → 桌面版那种「今天 / 1天 / 2天」。 */
+    /**
+     * 会话最近一次活动 → 桌面版那种相对时间。
+     *
+     * 之前只算"天"，同一天内所有会话都显示「刚刚」，看起来像时间坏了：
+     * 分钟级、小时级也要区分。
+     */
     private String relTime(long ms) {
-        long diff = System.currentTimeMillis() - ms;
-        long day = diff / 86400000L;
-        if (day <= 0) return "刚刚";
+        if (ms <= 0) return "";
+        long diff = Math.max(0, System.currentTimeMillis() - ms);
+        long min = diff / 60000L;
+        if (min < 1) return "刚刚";
+        if (min < 60) return min + "分钟";
+        long hour = min / 60;
+        if (hour < 24) return hour + "小时";
+        long day = hour / 24;
         if (day == 1) return "1天";
-        return day + "天";
+        if (day < 30) return day + "天";
+        return (day / 30) + "个月";
     }
 
     /** 桌面版那种居中的「＋ 新会话」大按钮。 */
@@ -2191,7 +2204,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         drawerBody.addView(newSessionButton());
 
         drawerBody.addView(sectionLabel("工作区 · " + Workspaces.current(this).name));
-        drawerBody.addView(drawerRow("⇄  切换 / 新建工作区", Workspaces.current(this).path,
+        drawerBody.addView(drawerRow("⇄  切换 / 新建工作区", null,
                 new View.OnClickListener() {
             @Override public void onClick(View v) { closeDrawer(); showWorkspaceSheet(); }
         }));
@@ -2201,10 +2214,10 @@ public class MainActivity extends Activity implements Agent.Listener {
         if (all.isEmpty()) {
             drawerBody.addView(drawerRow("（还没有会话）", null, null));
         } else {
+            int limit = sessionsExpanded ? Math.min(all.size(), 100) : Math.min(all.size(), 6);
             int shown = 0;
             for (final Session s : all) {
-                // 只渲染最近 20 条：抽屉每轮都会重建，历史多了会明显卡
-                if (shown++ >= 20) break;
+                if (shown++ >= limit) break;
                 boolean cur = session != null && session.id.equals(s.id);
                 // 置顶不用 emoji（📌 跟深色主题不搭）：改成句尾一个小标签
                 String title = s.title == null || s.title.isEmpty() ? "新会话" : s.title;
@@ -2220,6 +2233,24 @@ public class MainActivity extends Activity implements Agent.Listener {
                     }
                 });
                 drawerBody.addView(row);
+            }
+
+            int rest = all.size() - limit;
+            if (!sessionsExpanded && rest > 0) {
+                drawerBody.addView(drawerRow("展开其余 " + rest + " 个会话", "›",
+                        new View.OnClickListener() {
+                    @Override public void onClick(View v) {
+                        sessionsExpanded = true;
+                        refreshDrawer();
+                    }
+                }));
+            } else if (sessionsExpanded && all.size() > 6) {
+                drawerBody.addView(drawerRow("收起", "⌃", new View.OnClickListener() {
+                    @Override public void onClick(View v) {
+                        sessionsExpanded = false;
+                        refreshDrawer();
+                    }
+                }));
             }
         }
 
