@@ -458,9 +458,6 @@ public class MainActivity extends Activity implements Agent.Listener {
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         mpLp.leftMargin = dp(4);
         tools.addView(modePill, mpLp);
-        modePill.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { showQuickSettings(); }
-        });
 
         View gap = new View(this);
         tools.addView(gap, new LinearLayout.LayoutParams(0, dp(1), 1f));
