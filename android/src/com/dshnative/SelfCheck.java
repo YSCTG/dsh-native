@@ -57,6 +57,7 @@ public final class SelfCheck {
         checkAttach(out, c, dir);
         checkProcessIo(out);
         checkTodo(out, c);
+        checkPreviewMulti(out, c, dir);
         checkMcpStdio(out, c, dir);
         checkWav(out, c, dir);
         checkM4a(out, c, dir);
@@ -451,6 +452,25 @@ public final class SelfCheck {
                     ok ? ("写入/读回/汇总正常，" + sum) : ("读回=" + back.size() + " 汇总=" + sum)));
         } catch (Throwable e) {
             out.add(new Item("待办清单", false, String.valueOf(e.getMessage())));
+        }
+    }
+
+    /** 多页对照：三页 PDF 渲染成一张网格图。 */
+    private static void checkPreviewMulti(List<Item> out, Context c, File dir) {
+        try {
+            File pdf = new File(dir, "multi.pdf");
+            Office.write(c, "pdf", pdf.getAbsolutePath(),
+                    "{\"pages\":[{\"title\":\"一\",\"lines\":[\"a\"]},"
+                            + "{\"title\":\"二\",\"lines\":[\"b\"]},"
+                            + "{\"title\":\"三\",\"lines\":[\"c\"]}]}");
+            File png = new File(dir, "multi.png");
+            String err = Preview.renderMulti(c, pdf, "1-3", png);
+            boolean ok = err == null && png.isFile() && png.length() > 5000;
+            String detail = ok ? (png.length() / 1024) + " KB 网格图"
+                    : (err == null ? "图太小" : err);
+            out.add(new Item("多页对照预览", ok, detail));
+        } catch (Throwable e) {
+            out.add(new Item("多页对照预览", false, String.valueOf(e.getMessage())));
         }
     }
 

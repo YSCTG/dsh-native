@@ -31,6 +31,102 @@ public final class Preview {
 
     private Preview() {}
 
+    /**
+     * 一次渲染多页，拼成一张对照图。
+     *
+     * 模型检查多页排版时，一页一次调用太贵也太慢；这里把 N 页排成网格
+     * （两列），每页下方标页码，一眼能看出哪里对不齐。
+     */
+    public static String renderMulti(Context c, File src, String spec, File out) {
+        String name = src.getName().toLowerCase();
+        if (!name.endsWith(".pdf")) {
+            return "多页预览只支持 pdf；pptx 本身就是整份拼图，用 page 参数即可。";
+        }
+        ParcelFileDescriptor pfd = null;
+        PdfRenderer pr = null;
+        try {
+            pfd = ParcelFileDescriptor.open(src, ParcelFileDescriptor.MODE_READ_ONLY);
+            pr = new PdfRenderer(pfd);
+            int total = pr.getPageCount();
+            if (total == 0) return "PDF 里没有页面";
+
+            java.util.List<Integer> idx = pick(total, spec);
+            if (idx.isEmpty()) return "没有匹配的页码（总页数 " + total + "）";
+
+            int cols = idx.size() == 1 ? 1 : 2;
+            int cellW = 560, gap = 20, labelH = 26;
+            int rows = (idx.size() + cols - 1) / cols;
+
+            // 先用第一页算出单元高度（按 A4 比例，避免各页尺寸不同拼歪）
+            PdfRenderer.Page probe = pr.openPage(idx.get(0));
+            int cellH = (int) ((float) probe.getHeight() / probe.getWidth() * cellW);
+            probe.close();
+
+            int w = cols * cellW + (cols + 1) * gap;
+            int h = rows * (cellH + labelH) + (rows + 1) * gap;
+            Bitmap bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            Canvas cv = new Canvas(bm);
+            cv.drawColor(0xFF303030);
+
+            Paint label = new Paint(Paint.ANTI_ALIAS_FLAG);
+            label.setTextSize(15);
+            label.setColor(0xFFDDDDDD);
+
+            for (int i = 0; i < idx.size(); i++) {
+                int pageNo = idx.get(i);
+                int cx = gap + (i % cols) * (cellW + gap);
+                int cy = gap + (i / cols) * (cellH + labelH + gap);
+                PdfRenderer.Page pg = pr.openPage(pageNo);
+                Bitmap pb = Bitmap.createBitmap(cellW, cellH, Bitmap.Config.ARGB_8888);
+                pb.eraseColor(Color.WHITE);
+                // render 到目标尺寸
+                android.graphics.Matrix m = new android.graphics.Matrix();
+                m.setScale((float) cellW / pg.getWidth(), (float) cellH / pg.getHeight());
+                pg.render(pb, null, m, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
+                pg.close();
+                cv.drawBitmap(pb, cx, cy, null);
+                pb.recycle();
+                cv.drawText("第 " + (pageNo + 1) + " 页", cx + 4, cy + cellH + 18, label);
+            }
+            save(bm, out);
+            return null;
+        } catch (Throwable e) {
+            return "渲染失败：" + e.getMessage();
+        } finally {
+            try { if (pr != null) pr.close(); } catch (Throwable ignored) {}
+            try { if (pfd != null) pfd.close(); } catch (Throwable ignored) {}
+        }
+    }
+
+    /** 解析 "1-3" / "1,3,5" / "all" / 单个数字（页码从 1 开始）。 */
+    private static java.util.List<Integer> pick(int total, String spec) {
+        java.util.List<Integer> out = new java.util.ArrayList<>();
+        String s = spec == null ? "" : spec.trim().toLowerCase();
+        if (s.isEmpty() || s.equals("all")) {
+            for (int i = 0; i < Math.min(total, 6); i++) out.add(i);
+            return out;
+        }
+        for (String part : s.split(",")) {
+            part = part.trim();
+            if (part.isEmpty()) continue;
+            int dash = part.indexOf('-');
+            try {
+                if (dash > 0) {
+                    int a = Integer.parseInt(part.substring(0, dash).trim());
+                    int b = Integer.parseInt(part.substring(dash + 1).trim());
+                    for (int i = Math.min(a, b); i <= Math.max(a, b); i++) {
+                        if (i >= 1 && i <= total && out.size() < 12) out.add(i - 1);
+                    }
+                } else {
+                    int a = Integer.parseInt(part);
+                    if (a >= 1 && a <= total && out.size() < 12) out.add(a - 1);
+                }
+            } catch (Throwable ignored) {}
+        }
+        java.util.Collections.sort(out);
+        return out;
+    }
+
     /** 渲染一页到 PNG。成功返回 null，失败返回错误信息。 */
     public static String render(Context c, File src, int page, File out) {
         String name = src.getName().toLowerCase();
