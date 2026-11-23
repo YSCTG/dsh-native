@@ -167,6 +167,40 @@ public final class Session {
 
     /** 用第一条用户消息当标题，长消息截断。 */
     /** 会话最后一行的 role；空会话返回 ""。用来判断上一轮是不是被打断在工具调用上。 */
+    /** 把磁盘上最后一行替换成给定消息（用于给工具结果补附件标记）。 */
+    public static void replaceLast(Context c, String id, JSONObject msg) {
+        try {
+            File f = body(c, id);
+            if (!f.isFile()) return;
+            java.util.List<String> lines = new java.util.ArrayList<>();
+            java.io.BufferedReader r = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(new java.io.FileInputStream(f), "UTF-8"));
+            String line;
+            while ((line = r.readLine()) != null) lines.add(line);
+            r.close();
+            java.io.FileOutputStream os = new java.io.FileOutputStream(f);
+            for (int i = 0; i < lines.size(); i++) {
+                if (i == lines.size() - 1) os.write(msg.toString().getBytes("UTF-8"));
+                else os.write(lines.get(i).getBytes("UTF-8"));
+                os.write('\n');
+            }
+            os.close();
+        } catch (Throwable ignored) {}
+    }
+
+    /** 整份重写会话文件（顺序敏感，不能只改最后一行）。 */
+    public static void saveAll(Context c, String id, JSONArray all) {
+        try {
+            File f = body(c, id);
+            java.io.FileOutputStream os = new java.io.FileOutputStream(f);
+            for (int i = 0; i < all.length(); i++) {
+                os.write(all.getJSONObject(i).toString().getBytes("UTF-8"));
+                os.write('\n');
+            }
+            os.close();
+        } catch (Throwable ignored) {}
+    }
+
     public static String lastRole(Context c, String id) {
         try {
             JSONArray a = load(c, id);

@@ -724,13 +724,14 @@ public class MainActivity extends Activity implements Agent.Listener {
                 : String.format("%.1f KB", f.length() / 1024.0);
 
         TextView icon = new TextView(this);
+        icon.setPadding(0, 0, dp(4), 0);
         icon.setText(image ? "🖼" : audio ? "🎵" : video ? "🎬" : html ? "🌐" : "📄");
         icon.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         head.addView(icon);
 
         TextView name = new TextView(this);
         name.setText("  " + f.getName());
-        name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         name.setTextColor(getColor(R.color.label_primary));
         LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(0,
@@ -1911,11 +1912,50 @@ public class MainActivity extends Activity implements Agent.Listener {
                 if (paths == null) return;
                 for (String p : paths) {
                     if (p != null && !p.isEmpty() && new File(p).isFile()) turnFiles.add(p);
+                saveFileMark();
                 }
             }
         });
     }
 
+    /** 把"这一刻改了哪些文件"追加到会话旁边的索引里（一行一条：序号<TAB>路径）。 */
+    private void saveFileMark() {
+        try {
+            if (agent == null || session == null || turnFiles.isEmpty()) return;
+            int at = agent.history().length();
+            StringBuilder sb = new StringBuilder();
+            for (String p : turnFiles) sb.append(at).append('\t').append(p).append('\n');
+            File f = new File(Session.dir(this), "files_" + session.id + ".txt");
+            java.io.FileOutputStream os = new java.io.FileOutputStream(f, true);
+            os.write(sb.toString().getBytes("UTF-8"));
+            os.close();
+        } catch (Throwable ignored) {}
+    }
+
+    /** 读回索引：消息序号 → 文件列表。 */
+    private java.util.Map<Integer, java.util.List<String>> loadFileMarks() {
+        java.util.Map<Integer, java.util.List<String>> out = new java.util.HashMap<>();
+        try {
+            if (session == null) return out;
+            File f = new File(Session.dir(this), "files_" + session.id + ".txt");
+            if (!f.isFile()) return out;
+            java.io.BufferedReader r = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(new java.io.FileInputStream(f), "UTF-8"));
+            String line;
+            while ((line = r.readLine()) != null) {
+                int tab = line.indexOf('\t');
+                if (tab <= 0) continue;
+                int idx = Integer.parseInt(line.substring(0, tab));
+                String p = line.substring(tab + 1).trim();
+                if (p.isEmpty()) continue;
+                java.util.List<String> list = out.get(idx);
+                if (list == null) { list = new java.util.ArrayList<>(); out.put(idx, list); }
+                list.add(p);
+            }
+            r.close();
+        } catch (Throwable ignored) {}
+        return out;
+    }
     /** 把本轮改动的文件做成卡片；和正文里已经挂过的去重。 */
     private void flushTurnFiles() {
         android.util.Log.i("DSHN", "flushTurnFiles: " + turnFiles.size() + " 个");

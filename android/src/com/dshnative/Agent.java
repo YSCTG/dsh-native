@@ -772,7 +772,21 @@ public final class Agent {
                 if (f.isFile() && f.length() <= 20L * 1024 * 1024) touched.add(e.getKey());
             }
         }
+        if (touched.isEmpty()) return;
+        // 把改动写进最后一条 tool 消息：重放历史时界面才能把附件挂回来
+        try {
+            for (int i = messages.length() - 1; i >= 0; i--) {
+                JSONObject tm = messages.getJSONObject(i);
+                if (!"tool".equals(tm.optString("role", ""))) continue;
+                StringBuilder sb = new StringBuilder(tm.optString("content", ""));
+                for (String p : touched) sb.append("\n[touched] ").append(p);
+                tm.put("content", sb.toString());
+                Session.saveAll(ctx, session.id, messages);
+                break;
+            }
+        } catch (Throwable ignored) {}
     }
+
     /** 从工具参数里认出被写的文件；sh / python 交给快照兜底。 */
     private void collectTouched(String tool, String argsJson) {
         try {
