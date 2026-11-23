@@ -784,20 +784,24 @@ public final class Agent {
                 } catch (Throwable ignored) {}
                 listener.onAssistant("\n\n" + stopNote);
             }
-            if (cancelled) listener.onError("已中止");
+            if (cancelled) noteStopped();
         } catch (Exception e) {
-            String msg = e.getMessage() == null ? e.toString() : e.getMessage();
-            // 网络类错误说人话：它不代表任务出错，也不该让用户盯着 "Socket closed" 发呆
-            String low = msg.toLowerCase();
-            boolean net = msg.contains("Socket closed") || msg.contains("连接中断")
-                    || e instanceof java.io.IOException
-                    || low.contains("timed out") || low.contains("connection")
-                    || low.contains("unreachable");
-            if (net) {
-                msg = "网络中断（" + msg + "）。这不是任务出错，是连接被掐断了。"
-                        + "回一句「继续」，我从断的地方接着跑。";
+            // 用户主动停止会被连接层包装成 "Socket closed"——那不是故障，不该报红。
+            if (cancelled) {
+                noteStopped();
+            } else {
+                String msg = e.getMessage() == null ? e.toString() : e.getMessage();
+                String low = msg.toLowerCase();
+                boolean net = msg.contains("Socket closed") || msg.contains("连接中断")
+                        || e instanceof java.io.IOException
+                        || low.contains("timed out") || low.contains("connection")
+                        || low.contains("unreachable");
+                if (net) {
+                    msg = "网络中断（" + msg + "）。这不是任务出错，是连接被掐断了。"
+                            + "回一句「继续」，我从断的地方接着跑。";
+                }
+                listener.onError(msg);
             }
-            listener.onError(msg);
         } finally {
             repairHistory();
             if (session != null) {
@@ -1465,6 +1469,23 @@ public final class Agent {
      * 否则下一次请求直接 400 —— 中断/被杀/崩溃都会留下这种悬空记录。
      * 缺的补一条"已中断"，宁可让模型知道它没拿到结果，也不要把会话弄坏。
      */
+    /**
+     * 用户按了停止：给一句中性说明，不报错。
+     *
+     * 以前这里走的是 onError("已中止")，界面上是一个红色错误卡；
+     * 而当连接被 cancel 关掉时，异常信息是 "Socket closed"，看起来像网络故障——
+     * 用户根本看不出自己停的这一下才是原因。
+     */
+    private void noteStopped() {
+        String note = "已停止（你按了停止）。想接着跑就回一句「继续」，我从断的地方接上。";
+        try {
+            JSONObject m = new JSONObject();
+            m.put("role", "assistant");
+            m.put("content", note);
+            addMessage(m);
+        } catch (Throwable ignored) {}
+        listener.onAssistant("\n\n" + note);
+    }
     private void repairHistory() {
         // 先清孤儿 tool 消息（有 tool 消息但前面没有对应的 tool_calls，API 会 400）。
         if (History.dropOrphans(messages) > 0) {
