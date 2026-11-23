@@ -400,7 +400,11 @@ public final class Agent {
             }
 
             if (Plugin.isOn(ctx, "builtin.devtools")) {
-                add("fs.read", tool("dev_info",
+                if (Plugin.isOn(ctx, "builtin.devtools")) add("fs.read", tool("dev_selfcheck",
+                    "跑一遍端上自检：OOXML 结构、媒体文件头、工作区增删、会话落盘、孤儿消息清理。"
+                            + "不需要网络，几秒完成，返回逐项结果。",
+                    schema(new JSONObject(), new String[]{})));
+            add("fs.read", tool("dev_info",
                         "开发者诊断：版本、档位、工具数、内置插件开关、会话用量、审计条数、工作区文件。",
                         schema(new JSONObject(), new String[]{})));
                 add("fs.write", tool("dev_export",
@@ -1059,6 +1063,10 @@ public final class Agent {
                 listener.onTool("render", html.isEmpty() ? url : (html.length() + " 字符 HTML"));
                 return html.isEmpty() ? "已渲染网页卡片：" + url : "已渲染 HTML 卡片（" + html.length() + " 字符）";
             }
+            if ("dev_selfcheck".equals(name)) {
+                listener.onTool("dev_selfcheck", "端上自检");
+                return SelfCheck.report(ctx);
+            }
             if ("dev_info".equals(name)) return devInfo();
             if ("dev_export".equals(name)) return devExport();
             String[] mt = mcpIndex.get(name);
@@ -1416,6 +1424,10 @@ public final class Agent {
      * 缺的补一条"已中断"，宁可让模型知道它没拿到结果，也不要把会话弄坏。
      */
     private void repairHistory() {
+        // 先清孤儿 tool 消息（有 tool 消息但前面没有对应的 tool_calls，API 会 400）。
+        if (History.dropOrphans(messages) > 0) {
+            Session.saveAll(ctx, session.id, messages);
+        }
         JSONArray rebuilt = new JSONArray();
         for (int i = 0; i < messages.length(); i++) {
             JSONObject m = messages.optJSONObject(i);

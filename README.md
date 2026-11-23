@@ -154,6 +154,25 @@ before the turn and diffs it afterwards.
 
 Card previews are inline: images render, PDF shows page one, audio gets a play button, video
 gets a player, HTML renders in a WebView, text and markdown are shown as text.
+
+## Measured, not claimed
+
+Run on a HUAWEI ADA-AL10U (Android 12, arm64), v12.9:
+
+| | |
+|---|---|
+| Cold start (`am start -W`) | **321 / 330 / 424 ms** |
+| PSS at idle | **74 MB** (RSS 250 MB, mostly file-backed maps) |
+| APK size | **76 MB**, of which 65 MB is the bundled Termux toolchain |
+| On-device self check | **11/11 in 163 ms** |
+
+The self check is a tool, not a script you run on a PC. `dev_selfcheck` generates a
+docx / xlsx / pptx / pdf / wav / m4a / mp4 into the cache and validates each one's real
+structure — zip entries present and non-empty, xlsx carries its formula, `%PDF` header, WAV
+rate read as little-endian, `ftyp` at byte 4 for m4a and mp4. It also round-trips a session
+through disk and pushes an orphan `tool` message through the repair path.
+
+Nothing here needs root, a runtime, a PC, or network access.
 ## Architecture
 
 ```
