@@ -359,6 +359,9 @@ public class MainActivity extends Activity implements Agent.Listener {
         genStatus.setTextColor(getColor(R.color.label_caption));
         genStatus.setPadding(dp(22), dp(2), dp(22), dp(2));
         genStatus.setVisibility(View.GONE);
+        genStatus.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showTodoSheet(); }
+        });
         root.addView(genStatus);
 
         // 输入区
@@ -2713,6 +2716,18 @@ public class MainActivity extends Activity implements Agent.Listener {
     }
 
     // ---------------- Agent.Listener ----------------
+
+    /** 点状态行看完整清单（模型在推进，用户也该看得见全部条目）。 */
+    private void showTodoSheet() {
+        String sid = session == null ? "" : session.id;
+        String body = Todo.render(this, sid);
+        if (todoSummary.isEmpty() && body.contains("空的")) return;
+        new AlertDialog.Builder(this, R.style.DshDialog)
+                .setTitle("待办 · " + (todoSummary.isEmpty() ? "当前清单" : todoSummary))
+                .setMessage(body)
+                .setPositiveButton("关闭", null)
+                .show();
+    }
 
     /** 把「生成进度」和「待办进度」合成一行，空着就整行隐藏。 */
     private void refreshTodoLine() {

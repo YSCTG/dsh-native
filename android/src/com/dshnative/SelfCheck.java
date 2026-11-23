@@ -59,6 +59,7 @@ public final class SelfCheck {
         checkTodo(out, c);
         checkPreviewMulti(out, c, dir);
         checkOfficePreview(out, c, dir);
+        checkSkills(out, c);
         checkMcpStdio(out, c, dir);
         checkWav(out, c, dir);
         checkM4a(out, c, dir);
@@ -496,6 +497,41 @@ public final class SelfCheck {
             out.add(new Item("xlsx 预览", ok2, ok2 ? (xp.length() / 1024) + " KB" : String.valueOf(e2)));
         } catch (Throwable e) {
             out.add(new Item("docx/xlsx 预览", false, String.valueOf(e.getMessage())));
+        }
+    }
+
+    /**
+     * 技能包完整性：29 → 32 是手改 assets/skills.json 加进去的，
+     * 这种"配置文件被改坏"最不容易发现（技能静默消失、正文变空）。
+     */
+    private static void checkSkills(List<Item> out, Context c) {
+        try {
+            java.io.InputStream in = c.getAssets().open("skills.json");
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            in.close();
+            JSONArray arr = new JSONArray(bo.toString("UTF-8"));
+
+            java.util.Set<String> ids = new java.util.HashSet<>();
+            int bad = 0;
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) { bad++; continue; }
+                String id = o.optString("id", "");
+                String body = o.optString("body", "");
+                if (id.isEmpty() || o.optString("name", "").isEmpty() || body.length() < 50) bad++;
+                if (!ids.add(id)) bad++;   // 重复 id
+            }
+            boolean hasOffice = ids.contains("office-weekly")
+                    && ids.contains("office-retro") && ids.contains("office-proposal");
+            boolean ok = arr.length() >= 32 && bad == 0 && hasOffice;
+            out.add(new Item("技能包完整性", ok,
+                    ok ? (arr.length() + " 个技能，含 3 套 Office 模板")
+                       : ("共 " + arr.length() + " 个，问题项 " + bad + "，Office 模板齐=" + hasOffice)));
+        } catch (Throwable e) {
+            out.add(new Item("技能包完整性", false, String.valueOf(e.getMessage())));
         }
     }
 
