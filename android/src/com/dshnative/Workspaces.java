@@ -62,6 +62,11 @@ public final class Workspaces {
         return out;
     }
 
+    public static boolean exists(Context c, String id) {
+        for (W w : all(c)) if (w.id.equals(id)) return true;
+        return false;
+    }
+
     public static W get(Context c, String id) {
         for (W w : all(c)) if (w.id.equals(id)) return w;
         return all(c).get(0);
@@ -104,8 +109,22 @@ public final class Workspaces {
         return new W(id, name, path);
     }
 
+    /**
+     * 删除工作区。
+     *
+     * 关键：它名下的会话**不能变成孤儿**——否则列表按工作区过滤后它们就永远看不见了。
+     * 所以先把会话归到「完全权限」，再摘掉入口。
+     */
     public static void remove(Context c, String id) {
         if (FULL_ID.equals(id)) return;
+        try {
+            List<Session> mine = Session.list(c, id);
+            if (!mine.isEmpty()) {
+                List<Session> all = Session.list(c);
+                for (Session s : all) if (id.equals(s.ws)) s.ws = FULL_ID;
+                Session.saveIndex(c, all);
+            }
+        } catch (Throwable ignored) {}
         try {
             JSONArray a = new JSONArray(p(c).getString(KEY_LIST, "[]"));
             JSONArray keep = new JSONArray();

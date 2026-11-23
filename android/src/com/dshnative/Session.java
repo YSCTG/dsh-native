@@ -70,7 +70,11 @@ public final class Session {
         List<Session> all = list(c);
         if (wsId == null) return all;
         List<Session> out = new java.util.ArrayList<>();
-        for (Session s : all) if (wsId.equals(s.ws)) out.add(s);
+        for (Session s : all) {
+            if (wsId.equals(s.ws)) { out.add(s); continue; }
+            // 归属的工作区已经不在了 → 归到「完全权限」，别把历史藏起来
+            if (Workspaces.FULL_ID.equals(wsId) && !Workspaces.exists(c, s.ws)) out.add(s);
+        }
         return out;
     }
 

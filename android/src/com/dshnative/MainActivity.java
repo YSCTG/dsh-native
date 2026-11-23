@@ -69,6 +69,7 @@ public class MainActivity extends Activity implements Agent.Listener {
     private TextView chipSh;
     private TextView chipCtx;
     private TextView chipWs;
+    private android.app.AlertDialog currentDialog;
     private static final int REQ_PICK = 1001;
     private final java.util.List<String> pendingImages = new java.util.ArrayList<>();
     private TextView chipNew;
@@ -1681,14 +1682,14 @@ public class MainActivity extends Activity implements Agent.Listener {
         footer.addView(drawerRow("设置", "插件开关 · MCP · 定时 · 环境自检", new View.OnClickListener() {
             @Override public void onClick(View v) { closeDrawer(); openSettings(); }
         }));
-        footer.addView(drawerRow("工作区", "整部手机 · 默认 " + Ws.active(this).getAbsolutePath(), new View.OnClickListener() {
+        footer.addView(drawerRow("文件", "浏览手机里的文件", new View.OnClickListener() {
             @Override public void onClick(View v) {
                 closeDrawer();
                 try { startActivity(new android.content.Intent(MainActivity.this, FilesActivity.class)); }
                 catch (Exception e) { toast("打不开：" + e.getMessage()); }
             }
         }));
-        footer.addView(drawerRow("审计", Policy.Audit.count(getFilesDir()) + " 条 record", new View.OnClickListener() {
+        footer.addView(drawerRow("审计", Policy.Audit.count(getFilesDir()) + " 条记录", new View.OnClickListener() {
             @Override public void onClick(View v) { closeDrawer(); showAudit(); }
         }));
         drawerPanel.addView(footer);
@@ -1874,6 +1875,12 @@ public class MainActivity extends Activity implements Agent.Listener {
             }
             if (session == null) session = new Session(sid);
         }
+        // 上次的会话可能属于别的工作区：恢复它会让标题和底栏的工作区对不上。
+        // 这种情况改成"打开当前工作区最近的一段会话"，没有就新建。
+        if (session != null && !Workspaces.currentId(this).equals(session.ws)) {
+            List<Session> mine = Session.list(this, Workspaces.currentId(this));
+            session = mine.isEmpty() ? null : mine.get(0);
+        }
         if (session == null) {
             session = Session.create(this);
             session.ws = Workspaces.currentId(this);
@@ -2027,45 +2034,159 @@ public class MainActivity extends Activity implements Agent.Listener {
     }
 
     private void promptRenameWorkspace(final Workspaces.W w) {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackgroundResource(R.drawable.bg_sheet);
+        panel.setPadding(dp(20), dp(16), dp(20), dp(10));
+
+        TextView title = new TextView(this);
+        title.setText("重命名工作区");
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        title.setTextColor(getColor(R.color.label_primary));
+        panel.addView(title);
+
         final android.widget.EditText input = new android.widget.EditText(this);
         input.setText(w.name);
         input.setSingleLine(true);
-        int pad = dp(20);
-        android.widget.FrameLayout wrap = new android.widget.FrameLayout(this);
-        wrap.setPadding(pad, pad / 2, pad, 0);
-        wrap.addView(input);
-        new android.app.AlertDialog.Builder(this)
-                .setTitle("重命名工作区")
-                .setView(wrap)
-                .setPositiveButton("保存", new android.content.DialogInterface.OnClickListener() {
-                    @Override public void onClick(android.content.DialogInterface d, int which) {
-                        String name = input.getText().toString().trim();
-                        if (name.isEmpty()) return;
-                        Workspaces.rename(MainActivity.this, w.id, name);
-                        if (chipWs != null) chipWs.setText(Workspaces.current(MainActivity.this).name + " ▾");
-                        refreshDrawer();
-                        showWorkspaceSheet();
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .show();
+        input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        input.setTextColor(getColor(R.color.label_primary));
+        input.setBackgroundResource(R.drawable.bg_field);
+        input.setPadding(dp(12), dp(10), dp(12), dp(10));
+        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        ilp.topMargin = dp(12);
+        panel.addView(input, ilp);
+
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        buttons.setGravity(android.view.Gravity.END);
+        buttons.setPadding(0, dp(14), 0, 0);
+
+        TextView cancel = new TextView(this);
+        cancel.setText("取消");
+        cancel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        cancel.setTextColor(getColor(R.color.label_caption));
+        cancel.setPadding(dp(16), dp(10), dp(16), dp(10));
+        buttons.addView(cancel);
+
+        TextView ok = new TextView(this);
+        ok.setText("保存");
+        ok.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        ok.setTextColor(getColor(R.color.accent));
+        ok.setPadding(dp(16), dp(10), dp(4), dp(10));
+        buttons.addView(ok);
+        panel.addView(buttons);
+
+        showPanelDialog(panel);
+        cancel.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                if (currentDialog != null) currentDialog.dismiss();
+            }
+        });
+        ok.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                String name = input.getText().toString().trim();
+                if (name.isEmpty()) { toast("名字不能为空"); return; }
+                if (currentDialog != null) currentDialog.dismiss();
+                Workspaces.rename(MainActivity.this, w.id, name);
+                if (chipWs != null) {
+                    chipWs.setText(Workspaces.current(MainActivity.this).name + " ▾");
+                }
+                refreshDrawer();
+                showWorkspaceSheet();
+            }
+        });
     }
 
     private void confirmDeleteWorkspace(final Workspaces.W w) {
-        new android.app.AlertDialog.Builder(this)
-                .setTitle("删除工作区「" + w.name + "」？")
-                .setMessage("只移除这个工作区入口，目录 " + w.path + " 和里面的文件都保留。")
-                .setPositiveButton("删除", new android.content.DialogInterface.OnClickListener() {
-                    @Override public void onClick(android.content.DialogInterface d, int which) {
+        showPanelDialog(buildConfirmPanel(
+                "删除工作区",
+                "「" + w.name + "」\n\n只移除这个入口，目录和里面的文件都保留：\n" + w.path,
+                "删除", R.color.danger,
+                new Runnable() {
+                    @Override public void run() {
                         Workspaces.remove(MainActivity.this, w.id);
-                        if (chipWs != null) chipWs.setText(Workspaces.current(MainActivity.this).name + " ▾");
+                        if (chipWs != null) {
+                            chipWs.setText(Workspaces.current(MainActivity.this).name + " ▾");
+                        }
                         switchWorkspace(Workspaces.currentId(MainActivity.this));
                         refreshDrawer();
                         toast("已删除工作区");
                     }
-                })
-                .setNegativeButton("取消", null)
-                .show();
+                }));
+    }
+
+    /**
+     * 统一的深色面板对话框。
+     *
+     * 系统的 AlertDialog 在深色主题下会给一条白底按钮栏，跟面板打架；
+     * 所以一律自绘：面板自己带标题、内容、按钮。
+     */
+    private void showPanelDialog(View panel) {
+        final android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
+                .setView(panel).create();
+        dlg.show();
+        if (dlg.getWindow() != null) {
+            dlg.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+            int w = (int) (getResources().getDisplayMetrics().widthPixels * 0.88f);
+            dlg.getWindow().setLayout(w, ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+    }
+
+    /** 标题 + 说明 + [取消][确认] 的面板。 */
+    private View buildConfirmPanel(String title, String message, String okLabel,
+                                   int okColorRes, final Runnable onOk) {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackgroundResource(R.drawable.bg_sheet);
+        panel.setPadding(dp(20), dp(16), dp(20), dp(10));
+
+        TextView t = new TextView(this);
+        t.setText(title);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        t.setTextColor(getColor(R.color.label_primary));
+        panel.addView(t);
+
+        TextView m = new TextView(this);
+        m.setText(message);
+        m.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        m.setTextColor(getColor(R.color.label_secondary));
+        m.setLineSpacing(dp(4), 1f);
+        m.setPadding(0, dp(10), 0, dp(6));
+        panel.addView(m);
+
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        buttons.setGravity(android.view.Gravity.END);
+        buttons.setPadding(0, dp(14), 0, 0);
+
+        TextView cancel = new TextView(this);
+        cancel.setText("取消");
+        cancel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        cancel.setTextColor(getColor(R.color.label_caption));
+        cancel.setPadding(dp(16), dp(10), dp(16), dp(10));
+        buttons.addView(cancel);
+
+        TextView ok = new TextView(this);
+        ok.setText(okLabel);
+        ok.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        ok.setTextColor(getColor(okColorRes));
+        ok.setPadding(dp(16), dp(10), dp(4), dp(10));
+        buttons.addView(ok);
+        panel.addView(buttons);
+
+        cancel.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                if (currentDialog != null) currentDialog.dismiss();
+            }
+        });
+        ok.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                if (currentDialog != null) currentDialog.dismiss();
+                onOk.run();
+            }
+        });
+        return panel;
     }
 
     /** 新建工作区：自绘深色面板，名字 + 目录（可挑手机里的文件夹）。 */
