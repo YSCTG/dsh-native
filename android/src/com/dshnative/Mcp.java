@@ -32,7 +32,11 @@ public final class Mcp {
     public static final class Server {
         public String name;
         public String url;
+        /** 本地命令（stdio）。非空就走子进程，忽略 url。 */
+        public String command;
         public boolean enabled = true;
+
+        public boolean isStdio() { return command != null && !command.trim().isEmpty(); }
 
         Server(String name, String url, boolean enabled) {
             this.name = name; this.url = url; this.enabled = enabled;
@@ -52,7 +56,10 @@ public final class Mcp {
             JSONArray arr = new JSONArray(raw);
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject o = arr.getJSONObject(i);
-                out.add(new Server(o.optString("name"), o.optString("url"), o.optBoolean("enabled", true)));
+                Server sv = new Server(o.optString("name"), o.optString("url"),
+                        o.optBoolean("enabled", true));
+                sv.command = o.optString("command", "");
+                out.add(sv);
             }
         } catch (Exception ignored) {}
         return out;
@@ -65,6 +72,7 @@ public final class Mcp {
                 JSONObject o = new JSONObject();
                 o.put("name", s.name);
                 o.put("url", s.url);
+                if (s.command != null && !s.command.isEmpty()) o.put("command", s.command);
                 o.put("enabled", s.enabled);
                 arr.put(o);
             }
@@ -75,6 +83,14 @@ public final class Mcp {
     public static void add(Context c, String name, String url) {
         List<Server> all = servers(c);
         all.add(new Server(name.trim(), url.trim(), true));
+        save(c, all);
+    }
+
+    public static void addCommand(Context c, String name, String command) {
+        List<Server> all = servers(c);
+        Server s2 = new Server(name.trim(), "", true);
+        s2.command = command.trim();
+        all.add(s2);
         save(c, all);
     }
 
@@ -108,6 +124,7 @@ public final class Mcp {
 
     /** 拉一个 server 的工具清单。失败返回空表（失败即关闭，不注册半个）。 */
     public static List<JSONObject> listTools(Server s) {
+        if (s.isStdio()) return stdioTools(s);
         List<JSONObject> out = new ArrayList<>();
         try {
             JSONObject init = new JSONObject();
@@ -149,6 +166,7 @@ public final class Mcp {
 
     /** 调用一个 MCP 工具，把 content 里的 text 拼起来返回。 */
     public static String call(Server s, String tool, JSONObject args) {
+        if (s.isStdio()) return stdioCall(s, tool, args);
         try {
             JSONObject req = new JSONObject();
             req.put("jsonrpc", "2.0");
@@ -187,6 +205,177 @@ public final class Mcp {
     // ---------------- HTTP / JSON-RPC ----------------
 
     private static final java.util.Map<String, String> session = new java.util.HashMap<>();
+
+
+
+    // ---------------- stdio 传输 ----------------
+
+    /**
+     * 本地进程 + 按行 JSON-RPC。
+     *
+     * 读线程在构造里立刻启动，把所有带 id 的回复丢进 inbox 并唤醒等待者——
+     * 和自检里"连续请求应答"验证过的写法一致（先证明地基，再叠协议）。
+     * stderr 合并进 stdout，出错时能从原始行里看到原因。
+     */
+    private static final class Stdio {
+        final Process proc;
+        final java.io.OutputStream in;
+        final java.io.BufferedReader out;
+        final java.util.Map<Long, JSONObject> inbox = new java.util.HashMap<>();
+        final java.util.Map<Long, java.util.concurrent.CountDownLatch> waits = new java.util.HashMap<>();
+        volatile boolean dead;
+        boolean initialized;
+
+        Stdio(Context c, Server s) throws Exception {
+            proc = new ProcessBuilder("/system/bin/sh", "-c", s.command)
+                    .directory(Ws.active(c))
+                    .redirectErrorStream(true)
+                    .start();
+            in = proc.getOutputStream();
+            out = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8));
+            Thread t = new Thread(new Runnable() {
+                @Override public void run() {
+                    try {
+                        String line;
+                        while ((line = out.readLine()) != null) {
+                            if (line.trim().isEmpty()) continue;
+                            android.util.Log.i("DSHMCP", "raw: " + line);
+                            JSONObject msg;
+                            try {
+                                msg = new JSONObject(line);
+                            } catch (Throwable e) {
+                                continue;   // stderr 合并进来的噪声，跳过
+                            }
+                            if (!msg.has("id")) continue;
+                            long id = msg.optLong("id");
+                            synchronized (Stdio.this) {
+                                inbox.put(id, msg);
+                                java.util.concurrent.CountDownLatch l = waits.get(id);
+                                if (l != null) l.countDown();
+                            }
+                        }
+                    } catch (Throwable t2) {
+                        android.util.Log.w("DSHMCP", "reader: " + t2);
+                    } finally {
+                        dead = true;
+                        synchronized (Stdio.this) {
+                            for (java.util.concurrent.CountDownLatch l : waits.values()) l.countDown();
+                        }
+                    }
+                }
+            }, "mcp-stdio");
+            t.setDaemon(true);
+            t.start();
+        }
+
+        boolean alive() { return !dead && proc.isAlive(); }
+
+        JSONObject rpc(String method, JSONObject params, boolean notify) throws Exception {
+            long id = System.nanoTime();
+            java.util.concurrent.CountDownLatch latch = null;
+            if (!notify) {
+                latch = new java.util.concurrent.CountDownLatch(1);
+                synchronized (this) { waits.put(id, latch); }
+            }
+            JSONObject req = new JSONObject();
+            req.put("jsonrpc", "2.0");
+            if (!notify) req.put("id", id);
+            req.put("method", method);
+            req.put("params", params == null ? new JSONObject() : params);
+            synchronized (this) {
+                in.write((req.toString() + "\n").getBytes(StandardCharsets.UTF_8));
+                in.flush();
+            }
+            if (notify) return new JSONObject();
+            boolean ok = latch.await(20, java.util.concurrent.TimeUnit.SECONDS);
+            JSONObject resp;
+            synchronized (this) {
+                waits.remove(id);
+                resp = inbox.remove(id);
+            }
+            if (!ok || resp == null) throw new Exception("MCP 本地进程没回应（" + method + "）");
+            if (resp.has("error")) throw new Exception("MCP 错误：" + resp.optJSONObject("error"));
+            JSONObject result = resp.optJSONObject("result");
+            return result == null ? new JSONObject() : result;
+        }
+
+        void ensureInit() throws Exception {
+            if (initialized) return;
+            JSONObject params = new JSONObject();
+            params.put("protocolVersion", "2024-11-05");
+            params.put("capabilities", new JSONObject());
+            JSONObject info = new JSONObject();
+            info.put("name", "dshnative");
+            info.put("version", "16.4");
+            params.put("clientInfo", info);
+            rpc("initialize", params, false);
+            rpc("notifications/initialized", new JSONObject(), true);
+            initialized = true;
+        }
+    }
+
+    private static final java.util.Map<String, Stdio> STDIO = new java.util.HashMap<>();
+    private static Context APP_CTX;
+
+    public static void setAppContext(Context c) { APP_CTX = c; }
+
+    private static Stdio stdio(Context c, Server s) throws Exception {
+        synchronized (STDIO) {
+            Stdio p = STDIO.get(s.name);
+            if (p != null && p.alive()) return p;
+            Context app = c != null ? c : APP_CTX;
+            if (app == null) throw new Exception("缺少上下文");
+            p = new Stdio(app, s);
+            STDIO.put(s.name, p);
+            return p;
+        }
+    }
+
+    private static List<JSONObject> stdioTools(Server s) {
+        List<JSONObject> out = new ArrayList<>();
+        try {
+            Stdio p = stdio(null, s);
+            p.ensureInit();
+            JSONObject r = p.rpc("tools/list", new JSONObject(), false);
+            JSONArray arr = r.optJSONArray("tools");
+            if (arr != null) {
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject t = arr.optJSONObject(i);
+                    if (t != null) out.add(t);
+                }
+            }
+        } catch (Throwable e) {
+            android.util.Log.w("DSHMCP", "listTools: " + e);
+        }
+        return out;
+    }
+
+    private static String stdioCall(Server s, String tool, JSONObject args) {
+        try {
+            Stdio p = stdio(null, s);
+            p.ensureInit();
+            JSONObject params = new JSONObject();
+            params.put("name", tool);
+            params.put("arguments", args == null ? new JSONObject() : args);
+            JSONObject result = p.rpc("tools/call", params, false);
+            JSONArray content = result.optJSONArray("content");
+            StringBuilder sb = new StringBuilder();
+            if (content != null) {
+                for (int i = 0; i < content.length(); i++) {
+                    JSONObject part = content.optJSONObject(i);
+                    if (part != null && "text".equals(part.optString("type"))) {
+                        sb.append(part.optString("text"));
+                    }
+                }
+            }
+            String text = sb.toString();
+            if (text.isEmpty()) text = result.toString();
+            return (result.optBoolean("isError", false) ? "工具报错：" : "") + text;
+        } catch (Throwable e) {
+            return "错误：" + e.getMessage();
+        }
+    }
 
     private static JSONObject post(String url, JSONObject body, String sessionId) {
         HttpURLConnection c = null;

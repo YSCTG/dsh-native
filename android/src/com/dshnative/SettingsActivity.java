@@ -413,7 +413,7 @@ public class SettingsActivity extends Activity {
         } else {
             for (int i = 0; i < ms.size(); i++) {
                 final Mcp.Server s = ms.get(i);
-                switchRow(mcpCard, s.name, s.url, s.enabled,
+                switchRow(mcpCard, s.name, s.isStdio() ? ("命令：" + s.command) : s.url, s.enabled,
                         new CompoundButton.OnCheckedChangeListener() {
                             @Override public void onCheckedChanged(CompoundButton btn, boolean on) {
                                 Mcp.setEnabled(SettingsActivity.this, s.name, on);
@@ -425,20 +425,25 @@ public class SettingsActivity extends Activity {
         if (showMcpForm) {
             LinearLayout f = card();
             fA = field(f, "名字，如 studio", false, false);
-            fB = field(f, "http://host:port/mcp", false, false);
+            fB = field(f, "http://host:port/mcp 或本地命令 sh mcp.sh", false, false);
             formButtons(f, "添加", new View.OnClickListener() {
                 @Override public void onClick(View v) {
                     String n = fA.getText().toString().trim();
                     String u = fB.getText().toString().trim();
-                    if (n.isEmpty() || u.isEmpty()) { toast("名字和地址都要填"); return; }
-                    Mcp.add(SettingsActivity.this, n, u);
+                    if (n.isEmpty() || u.isEmpty()) { toast("名字和目标都要填"); return; }
+                    // 像 URL 走 HTTP，否则当本地命令（stdio）：两种完全不同的传输
+                    if (u.startsWith("http://") || u.startsWith("https://")) {
+                        Mcp.add(SettingsActivity.this, n, u);
+                    } else {
+                        Mcp.addCommand(SettingsActivity.this, n, u);
+                    }
                     showMcpForm = false;
                     build();
                 }
             }, new Runnable() { @Override public void run() { showMcpForm = false; build(); } });
         } else {
             LinearLayout mcpAdd = card();
-            actionRow(mcpAdd, "添加 MCP server", "名字 + URL，例如 http://10.0.2.2:8901/mcp",
+            actionRow(mcpAdd, "添加 MCP server", "名字 + URL（HTTP）或本地命令（stdio）",
                     new View.OnClickListener() {
                         @Override public void onClick(View v) { askMcp(); }
                     });

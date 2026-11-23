@@ -55,6 +55,8 @@ public final class SelfCheck {
         checkPdf(out, c, dir);
         checkTypography(out, c, dir);
         checkAttach(out, c, dir);
+        checkProcessIo(out);
+        checkMcpStdio(out, c, dir);
         checkWav(out, c, dir);
         checkM4a(out, c, dir);
         checkMp4(out, c, dir);
@@ -347,6 +349,85 @@ public final class SelfCheck {
         boolean ok = !Attach.worth(script) && !Attach.worth(probe)
                 && Attach.worth(pdf) && Attach.worth(dex);
         out.add(new Item("附件筛选", ok, ok ? "挡掉脚本/探针，放行成品" : "规则漏了"));
+    }
+
+    /**
+     * 地基：app 沙箱里能不能起子进程并稳定收发文本。
+     *
+     * MCP 的 stdio 传输就建在这上面。上一轮直接做 MCP，失败了却分不清是
+     * "进程读写出问题"还是"MCP 协议处理有问题"。这两项先单独证明。
+     */
+    private static void checkProcessIo(List<Item> out) {
+        // 1) cat 回声：写一行、读一行
+        try {
+            Process p = new ProcessBuilder("/system/bin/cat").start();
+            java.io.OutputStream in = p.getOutputStream();
+            in.write("hello-io\n".getBytes("UTF-8"));
+            in.flush();
+            java.io.BufferedReader r = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(p.getInputStream(), "UTF-8"));
+            String line = r.readLine();
+            p.destroy();
+            boolean ok = "hello-io".equals(line);
+            out.add(new Item("子进程读写", ok, ok ? "cat 回声正常" : ("收到 " + line)));
+        } catch (Throwable e) {
+            out.add(new Item("子进程读写", false, String.valueOf(e.getMessage())));
+        }
+
+        // 2) 一行一答：连续三轮，验证不会在第二次之后失联
+        try {
+            Process p = new ProcessBuilder("/system/bin/sh", "-c",
+                    "while read l; do echo \"got:$l\"; done").start();
+            java.io.OutputStream in = p.getOutputStream();
+            java.io.BufferedReader r = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(p.getInputStream(), "UTF-8"));
+            StringBuilder seen = new StringBuilder();
+            for (int i = 1; i <= 3; i++) {
+                in.write(("m" + i + "\n").getBytes("UTF-8"));
+                in.flush();
+                String line = r.readLine();
+                seen.append(line == null ? "(null)" : line).append(' ');
+            }
+            p.destroy();
+            boolean ok = "got:m1 got:m2 got:m3 ".equals(seen.toString());
+            out.add(new Item("连续请求应答", ok, ok ? "三轮都收到" : seen.toString().trim()));
+        } catch (Throwable e) {
+            out.add(new Item("连续请求应答", false, String.valueOf(e.getMessage())));
+        }
+    }
+
+    /** MCP stdio 端到端：initialize → tools/list → tools/call 走一遍。 */
+    private static void checkMcpStdio(List<Item> out, Context c, File dir) {
+        File srv = new File(dir, "mock_mcp.sh");
+        String script = "#!/system/bin/sh\n"
+                + "while IFS= read -r line; do\n"
+                + "  id=$(printf '%s' \"$line\" | sed -n 's/.*\"id\":\\([0-9][0-9]*\\).*/\\1/p')\n"
+                + "  [ -z \"$id\" ] && continue\n"
+                + "  printf '{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{\"tools\":[{\"name\":\"ping\",\"description\":\"pong\",\"inputSchema\":{\"type\":\"object\"}}],\"content\":[{\"type\":\"text\",\"text\":\"pong from mock\"}]}}\\n' \"$id\"\n"
+                + "done\n";
+        try {
+            FileOutputStream os = new FileOutputStream(srv);
+            os.write(script.getBytes("UTF-8"));
+            os.close();
+            Runtime.getRuntime().exec(new String[]{"chmod", "755", srv.getAbsolutePath()}).waitFor();
+        } catch (Throwable e) {
+            out.add(new Item("MCP stdio 端到端", false, "写假 server 失败"));
+            return;
+        }
+        try {
+            Mcp.setAppContext(c.getApplicationContext());
+            Mcp.Server s = new Mcp.Server("selftest" + System.currentTimeMillis(), "", true);
+            s.command = "sh " + srv.getAbsolutePath();
+            java.util.List<JSONObject> tools = Mcp.listTools(s);
+            String listed = tools.isEmpty() ? "" : tools.get(0).optString("name");
+            String called = Mcp.call(s, "ping", new JSONObject());
+            boolean ok = "ping".equals(listed) && called.contains("pong");
+            out.add(new Item("MCP stdio 端到端", ok,
+                    ok ? "list=" + listed + " call=ok"
+                       : ("list=" + listed + " call=" + called)));
+        } catch (Throwable e) {
+            out.add(new Item("MCP stdio 端到端", false, String.valueOf(e.getMessage())));
+        }
     }
 
     private static String unzipEntry(File zipF, String name) {

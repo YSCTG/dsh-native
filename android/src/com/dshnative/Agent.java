@@ -141,6 +141,7 @@ public final class Agent {
         repairHistory();
         buildTools();
         buildPluginTools();
+        Mcp.setAppContext(ctx.getApplicationContext());
         buildMcpTools();
         // 档位快照必须在建完工具之后取，否则会出现"工具里有 ui_*，但账本写着 app"
         this.frozenTiers = tiers();
