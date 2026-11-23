@@ -44,7 +44,7 @@ public final class Office {
             }
             if ("docx".equals(format)) return docx(out, spec);
             if ("xlsx".equals(format)) return xlsx(out, spec);
-            if ("pptx".equals(format)) return pptx(out, spec);
+            if ("pptx".equals(format)) return pptx(c, out, spec);
             if ("pdf".equals(format)) return pdf(out, spec);
             if ("wav".equals(format) || "m4a".equals(format) || "mp4".equals(format)) {
                 return Media.write(out, format, spec);
@@ -96,7 +96,6 @@ public final class Office {
                 + "<w:body>" + body
                 + "<w:sectPr><w:pgMar w:top=\"1134\" w:right=\"1134\" w:bottom=\"1134\" w:left=\"1134\"/></w:sectPr>"
                 + "</w:body></w:document>";
-
         List<String[]> files = new ArrayList<>();
         files.add(new String[]{"[Content_Types].xml",
                 "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
@@ -288,7 +287,7 @@ public final class Office {
 
     // ---------------- pptx ----------------
 
-    private static String pptx(File out, JSONObject spec) throws Exception {
+    private static String pptx(Context ctx, File out, JSONObject spec) throws Exception {
         JSONArray slides = spec.optJSONArray("slides");
         if (slides == null || slides.length() == 0) return "错误：pptx 需要至少一张 slide";
         Design d = Design.of(spec.optString("style", "report"));
@@ -298,6 +297,7 @@ public final class Office {
         d.muted = colorOf(theme, "muted", d.muted);
 
         List<String[]> files = new ArrayList<>();
+        java.util.Map<String, byte[]> bin = new java.util.LinkedHashMap<>();
         StringBuilder types = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                 + "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
                 + "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
@@ -327,11 +327,20 @@ public final class Office {
             presRels.append("<Relationship Id=\"rId").append(n + 10)
                     .append("\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide")
                     .append(n).append(".xml\"/>");
-            files.add(new String[]{"ppt/slides/slide" + n + ".xml", slideXml(s, d, n, slides.length())});
+            String imgPart = imagePart(ctx, out, s, n, bin);
+            if (imgPart != null) {
+                types.append("<Override PartName=\"/ppt/media/").append(imgPart)
+                     .append("\" ContentType=\"image/png\"/>");
+            }
+            files.add(new String[]{"ppt/slides/slide" + n + ".xml",
+                    slideXml(s, d, n, slides.length(), imgPart)});
+            String imgRel = imgPart == null ? ""
+                    : "<Relationship Id=\"rId20\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" Target=\"../media/" + imgPart + "\"/>";
             files.add(new String[]{"ppt/slides/_rels/slide" + n + ".xml.rels",
                     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                             + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
                             + "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\" Target=\"../slideLayouts/slideLayout1.xml\"/>"
+                            + imgRel
                             + "</Relationships>"});
         }
         types.append("</Types>");
@@ -361,7 +370,7 @@ public final class Office {
                         + "</Relationships>"});
         files.add(new String[]{"ppt/theme/theme1.xml", THEME});
 
-        zip(out, files);
+        zip(out, files, bin);
         // 配套写一份同版式的 HTML 预览：pptx 本身没法在手机上渲染，
         // 有了它 office_preview 就能把幻灯片画成图给模型看。
         String side = "";
@@ -427,8 +436,37 @@ public final class Office {
         os.close();
     }
 
+    /**
+     * 把图片读成 PNG 字节放进包里，返回部件名（如 image1.png）。
+     *
+     * 统一转 PNG：模型的图片可能是 jpg/webp，pptx 的图片关系要类型确定，
+     * 转一次最省事，也不用在 [Content_Types].xml 里堆各种扩展。
+     */
+    private static String imagePart(Context ctx, File out, JSONObject s, int n,
+                                    java.util.Map<String, byte[]> bin) {
+        try {
+            String p = s.optString("image", "").trim();
+            if (p.isEmpty()) return null;
+            File f = new File(p);
+            if (!f.isAbsolute()) {
+                f = new File(Ws.active(ctx), p);
+                if (!f.isFile()) f = new File(out.getParentFile(), p);
+            }
+            if (!f.isFile()) return null;
+            android.graphics.Bitmap bm = android.graphics.BitmapFactory.decodeFile(f.getAbsolutePath());
+            if (bm == null) return null;
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            bm.compress(android.graphics.Bitmap.CompressFormat.PNG, 92, bo);
+            bm.recycle();
+            String part = "image" + n + ".png";
+            bin.put("ppt/media/" + part, bo.toByteArray());
+            return part;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
     /** 幻灯片：顶部色条 + 主题色标题 + 要点缩进 + 页码。 */
-    private static String slideXml(JSONObject s, Design d, int index, int total) {
+    private static String slideXml(JSONObject s, Design d, int index, int total, String imgPart) {
         String title = esc(s.optString("title", ""));
         JSONArray bullets = s.optJSONArray("bullets");
         String accent = String.format("%06X", d.accent & 0xFFFFFF);
@@ -453,6 +491,14 @@ public final class Office {
         }
         body.append(shapeColored(4, 7772400, 6248400, 1100000, 300000,
                 index + " / " + total, 1100, false, muted));
+        if (imgPart != null) {
+            body.append("<p:pic><p:nvPicPr><p:cNvPr id=\"20\" name=\"Picture\"/>"
+                    + "<p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>"
+                    + "<p:blipFill><a:blip r:embed=\"rId20\"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>"
+                    + "<p:spPr><a:xfrm><a:off x=\"5120640\" y=\"1600200\"/>"
+                    + "<a:ext cx=\"3474720\" cy=\"2606040\"/></a:xfrm>"
+                    + "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr></p:pic>");
+        }
         return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                 + "<p:sld xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
                 + "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
@@ -999,11 +1045,24 @@ public final class Office {
     // ---------------- 公共 ----------------
 
     private static void zip(File out, List<String[]> files) throws Exception {
+        zip(out, files, null);
+    }
+
+    /** bin 放二进制条目（图片），文本条目仍在 files。 */
+    private static void zip(File out, List<String[]> files,
+                            java.util.Map<String, byte[]> bin) throws Exception {
         ZipOutputStream z = new ZipOutputStream(new FileOutputStream(out));
         for (String[] f : files) {
             z.putNextEntry(new ZipEntry(f[0]));
             z.write(f[1].getBytes("UTF-8"));
             z.closeEntry();
+        }
+        if (bin != null) {
+            for (java.util.Map.Entry<String, byte[]> e : bin.entrySet()) {
+                z.putNextEntry(new ZipEntry(e.getKey()));
+                z.write(e.getValue());
+                z.closeEntry();
+            }
         }
         z.close();
     }

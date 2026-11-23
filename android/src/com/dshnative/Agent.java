@@ -262,7 +262,8 @@ public final class Agent {
                             + "docx: spec={title, blocks:[{type:'h1|h2|p|bullet',text} | {type:'table',rows:[[..],[..]]}]}\n"
                             + "xlsx: spec={sheets:[{name, header:true, widths:[12,20], rows:[[\"表头\",\"值\"],[1,2]]}]}"
                             + "  （数字写成数字、公式以 = 开头）\n"
-                            + "pptx: spec={slides:[{title, bullets:[\"第一条\",\"第二条\"]}]}  （16:9 页面里的普通文本框）\n"
+                            + "pptx: spec={style:'report|editorial|swiss|magazine|minimal', slides:[{title, bullets:[\"第一条\",\"第二条\"],\n"
+                            + "        image:'out/chart.png'（可选，放右侧）}]}  —— 顶部色带 + 主题色标题 + 页码\n"
                             + "pdf:  排好版的 A4。**要好看就用 blocks，不要只用 lines**：\n"
                             + "      spec={style:'report|editorial|swiss|magazine|minimal', cover:{title, subtitle, meta},\n"
                             + "            theme:{accent, ink, muted}（可选，覆盖预设的个别颜色）,\n"
@@ -1011,6 +1012,7 @@ public final class Agent {
             if ("notify".equals(name)) return notifyUser(a.optString("title", "DSH Native"), a.optString("body", ""));
             if ("ui_dump".equals(name)) return uiDump(a.optInt("max_nodes", UI_MAX_NODES));
             if ("ui_tap".equals(name)) return uiTap(a);
+
             if ("office_preview".equals(name)) {
                 String p = a.optString("path", "");
                 if (p.isEmpty()) return "错误：path 不能为空";
