@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.dshnative"
     android:versionCode="1"
-    android:versionName="11.6">
+    android:versionName="11.8">
 
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -105,5 +105,10 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service" />
         </service>
+            <provider
+            android:name=".FileProviderX"
+            android:authorities="com.dshnative.files"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

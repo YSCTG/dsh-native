@@ -793,7 +793,7 @@ public class MainActivity extends Activity implements Agent.Listener {
     private void appendFileChips(String text) {
         if (text == null || text.isEmpty()) return;
         java.util.regex.Matcher m = java.util.regex.Pattern
-                .compile("((?:/sdcard|/storage/emulated/0)/DSHNative/[^\\s，。；)\\]】\"'`]+)").matcher(text);
+                .compile("((?:/sdcard|/storage/emulated/0)/[^\\s，。；:：)\\]】\"'`<>|*?]+)").matcher(text);
         java.util.LinkedHashSet<String> paths = new java.util.LinkedHashSet<>();
         while (m.find()) {
             String p = m.group(1).trim();
@@ -847,9 +847,10 @@ public class MainActivity extends Activity implements Agent.Listener {
         head.addView(name, nlp);
 
         final TextView toggle = new TextView(this);
-        toggle.setText(sz + " · 展开 ▾");
+        toggle.setText(sz + "  ▾");
         toggle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        toggle.setTextColor(getColor(R.color.brand_fg));
+        // 夜间主题里 brand_fg 是近黑 #0F1115，压在深色卡片上等于看不见
+        toggle.setTextColor(getColor(R.color.label_secondary));
         head.addView(toggle);
 
         card.addView(head);
@@ -868,15 +869,40 @@ public class MainActivity extends Activity implements Agent.Listener {
         final boolean isVideo = video;
         final boolean isHtml = html;
         final String sizeText = sz;
+        head.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                openExternally(f);      // 点文件名 → 交给系统应用打开
+            }
+        });
         card.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 boolean open = body.getVisibility() != View.VISIBLE;
                 if (open && body.getChildCount() == 0) fillFileBody(body, f, isImage, isPdf, isAudio, isVideo, isHtml);
                 body.setVisibility(open ? View.VISIBLE : View.GONE);
-                toggle.setText(sizeText + (open ? " · 收起 ▴" : " · 展开 ▾"));
+                toggle.setText(sizeText + (open ? "  ▴" : "  ▾"));
             }
         });
         return card;
+    }
+
+    /**
+     * 用系统应用打开文件。
+     *
+     * 走自己实现的 FileProviderX 生成 content:// —— 直接把 file:// 给外部应用
+     * 从 Android 7 起就会抛 FileUriExposedException，之前"点了没反应"就是这个坑。
+     */
+    private void openExternally(File f) {
+        try {
+            android.net.Uri uri = FileProviderX.uriFor(this, f);
+            android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_VIEW);
+            i.setDataAndType(uri, Mimes.of(f.getName()));
+            i.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(android.content.Intent.createChooser(i, "打开 " + f.getName()));
+        } catch (android.content.ActivityNotFoundException e) {
+            toast("这台手机没有能打开 " + Mimes.of(f.getName()) + " 的应用");
+        } catch (Throwable e) {
+            toast("打不开：" + e.getMessage());
+        }
     }
 
     /** 内嵌预览：图片渲染出来，文本读前几 KB，二进制给提示。 */
@@ -1012,7 +1038,7 @@ public class MainActivity extends Activity implements Agent.Listener {
             String content = new String(readBytes(f), "UTF-8");
             if (content.indexOf('\u0000') >= 0) {
                 TextView t = new TextView(this);
-                t.setText("二进制文件，点标题用系统应用打开。");
+                t.setText("这类文件没法内嵌预览，点上面的文件名用系统应用打开。");
                 t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
                 t.setTextColor(getColor(R.color.label_tertiary));
                 body.addView(t);
