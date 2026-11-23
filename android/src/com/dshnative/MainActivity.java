@@ -357,12 +357,16 @@ public class MainActivity extends Activity implements Agent.Listener {
         genStatus = new TextView(this);
         genStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         genStatus.setTextColor(getColor(R.color.label_caption));
-        genStatus.setPadding(dp(22), dp(2), dp(22), dp(2));
+        genStatus.setPadding(dp(10), dp(4), dp(10), dp(4));
+        genStatus.setBackgroundResource(R.drawable.bg_chip);
         genStatus.setVisibility(View.GONE);
+        LinearLayout genWrap = new LinearLayout(this);
+        genWrap.setPadding(dp(22), dp(2), dp(22), dp(2));
+        genWrap.addView(genStatus);
         genStatus.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { showTodoSheet(); }
         });
-        root.addView(genStatus);
+        root.addView(genWrap);
 
         // 输入区
         LinearLayout composer = new LinearLayout(this);
@@ -3074,67 +3078,130 @@ public class MainActivity extends Activity implements Agent.Listener {
     }
 
     /**
-     * 让用户从选项里选一个。阻塞式：后台线程等结果，主线程弹按钮。
-     * 多选时把选中的拼成「A / B」返回。
+     * 让用户从选项里选（单选/多选）。
+     *
+     * 第一版直接用了 AlertDialog.setItems，是系统默认列表样式，和这个 App 的界面语言脱节。
+     * 这版自定义：每个选项一行，左侧状态圆环，选中用强调色；多选时是方框。
      */
     @Override public String askChoice(final String title, final String[] options, final boolean multi) {
         if (options == null || options.length == 0) return null;
         final CountDownLatch latch = new CountDownLatch(1);
         final String[] picked = new String[1];
+
         runOnUiThread(new Runnable() {
             @Override public void run() {
-                if (multi) {
-                    final boolean[] sel = new boolean[options.length];
-                    new AlertDialog.Builder(MainActivity.this, R.style.DshDialog)
-                            .setTitle(title)
-                            .setMultiChoiceItems(options, sel,
-                                    new android.content.DialogInterface.OnMultiChoiceClickListener() {
-                                        @Override public void onClick(android.content.DialogInterface d,
-                                                                      int which, boolean on) {
-                                            sel[which] = on;
-                                        }
-                                    })
-                            .setPositiveButton("确定", new android.content.DialogInterface.OnClickListener() {
-                                @Override public void onClick(android.content.DialogInterface d, int w) {
-                                    StringBuilder sb = new StringBuilder();
-                                    for (int i = 0; i < options.length; i++) {
-                                        if (!sel[i]) continue;
-                                        if (sb.length() > 0) sb.append(" / ");
-                                        sb.append(options[i]);
-                                    }
-                                    picked[0] = sb.toString();
-                                    latch.countDown();
-                                }
-                            })
-                            .setNegativeButton("取消", new android.content.DialogInterface.OnClickListener() {
-                                @Override public void onClick(android.content.DialogInterface d, int w) {
-                                    latch.countDown();
-                                }
-                            })
-                            .setOnCancelListener(new android.content.DialogInterface.OnCancelListener() {
-                                @Override public void onCancel(android.content.DialogInterface d) {
-                                    latch.countDown();
-                                }
-                            })
-                            .show();
-                } else {
-                    new AlertDialog.Builder(MainActivity.this, R.style.DshDialog)
-                            .setTitle(title)
-                            .setItems(options, new android.content.DialogInterface.OnClickListener() {
-                                @Override public void onClick(android.content.DialogInterface d, int which) {
-                                    picked[0] = options[which];
-                                    latch.countDown();
-                                }
-                            })
-                            .setOnCancelListener(new android.content.DialogInterface.OnCancelListener() {
-                                @Override public void onCancel(android.content.DialogInterface d) {
-                                    latch.countDown();
-                                }
-                            })
-                            .show();
+                final boolean[] sel = new boolean[options.length];
+
+                LinearLayout box = new LinearLayout(MainActivity.this);
+                box.setOrientation(LinearLayout.VERTICAL);
+                box.setPadding(dp(20), dp(18), dp(20), dp(6));
+
+                TextView t = new TextView(MainActivity.this);
+                t.setText(title);
+                t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+                t.setTextColor(getColor(R.color.label_primary));
+                t.setTypeface(t.getTypeface(), Typeface.BOLD);
+                box.addView(t);
+
+                TextView hint = new TextView(MainActivity.this);
+                hint.setText(multi ? "可多选" : "选一个");
+                hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+                hint.setTextColor(getColor(R.color.label_caption));
+                LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT);
+                hintLp.topMargin = dp(3);
+                hintLp.bottomMargin = dp(12);
+                box.addView(hint, hintLp);
+
+                final TextView[] marks = new TextView[options.length];
+                for (int i = 0; i < options.length; i++) {
+                    final int idx = i;
+                    LinearLayout row = new LinearLayout(MainActivity.this);
+                    row.setOrientation(LinearLayout.HORIZONTAL);
+                    row.setGravity(Gravity.CENTER_VERTICAL);
+                    row.setPadding(dp(12), dp(13), dp(12), dp(13));
+                    row.setBackgroundResource(R.drawable.bg_chip);
+
+                    TextView mark = new TextView(MainActivity.this);
+                    mark.setText(multi ? "☐" : "○");
+                    mark.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+                    mark.setTextColor(getColor(R.color.label_tertiary));
+                    LinearLayout.LayoutParams mLp = new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT);
+                    mLp.rightMargin = dp(10);
+                    row.addView(mark, mLp);
+                    marks[i] = mark;
+
+                    TextView tx = new TextView(MainActivity.this);
+                    tx.setText(options[i]);
+                    tx.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+                    tx.setTextColor(getColor(R.color.label_primary));
+                    row.addView(tx, new LinearLayout.LayoutParams(0,
+                            LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+                    row.setOnClickListener(new View.OnClickListener() {
+                        @Override public void onClick(View v) {
+                            if (!multi) {
+                                picked[0] = options[idx];
+                                if (currentDialog != null) currentDialog.dismiss();
+                                latch.countDown();
+                                return;
+                            }
+                            sel[idx] = !sel[idx];
+                            marks[idx].setText(sel[idx] ? "☑" : "☐");
+                            marks[idx].setTextColor(getColor(sel[idx]
+                                    ? R.color.accent : R.color.label_tertiary));
+                        }
+                    });
+
+                    LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT);
+                    rowLp.bottomMargin = dp(8);
+                    box.addView(row, rowLp);
                 }
+
+                if (multi) {
+                    TextView ok = new TextView(MainActivity.this);
+                    ok.setText("确定");
+                    ok.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+                    ok.setTextColor(getColor(R.color.accent));
+                    ok.setGravity(Gravity.END);
+                    ok.setPadding(dp(12), dp(12), dp(12), dp(12));
+                    ok.setOnClickListener(new View.OnClickListener() {
+                        @Override public void onClick(View v) {
+                            StringBuilder sb = new StringBuilder();
+                            for (int i = 0; i < options.length; i++) {
+                                if (!sel[i]) continue;
+                                if (sb.length() > 0) sb.append(" / ");
+                                sb.append(options[i]);
+                            }
+                            picked[0] = sb.toString();
+                            if (currentDialog != null) currentDialog.dismiss();
+                            latch.countDown();
+                        }
+                    });
+                    box.addView(ok);
+                }
+
+                currentDialog = new AlertDialog.Builder(MainActivity.this, R.style.DshDialog)
+                        .setView(box)
+                        .setNegativeButton(multi ? "取消" : "关闭", null)
+                        .setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
+                            @Override public void onDismiss(android.content.DialogInterface d) {
+                                latch.countDown();
+                            }
+                        })
+                        .create();
+                currentDialog.show();
+                try {
+                    currentDialog.getWindow().setBackgroundDrawableResource(R.drawable.bg_sheet);
+                } catch (Exception ignored) {}
             }
         });
+
         try { latch.await(120, java.util.concurrent.TimeUnit.SECONDS); }
         catch (InterruptedException ignored) {}
         return picked[0];
@@ -3145,30 +3212,63 @@ public class MainActivity extends Activity implements Agent.Listener {
         final boolean[] ok = new boolean[1];
         runOnUiThread(new Runnable() {
             @Override public void run() {
+                // 计划要看得清结构：等宽字 + 可滚动 + 左侧强调色竖线，而不是一段灰字
+                LinearLayout box = new LinearLayout(MainActivity.this);
+                box.setOrientation(LinearLayout.VERTICAL);
+                box.setPadding(dp(20), dp(18), dp(20), dp(6));
+
+                TextView t = new TextView(MainActivity.this);
+                t.setText(title);
+                t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+                t.setTextColor(getColor(R.color.label_primary));
+                t.setTypeface(t.getTypeface(), Typeface.BOLD);
+                box.addView(t);
+
+                LinearLayout card = new LinearLayout(MainActivity.this);
+                card.setOrientation(LinearLayout.HORIZONTAL);
+                LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, dp(320));
+                cardLp.topMargin = dp(12);
+                box.addView(card, cardLp);
+
+                View bar = new View(MainActivity.this);
+                bar.setBackgroundColor(getColor(R.color.accent));
+                LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(dp(3),
+                        LinearLayout.LayoutParams.MATCH_PARENT);
+                barLp.rightMargin = dp(12);
+                card.addView(bar, barLp);
+
+                ScrollView sc = new ScrollView(MainActivity.this);
                 TextView msg = new TextView(MainActivity.this);
                 msg.setText(body);
                 msg.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
                 msg.setTypeface(Typeface.MONOSPACE);
-                msg.setTextColor(getColor(R.color.label_primary));
-                msg.setPadding(dp(20), dp(12), dp(20), dp(0));
+                msg.setLineSpacing(dp(3), 1f);
+                msg.setTextColor(getColor(R.color.label_secondary));
                 msg.setTextIsSelectable(true);
+                sc.addView(msg);
+                card.addView(sc, new LinearLayout.LayoutParams(0,
+                        LinearLayout.LayoutParams.MATCH_PARENT, 1f));
 
-                new AlertDialog.Builder(MainActivity.this, R.style.DshDialog)
-                        .setTitle(title)
-                        .setView(msg)
-                        .setPositiveButton("执行", new DialogInterface.OnClickListener() {
+                currentDialog = new AlertDialog.Builder(MainActivity.this, R.style.DshDialog)
+                        .setView(box)
+                        .setPositiveButton("按计划执行", new DialogInterface.OnClickListener() {
                             @Override public void onClick(DialogInterface d, int w) {
                                 ok[0] = true;
                                 latch.countDown();
                             }
                         })
-                        .setNegativeButton("拒绝", new DialogInterface.OnClickListener() {
-                            @Override public void onClick(DialogInterface d, int w) {
+                        .setNegativeButton("再想想", null)
+                        .setOnDismissListener(new DialogInterface.OnDismissListener() {
+                            @Override public void onDismiss(DialogInterface d) {
                                 latch.countDown();
                             }
                         })
-                        .setCancelable(false)
-                        .show();
+                        .create();
+                currentDialog.show();
+                try {
+                    currentDialog.getWindow().setBackgroundDrawableResource(R.drawable.bg_sheet);
+                } catch (Exception ignored) {}
             }
         });
         try { latch.await(180, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
