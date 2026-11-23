@@ -2037,30 +2037,220 @@ public class MainActivity extends Activity implements Agent.Listener {
                 .show();
     }
 
+    /** 新建工作区：自绘深色面板，名字 + 目录（可挑手机里的文件夹）。 */
     private void promptNewWorkspace() {
+        final String[] chosen = {null};   // null = 用默认目录
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackgroundResource(R.drawable.bg_sheet);
+        panel.setPadding(dp(20), dp(16), dp(20), dp(12));
+
+        TextView title = new TextView(this);
+        title.setText("新建工作区");
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        title.setTextColor(getColor(R.color.label_primary));
+        panel.addView(title);
+
+        TextView hint = new TextView(this);
+        hint.setText("每个工作区有自己的对话历史和目录");
+        hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        hint.setTextColor(getColor(R.color.label_caption));
+        hint.setPadding(0, dp(4), 0, dp(14));
+        panel.addView(hint);
+
         final android.widget.EditText input = new android.widget.EditText(this);
-        input.setHint("工作区名字，例如 论文 / 网站 / 实验");
+        input.setHint("名字，例如 论文 / 网站 / 实验");
+        input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        input.setTextColor(getColor(R.color.label_primary));
+        input.setHintTextColor(getColor(R.color.label_caption));
+        input.setBackgroundResource(R.drawable.bg_field);
         input.setSingleLine(true);
-        int pad = dp(20);
-        android.widget.FrameLayout wrap = new android.widget.FrameLayout(this);
-        wrap.setPadding(pad, pad / 2, pad, 0);
-        wrap.addView(input);
-        new android.app.AlertDialog.Builder(this)
-                .setTitle("新建工作区")
-                .setView(wrap)
-                .setPositiveButton("创建", new android.content.DialogInterface.OnClickListener() {
-                    @Override public void onClick(android.content.DialogInterface d, int which) {
-                        String name = input.getText().toString().trim();
-                        if (name.isEmpty()) return;
-                        // 目录放在完全权限工作区下面，跟老文件放一起
-                        File base = Ws.preferred(MainActivity.this);
-                        File dir = new File(base, "ws_" + name.replaceAll("[^\\w\\u4e00-\\u9fa5]", "_"));
-                        Workspaces.W w = Workspaces.create(MainActivity.this, name, dir.getAbsolutePath());
-                        switchWorkspace(w.id);
+        input.setPadding(dp(12), dp(10), dp(12), dp(10));
+        panel.addView(input);
+
+        final TextView pathView = new TextView(this);
+        pathView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        pathView.setTextColor(getColor(R.color.label_caption));
+        pathView.setPadding(dp(2), dp(10), dp(2), 0);
+        pathView.setText("目录：自动（/sdcard/DSHNative/ws_<名字>）");
+        panel.addView(pathView);
+
+        TextView pick = new TextView(this);
+        pick.setText("📁  选择手机里的文件夹…");
+        pick.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        pick.setTextColor(getColor(R.color.accent));
+        pick.setPadding(dp(2), dp(12), dp(2), dp(8));
+        pick.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                pickFolder(new View.OnClickListener() {
+                    @Override public void onClick(View ignore) {}
+                }, new FolderPick() {
+                    @Override public void onPick(String path) {
+                        chosen[0] = path;
+                        pathView.setText("目录：" + path);
                     }
-                })
-                .setNegativeButton("取消", null)
-                .show();
+                });
+            }
+        });
+        panel.addView(pick);
+
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        buttons.setGravity(android.view.Gravity.END);
+        buttons.setPadding(0, dp(16), 0, 0);
+
+        TextView cancel = new TextView(this);
+        cancel.setText("取消");
+        cancel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        cancel.setTextColor(getColor(R.color.label_caption));
+        cancel.setPadding(dp(16), dp(10), dp(16), dp(10));
+        buttons.addView(cancel);
+
+        TextView ok = new TextView(this);
+        ok.setText("创建");
+        ok.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        ok.setTextColor(getColor(R.color.accent));
+        ok.setPadding(dp(16), dp(10), dp(4), dp(10));
+        buttons.addView(ok);
+        panel.addView(buttons);
+
+        final android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
+                .setView(panel).create();
+        dlg.show();
+        if (dlg.getWindow() != null) {
+            dlg.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+            int w = (int) (getResources().getDisplayMetrics().widthPixels * 0.9f);
+            dlg.getWindow().setLayout(w, ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        cancel.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { dlg.dismiss(); }
+        });
+        ok.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                String name = input.getText().toString().trim();
+                if (name.isEmpty()) { toast("先起个名字"); return; }
+                String path = chosen[0];
+                if (path == null) {
+                    File base = Ws.preferred(MainActivity.this);
+                    path = new File(base, "ws_" + name.replaceAll("[^\\w\\u4e00-\\u9fa5]", "_"))
+                            .getAbsolutePath();
+                }
+                dlg.dismiss();
+                Workspaces.W w = Workspaces.create(MainActivity.this, name, path);
+                switchWorkspace(w.id);
+                showWorkspaceSheet();
+            }
+        });
+    }
+
+    /** 目录选择回调。 */
+    private interface FolderPick { void onPick(String path); }
+
+    /**
+     * 手机内的文件夹选择器。
+     *
+     * 不用 SAF 的 ACTION_OPEN_DOCUMENT_TREE：它给的是 content:// URI，
+     * 转成真实路径在各种 ROM 上都不稳；这里直接读 /sdcard 的目录树
+     * （有「所有文件访问」权限就够）。
+     */
+    private void pickFolder(View.OnClickListener unused, final FolderPick cb) {
+        final File root = android.os.Environment.getExternalStorageDirectory();
+        final File[] cur = {root};
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackgroundResource(R.drawable.bg_sheet);
+        panel.setPadding(dp(16), dp(14), dp(16), dp(10));
+
+        final TextView head = new TextView(this);
+        head.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        head.setTextColor(getColor(R.color.label_primary));
+        head.setPadding(dp(4), 0, dp(4), dp(8));
+        panel.addView(head);
+
+        final LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        android.widget.ScrollView sc = new android.widget.ScrollView(this);
+        sc.addView(list);
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(360));
+        panel.addView(sc, slp);
+
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        buttons.setGravity(android.view.Gravity.END);
+        TextView cancel = new TextView(this);
+        cancel.setText("取消");
+        cancel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        cancel.setTextColor(getColor(R.color.label_caption));
+        cancel.setPadding(dp(16), dp(12), dp(16), dp(10));
+        buttons.addView(cancel);
+        TextView ok = new TextView(this);
+        ok.setText("选择这个文件夹");
+        ok.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        ok.setTextColor(getColor(R.color.accent));
+        ok.setPadding(dp(16), dp(12), dp(4), dp(10));
+        buttons.addView(ok);
+        panel.addView(buttons);
+
+        final android.app.AlertDialog[] holder = new android.app.AlertDialog[1];
+
+        final Runnable render = new Runnable() {
+            @Override public void run() {
+                head.setText("📁 " + cur[0].getAbsolutePath());
+                list.removeAllViews();
+                if (!cur[0].equals(root)) {
+                    addFolderRow(list, "↩ 上一级", new View.OnClickListener() {
+                        @Override public void onClick(View v) {
+                            File up = cur[0].getParentFile();
+                            if (up != null) { cur[0] = up; run(); }
+                        }
+                    });
+                }
+                File[] kids = cur[0].listFiles();
+                if (kids == null) return;
+                java.util.Arrays.sort(kids, new java.util.Comparator<File>() {
+                    @Override public int compare(File a, File b) {
+                        return a.getName().compareToIgnoreCase(b.getName());
+                    }
+                });
+                for (final File f : kids) {
+                    if (!f.isDirectory() || f.getName().startsWith(".")) continue;
+                    addFolderRow(list, "📂 " + f.getName(), new View.OnClickListener() {
+                        @Override public void onClick(View v) { cur[0] = f; run(); }
+                    });
+                }
+            }
+        };
+        render.run();
+
+        holder[0] = new android.app.AlertDialog.Builder(this).setView(panel).create();
+        holder[0].show();
+        if (holder[0].getWindow() != null) {
+            holder[0].getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+            int w = (int) (getResources().getDisplayMetrics().widthPixels * 0.92f);
+            holder[0].getWindow().setLayout(w, ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        cancel.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { holder[0].dismiss(); }
+        });
+        ok.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                holder[0].dismiss();
+                cb.onPick(cur[0].getAbsolutePath());
+            }
+        });
+    }
+
+    private void addFolderRow(LinearLayout parent, String label, View.OnClickListener click) {
+        TextView row = new TextView(this);
+        row.setText(label);
+        row.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        row.setTextColor(getColor(R.color.label_primary));
+        row.setPadding(dp(8), dp(11), dp(8), dp(11));
+        row.setOnClickListener(click);
+        parent.addView(row);
     }
 
     private void switchWorkspace(String id) {
