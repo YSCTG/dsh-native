@@ -1862,22 +1862,175 @@ public class MainActivity extends Activity implements Agent.Listener {
         refreshMeta();
     }
 
-    /** 工作区选项卡：选一个，立刻切过去（会话列表跟着变）。 */
+    /**
+     * 工作区选择面板。
+     *
+     * 用自绘的纵向列表而不是 AlertDialog.setItems：这样名字和路径能分两行排版，
+     * 当前工作区有个圆点标记，长按非「完全权限」的项可以重命名 / 删除。
+     */
     private void showWorkspaceSheet() {
         final List<Workspaces.W> all = Workspaces.all(this);
         final String cur = Workspaces.currentId(this);
-        String[] items = new String[all.size() + 1];
-        for (int i = 0; i < all.size(); i++) {
-            Workspaces.W w = all.get(i);
-            items[i] = (w.id.equals(cur) ? "✓  " : "    ") + w.name + "\n" + w.path;
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackgroundResource(R.drawable.bg_sheet);
+        panel.setPadding(dp(6), dp(12), dp(6), dp(10));
+
+        TextView title = new TextView(this);
+        title.setText("工作区");
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        title.setTextColor(getColor(R.color.label_primary));
+        title.setPadding(dp(14), dp(6), dp(14), dp(10));
+        panel.addView(title);
+
+        final android.app.AlertDialog[] holder = new android.app.AlertDialog[1];
+
+        for (final Workspaces.W w : all) {
+            boolean active = w.id.equals(cur);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(14), dp(10), dp(14), dp(10));
+            if (active) row.setBackgroundResource(R.drawable.bg_card);
+
+            TextView dot = new TextView(this);
+            dot.setText(active ? "●" : "○");
+            dot.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            dot.setTextColor(getColor(active ? R.color.brand_fg : R.color.label_caption));
+            dot.setPadding(0, 0, dp(10), 0);
+            row.addView(dot);
+
+            LinearLayout col = new LinearLayout(this);
+            col.setOrientation(LinearLayout.VERTICAL);
+            TextView name = new TextView(this);
+            name.setText(w.name);
+            name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            name.setTextColor(getColor(R.color.label_primary));
+            TextView path = new TextView(this);
+            path.setText(w.path);
+            path.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+            path.setTextColor(getColor(R.color.label_caption));
+            path.setSingleLine(true);
+            col.addView(name);
+            col.addView(path);
+            row.addView(col, new LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+            row.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    if (holder[0] != null) holder[0].dismiss();
+                    switchWorkspace(w.id);
+                }
+            });
+            if (!Workspaces.FULL_ID.equals(w.id)) {
+                row.setOnLongClickListener(new View.OnLongClickListener() {
+                    @Override public boolean onLongClick(View v) {
+                        if (holder[0] != null) holder[0].dismiss();
+                        workspaceMenu(w);
+                        return true;
+                    }
+                });
+            }
+            panel.addView(row);
         }
-        items[all.size()] = "＋  新建工作区…";
+
+        View div = new View(this);
+        div.setBackgroundColor(getColor(R.color.border_l1));
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
+        dlp.topMargin = dp(8);
+        dlp.bottomMargin = dp(4);
+        panel.addView(div, dlp);
+
+        TextView add = new TextView(this);
+        add.setText("＋  新建工作区");
+        add.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        add.setTextColor(getColor(R.color.accent));
+        add.setPadding(dp(14), dp(14), dp(14), dp(14));
+        add.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                if (holder[0] != null) holder[0].dismiss();
+                promptNewWorkspace();
+            }
+        });
+        panel.addView(add);
+
+        // 自己画「关闭」，不用系统的按钮条——那条是白底，跟深色面板打架
+        TextView close = new TextView(this);
+        close.setText("关闭");
+        close.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        close.setTextColor(getColor(R.color.label_caption));
+        close.setGravity(android.view.Gravity.CENTER);
+        close.setPadding(dp(14), dp(10), dp(14), dp(12));
+        close.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                if (holder[0] != null) holder[0].dismiss();
+            }
+        });
+        panel.addView(close);
+
+        holder[0] = new android.app.AlertDialog.Builder(this).setView(panel).create();
+        holder[0].show();
+        if (holder[0].getWindow() != null) {
+            // 透明窗口背景：圆角由 bg_sheet 自己负责，否则四角会露出白底
+            holder[0].getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+            int w = (int) (getResources().getDisplayMetrics().widthPixels * 0.86f);
+            holder[0].getWindow().setLayout(w, ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+    }
+
+    /** 长按工作区：重命名 / 删除。 */
+    private void workspaceMenu(final Workspaces.W w) {
+        String[] items = {"重命名", "删除（会话保留在列表里）"};
         new android.app.AlertDialog.Builder(this)
-                .setTitle("工作区")
+                .setTitle(w.name)
                 .setItems(items, new android.content.DialogInterface.OnClickListener() {
                     @Override public void onClick(android.content.DialogInterface d, int which) {
-                        if (which == all.size()) { promptNewWorkspace(); return; }
-                        switchWorkspace(all.get(which).id);
+                        if (which == 0) promptRenameWorkspace(w);
+                        else confirmDeleteWorkspace(w);
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void promptRenameWorkspace(final Workspaces.W w) {
+        final android.widget.EditText input = new android.widget.EditText(this);
+        input.setText(w.name);
+        input.setSingleLine(true);
+        int pad = dp(20);
+        android.widget.FrameLayout wrap = new android.widget.FrameLayout(this);
+        wrap.setPadding(pad, pad / 2, pad, 0);
+        wrap.addView(input);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("重命名工作区")
+                .setView(wrap)
+                .setPositiveButton("保存", new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        String name = input.getText().toString().trim();
+                        if (name.isEmpty()) return;
+                        Workspaces.rename(MainActivity.this, w.id, name);
+                        if (chipWs != null) chipWs.setText(Workspaces.current(MainActivity.this).name + " ▾");
+                        refreshDrawer();
+                        showWorkspaceSheet();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void confirmDeleteWorkspace(final Workspaces.W w) {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("删除工作区「" + w.name + "」？")
+                .setMessage("只移除这个工作区入口，目录 " + w.path + " 和里面的文件都保留。")
+                .setPositiveButton("删除", new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        Workspaces.remove(MainActivity.this, w.id);
+                        if (chipWs != null) chipWs.setText(Workspaces.current(MainActivity.this).name + " ▾");
+                        switchWorkspace(Workspaces.currentId(MainActivity.this));
+                        refreshDrawer();
+                        toast("已删除工作区");
                     }
                 })
                 .setNegativeButton("取消", null)
