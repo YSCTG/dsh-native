@@ -100,6 +100,23 @@ The interpreter ships as `lib*.so` on purpose: from `targetSdk 29` upward Androi
 `execve` anything inside the app data directory. `nativeLibraryDir` is the only private path
 that is still executable, so the binaries live there and are invoked from it.
 
+
+### Office files
+
+`office_write` generates **docx, xlsx, pptx and pdf** locally — no cloud, no LibreOffice:
+
+```
+office_write(format="xlsx", path="out/report.xlsx",
+             spec={"sheets":[{"name":"Q2","header":true,
+                              "rows":[["月份","收入"],["4月",137900]]}]})
+```
+
+docx and pptx are OOXML assembled by hand (`zipfile` territory, no `lxml`, which cannot be
+built for Android); xlsx uses inline strings and a minimal style sheet. PDF goes through
+`android.graphics.pdf.PdfDocument` instead, so Chinese text, bold and wrapping come from the
+system font stack for free.
+
+Verified against `python-docx`, `openpyxl`, `python-pptx` and `pypdf` — all four round-trip.
 ## Architecture
 
 ```

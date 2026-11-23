@@ -225,6 +225,18 @@ public final class Agent {
                                      new String[]{"路径", "要被替换的原文", "替换成什么"}),
                                new String[]{"path", "old", "new"})));
 
+            add("fs.write", tool("office_write",
+                    "生成 Office 文件：docx / xlsx / pptx / pdf。纯本地生成，不需要联网。\n"
+                            + "docx: spec={title, blocks:[{type:'h1|h2|p|bullet',text} | {type:'table',rows:[[..],[..]]}]}\n"
+                            + "xlsx: spec={sheets:[{name, header:true, widths:[12,20], rows:[[\"表头\",\"值\"],[1,2]]}]}"
+                            + "  （数字写成数字、公式以 = 开头）\n"
+                            + "pptx: spec={slides:[{title, bullets:[\"第一条\",\"第二条\"]}]}  （16:9 页面里的普通文本框）\n"
+                            + "pdf:  spec={pages:[{title, lines:[\"一行\",\"另一行\"]}]}  （A4，自动折行，中文正常）\n"
+                            + "路径给绝对路径或相对工作区的路径；父目录会自动建。",
+                    schema(props(new String[]{"format", "path", "spec"},
+                                 new String[]{"string", "string", "object"},
+                                 new String[]{"docx / xlsx / pptx / pdf", "输出路径，如 out/report.docx", "结构见描述"}),
+                           new String[]{"format", "path"})));
             add("app.list", tool("app_list", "列出已安装应用（名字 + 包名）。",
                     schema(obj("query", "string", "按名字或包名过滤，可省略"), new String[]{})));
             add("app.launch", tool("app_launch", "启动一个应用。",
@@ -759,6 +771,17 @@ public final class Agent {
             if ("notify".equals(name)) return notifyUser(a.optString("title", "DSH Native"), a.optString("body", ""));
             if ("ui_dump".equals(name)) return uiDump(a.optInt("max_nodes", UI_MAX_NODES));
             if ("ui_tap".equals(name)) return uiTap(a);
+            if ("office_write".equals(name)) {
+                String fmt = a.optString("format", "");
+                String path = a.optString("path", "");
+                if (path.isEmpty()) return "错误：path 不能为空";
+                File f = new File(path);
+                if (!f.isAbsolute()) f = new File(Ws.active(ctx), path);
+                JSONObject spec = a.optJSONObject("spec");
+                listener.onTool("office_write", fmt + " → " + f.getName());
+                return Office.write(ctx, fmt, f.getAbsolutePath(),
+                        spec == null ? "{}" : spec.toString());
+            }
             if ("sh".equals(name)) return sh(a.optString("command", ""), a.optInt("timeout", 120));
             if ("web_search".equals(name)) return webSearch(a.optString("query", ""));
             if ("browser_open".equals(name)) {

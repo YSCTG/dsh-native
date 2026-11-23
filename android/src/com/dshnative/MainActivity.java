@@ -709,6 +709,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         String lower = f.getName().toLowerCase();
         boolean image = lower.endsWith(".png") || lower.endsWith(".jpg")
                 || lower.endsWith(".jpeg") || lower.endsWith(".webp");
+        boolean pdf = lower.endsWith(".pdf");
         String sz = f.length() < 1024 ? (f.length() + " B")
                 : String.format("%.1f KB", f.length() / 1024.0);
 
@@ -743,11 +744,12 @@ public class MainActivity extends Activity implements Agent.Listener {
         card.addView(body, blp);
 
         final boolean isImage = image;
+        final boolean isPdf = pdf;
         final String sizeText = sz;
         card.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 boolean open = body.getVisibility() != View.VISIBLE;
-                if (open && body.getChildCount() == 0) fillFileBody(body, f, isImage);
+                if (open && body.getChildCount() == 0) fillFileBody(body, f, isImage, isPdf);
                 body.setVisibility(open ? View.VISIBLE : View.GONE);
                 toggle.setText(sizeText + (open ? " · 收起 ▴" : " · 展开 ▾"));
             }
@@ -756,8 +758,40 @@ public class MainActivity extends Activity implements Agent.Listener {
     }
 
     /** 内嵌预览：图片渲染出来，文本读前几 KB，二进制给提示。 */
-    private void fillFileBody(LinearLayout body, File f, boolean image) {
+    private void fillFileBody(LinearLayout body, File f, boolean image, boolean pdf) {
         try {
+            if (pdf) {
+                // PDF 首页渲染成图：Android 自带 PdfRenderer，不用第三方
+                try {
+                    android.os.ParcelFileDescriptor pfd = android.os.ParcelFileDescriptor
+                            .open(f, android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+                    android.graphics.pdf.PdfRenderer pr = new android.graphics.pdf.PdfRenderer(pfd);
+                    if (pr.getPageCount() > 0) {
+                        android.graphics.pdf.PdfRenderer.Page pg = pr.openPage(0);
+                        int w = Math.min(pg.getWidth() * 2, 900);
+                        int h = (int) ((float) pg.getHeight() / pg.getWidth() * w);
+                        android.graphics.Bitmap bm = android.graphics.Bitmap
+                                .createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+                        bm.eraseColor(android.graphics.Color.WHITE);
+                        pg.render(bm, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
+                        pg.close();
+                        pr.close();
+                        pfd.close();
+                        android.widget.ImageView iv = new android.widget.ImageView(this);
+                        iv.setImageBitmap(bm);
+                        iv.setAdjustViewBounds(true);
+                        body.addView(iv);
+                        TextView more = new TextView(this);
+                        more.setText("（第 1 页 / 共 " + pr.getPageCount() + " 页，点标题用系统应用打开全文）");
+                        more.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+                        more.setTextColor(getColor(R.color.label_tertiary));
+                        body.addView(more);
+                        return;
+                    }
+                    pr.close();
+                    pfd.close();
+                } catch (Throwable ignored) {}
+            }
             if (image) {
                 android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
                 o.inJustDecodeBounds = true;
