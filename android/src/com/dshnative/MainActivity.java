@@ -434,10 +434,19 @@ public class MainActivity extends Activity implements Agent.Listener {
         });
 
         // 权限胶囊：和桌面版一样放在卡片内，而不是单独一行
-        chipTier = chip(tiers(true) + " ▾", new View.OnClickListener() {
+        chipTier = chip(tierLabel() + " ▾", new View.OnClickListener() {
             @Override public void onClick(View v) { showTierSheet(); }
         });
-        TextView modePill = chipTier;
+        // 桌面版把权限选择放在输入区里，这里照做
+        chipWs = new TextView(this);
+        chipWs.setText(tierLabel() + " ▾");
+        chipWs.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        chipWs.setTextColor(getColor(R.color.label_secondary));
+        chipWs.setPadding(dp(8), dp(4), dp(8), dp(4));
+        chipWs.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showTierSheet(); }
+        });
+        TextView modePill = chipWs;
         LinearLayout.LayoutParams mpLp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -467,58 +476,69 @@ public class MainActivity extends Activity implements Agent.Listener {
         composer.addView(tools, toolsLp);
         root.addView(composer, composerLp);
 
-        // 底部开关（低对比，桌面版那种"不抢戏"的工具条）
+        // 底部状态条：桌面版是**纯文字小字 + 图标**，不是一组胶囊。
+        // 齿轮固定在右侧，不跟着滚动跑掉。
+        LinearLayout barOuter = new LinearLayout(this);
+        barOuter.setOrientation(LinearLayout.HORIZONTAL);
+        barOuter.setGravity(Gravity.CENTER_VERTICAL);
+        barOuter.setPadding(dp(16), dp(2), dp(8), dp(6));
+
+        android.widget.HorizontalScrollView barScroll = new android.widget.HorizontalScrollView(this);
+        barScroll.setHorizontalScrollBarEnabled(false);
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(dp(16), dp(4), dp(14), dp(8));
 
-        chipCtx = chip("ctx —", null);
-        bar.addView(chipCtx, chipLp());
+        chipCtx = flat("上下文 —");
+        bar.addView(chipCtx);
 
-        // 工作区选项卡：完全权限 / 自建工作区，会话历史按它分开
-        chipHit = chip("命中 —", null);
-        chipHit.setBackground(null);
-        bar.addView(chipHit, chipLp());
+        chipHit = flat("缓存命中 —");
+        bar.addView(chipHit);
 
-        chipAgents = chip("", null);
-        chipAgents.setBackground(null);
-        chipAgents.setVisibility(View.GONE);
-        bar.addView(chipAgents, chipLp());
-
-        chipSpeed = chip("— tok/s", null);
-        chipSpeed.setBackground(null);
+        chipSpeed = flat("— tok/s");
         chipSpeed.setVisibility(View.GONE);
-        bar.addView(chipSpeed, chipLp());
+        bar.addView(chipSpeed);
 
-        chipWs = chip(Workspaces.current(this).name + " ▾", new View.OnClickListener() {
-            @Override public void onClick(View v) { showWorkspaceSheet(); }
-        });
+        chipAgents = flat("");
+        chipAgents.setVisibility(View.GONE);
+        bar.addView(chipAgents);
+
+        chipBattery = flat(batteryLabel());
+        bar.addView(chipBattery);
+
+        barScroll.addView(bar);
+        barOuter.addView(barScroll, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        // 工作区选择器在桌面版属于输入区，这里挂到输入卡片那一排（见上）
+        chipWs = new TextView(this);
+        chipWs.setText(Workspaces.current(this).name + " ▾");
         chipWs.setTag("ws");
-        bar.addView(chipWs, chipLp());
+        chipWs.setVisibility(View.GONE);   // 由输入卡片里那枚胶囊承担，避免重复
 
-        View s2 = new View(this);
-        bar.addView(s2, new LinearLayout.LayoutParams(0, 1, 1f));
-
-        chipBattery = chip(batteryLabel(), null);
-        chipBattery.setBackground(null);
-        bar.addView(chipBattery, chipLp());
-
-        TextView gear = chip("⚙", new View.OnClickListener() {
+        TextView gear = flat("⚙");
+        gear.setPadding(dp(10), dp(4), dp(10), dp(4));
+        gear.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { openSettings(); }
         });
-        bar.addView(gear, chipLp());
+        barOuter.addView(gear);
 
-        // 状态项在窄屏上排不下：整条做成横向可滚动，比换行、比删项都实在
-        android.widget.HorizontalScrollView barScroll = new android.widget.HorizontalScrollView(this);
-        barScroll.setHorizontalScrollBarEnabled(false);
-        barScroll.setFillViewport(false);
-        barScroll.addView(bar);
-        root.addView(barScroll);
+        root.addView(barOuter);
         return root;
     }
 
 
+
+    /** 桌面版状态栏那种"纯文字 + 图标"的小字，没有胶囊底。 */
+    private TextView flat(String label) {
+        TextView t = new TextView(this);
+        t.setText(label);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        t.setTextColor(getColor(R.color.label_caption));
+        t.setPadding(0, dp(2), dp(16), dp(2));
+        t.setSingleLine(true);
+        return t;
+    }
 
     private TextView chip(String label, View.OnClickListener l) {
         TextView t = new TextView(this);
@@ -1774,7 +1794,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                         if (which == 0) { setRoot(false); toast("已切到完全权限（app + 无障碍）"); }
                         else if (which == 1) { toast("无障碍开关在系统设置里，这里只切 root"); }
                         else { setRoot(true); toast("已尝试启用 root / ADB 通道"); }
-                        if (chipTier != null) chipTier.setText(tiers(true) + " ▾");
+                        if (chipTier != null) chipTier.setText(tierLabel() + " ▾");
                         agent = null;
                     }
                 })
@@ -1890,13 +1910,13 @@ public class MainActivity extends Activity implements Agent.Listener {
 
         if (chipCtx != null) {
             if (agent == null) {
-                chipCtx.setText("ctx —");
+                chipCtx.setText("上下文 —");
             } else {
                 int used = agent.contextUsed();
                 int lim = agent.contextLimit();
                 // 百分比比绝对 token 更有意义：用户关心的是"还剩多少空间"
                 int pct = lim <= 0 ? 0 : (int) Math.round(used * 100.0 / lim);
-                chipCtx.setText("ctx " + pct + "%");
+                chipCtx.setText("上下文 " + pct + "%");
                 chipCtx.setTextColor(getColor(pct >= 80 ? R.color.danger
                         : pct >= 60 ? R.color.label_primary : R.color.label_tertiary));
             }
@@ -2211,6 +2231,14 @@ public class MainActivity extends Activity implements Agent.Listener {
     }
 
     private String apiKey() { return Secret.get(prefs); }
+
+    /** 权限胶囊的口径和桌面版一致：完全权限 / 仅 app / 全部开放。 */
+    private String tierLabel() {
+        boolean a = UiAgentService.isReady() || Compat.a11yInSettings(this);
+        boolean r = root;
+        if (r) return "全部开放";
+        return a ? "完全权限" : "仅 app";
+    }
 
     private String tiers(boolean a11y) {
         StringBuilder sb = new StringBuilder("app");
@@ -3212,9 +3240,9 @@ public class MainActivity extends Activity implements Agent.Listener {
             @Override public void run() {
                 if (chipHit == null) return;
                 int total = hit + miss;
-                if (total <= 0) { chipHit.setText("命中 —"); return; }
+                if (total <= 0) { chipHit.setText("缓存命中 —"); return; }
                 int pct = (int) Math.round(hit * 100.0 / total);
-                chipHit.setText("命中 " + pct + "%");
+                chipHit.setText("缓存命中 " + pct + "%");
                 chipHit.setTextColor(getColor(pct >= 80 ? R.color.label_secondary
                         : pct >= 40 ? R.color.label_tertiary : R.color.danger));
             }
