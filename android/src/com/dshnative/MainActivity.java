@@ -630,6 +630,46 @@ public class MainActivity extends Activity implements Agent.Listener {
         row.addView(bubble, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         addView(row);
+
+        // 气泡下面右侧一行小字：时间 + 复制（桌面版就是这样排的）
+        LinearLayout meta = new LinearLayout(this);
+        meta.setOrientation(LinearLayout.HORIZONTAL);
+        meta.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams metaLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        metaLp.topMargin = dp(4);
+
+        TextView time = new TextView(this);
+        time.setText(nowLabel());
+        time.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        time.setTextColor(getColor(R.color.label_caption));
+        meta.addView(time);
+
+        TextView copy = new TextView(this);
+        copy.setText("⧉");
+        copy.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        copy.setTextColor(getColor(R.color.label_caption));
+        LinearLayout.LayoutParams copyLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        copyLp.leftMargin = dp(10);
+        meta.addView(copy, copyLp);
+        copy.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                android.content.ClipboardManager cm =
+                        (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("text", text));
+                toast("已复制");
+            }
+        });
+        addView(meta);
+    }
+
+    /** 桌面版那行「11月23日 23:59」。 */
+    private String nowLabel() {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        return (c.get(java.util.Calendar.MONTH) + 1) + "月" + c.get(java.util.Calendar.DAY_OF_MONTH)
+                + "日 " + String.format("%02d:%02d",
+                c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE));
     }
 
     /** 系统提示：居中的小字，不抢视觉。 */
