@@ -213,14 +213,13 @@ public final class WebUi {
             }
             if (file.equals("/") || file.isEmpty()) file = "/index.html";
             boolean isIndex = file.equals("/index.html");
-            if (isIndex && !wantRaw) {
-                byte[] raw = serveIndex(ctx);
-                fileLog("serveIndex -> " + (raw == null ? "null" : raw.length + "B (含 shim=" + (new String(raw, "UTF-8").contains("__ModuleLoader__")) + ")"));
-                if (raw != null) { respond(socket, 200, "text/html; charset=utf-8", raw); return; }
-            }
 
             // 静态资源
             byte[] content = readAsset(ctx, "webdist" + file);
+            if (content != null && isIndex && !wantRaw) {
+                content = withShim(content);
+                fileLog("index.html 已注入 shim（" + content.length + "B）");
+            }
             android.util.Log.i("DSHWEB", "asset " + file + " -> " + (content == null ? "null" : content.length + "B"));
             if (content != null) {
                 respond(socket, 200, mimeOf(file), content);
@@ -313,21 +312,18 @@ public final class WebUi {
         }
     }
 
-    /** index.html 里插一段启动门面；其它资源原样返回。 */
-    private static byte[] serveIndex(Context ctx) {
-        byte[] raw = readAsset(ctx, "/webdist/index.html");
-        if (raw == null) return null;
+    /** 在已读到的 index.html 里插入启动门面。不再二次读文件：同一个路径两种结果，查不动。 */
+    private static byte[] withShim(byte[] raw) {
         try {
             String html = new String(raw, "UTF-8");
-            StringBuilder sb = new StringBuilder();
-            sb.append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"/>")
-              .append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\"/>")
-              .append(BOOT_SHIM).append("</head><body><div id=\"root\"></div>")
-              .append("<script type=\"module\" crossorigin src=\"./assets/index-CN7NIWNw.js\"></script>")
-              .append("</body></html>");
-            return sb.toString().getBytes("UTF-8");
+            String shim = BOOT_SHIM;
+            int at = html.indexOf("<script");
+            if (at < 0) at = html.indexOf("</head>");
+            if (at < 0) at = html.length();
+            String out = html.substring(0, at) + shim + html.substring(at);
+            return out.getBytes("UTF-8");
         } catch (Throwable t) {
-            fileLog("serveIndex 失败：" + t);
+            fileLog("注入失败：" + t);
             return raw;
         }
     }
