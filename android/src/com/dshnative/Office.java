@@ -564,14 +564,15 @@ public final class Office {
         void cover(JSONObject c, int pages) {
             cv.drawRect(0, 0, w, 6, paintFill(accent));
             float cy = h * 0.30f;
+            // 色条画在标题**上方**：画在下方会跟副标题挤在一起，看起来像删除线
+            cv.drawRect(margin, cy - 28, margin + 48, cy - 24, paintFill(accent));
             String t = c.optString("title", "");
             Paint pt = p(30, true, ink, false);
             for (String s : wrap(t, pt, w - margin * 2)) {
                 cv.drawText(s, margin, cy, pt);
-                cy += 40;
+                cy += 42;
             }
-            cv.drawRect(margin, cy + 6, margin + 56, cy + 10, paintFill(accent));
-            cy += 34;
+            cy += 10;
             String sub = c.optString("subtitle", "");
             if (!sub.isEmpty()) {
                 Paint ps = p(13, false, muted, false);

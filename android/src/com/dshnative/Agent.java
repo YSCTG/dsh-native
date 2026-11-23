@@ -245,6 +245,15 @@ public final class Agent {
                                      new String[]{"路径", "要被替换的原文", "替换成什么"}),
                                new String[]{"path", "old", "new"})));
 
+            if (Plugin.isOn(ctx, "builtin.office")) add("fs.write", tool("office_preview",
+                    "把刚生成的 pdf / html 渲染成图，**直接把图给你看**，用来检查排版效果。\n"
+                            + "不要为了看效果去起本地服务器（http.server 这类命令永不返回，会把任务挂死）。\n"
+                            + "pdf 渲染指定页（默认第 1 页）；html 整页截图。渲染完这张图会在下一轮作为图片给你。\n"
+                            + "同类文件（docx/xlsx/pptx）无法渲染，直接用 browser_open 或让用户打开即可。",
+                    schema(props(new String[]{"path", "page"},
+                                 new String[]{"string", "integer"},
+                                 new String[]{"pdf / html 的路径", "PDF 页码，1 起，默认 1"}),
+                           new String[]{"path"})));
             if (Plugin.isOn(ctx, "builtin.office")) add("fs.write", tool("office_write",
                     "生成文档与媒体文件：docx / xlsx / pptx / pdf / wav / m4a / mp4。纯本地生成，不需要联网，不用 ffmpeg。\n"
                             + "docx: spec={title, blocks:[{type:'h1|h2|p|bullet',text} | {type:'table',rows:[[..],[..]]}]}\n"
@@ -998,6 +1007,23 @@ public final class Agent {
             if ("notify".equals(name)) return notifyUser(a.optString("title", "DSH Native"), a.optString("body", ""));
             if ("ui_dump".equals(name)) return uiDump(a.optInt("max_nodes", UI_MAX_NODES));
             if ("ui_tap".equals(name)) return uiTap(a);
+            if ("office_preview".equals(name)) {
+                String p = a.optString("path", "");
+                if (p.isEmpty()) return "错误：path 不能为空";
+                File src = new File(p);
+                if (!src.isAbsolute()) src = new File(Ws.active(ctx), p);
+                if (!src.isFile()) return "错误：文件不存在 " + src.getAbsolutePath();
+                int page = a.optInt("page", 1);
+                File out = new File(Ws.active(ctx),
+                        "preview-" + src.getName().replaceAll("\\.[^.]+$", "")
+                                + (page > 1 ? "-p" + page : "") + ".png");
+                listener.onTool("office_preview", src.getName());
+                String err = Preview.render(ctx, src, page, out);
+                if (err != null) return "错误：" + err;
+                pendingShot = out.getAbsolutePath();
+                return "已渲染：" + out.getAbsolutePath()
+                        + "（下一轮你会直接看到这张图，可据此调整排版）";
+            }
             if ("office_write".equals(name)) {
                 String fmt = a.optString("format", "");
                 String path = a.optString("path", "");

@@ -230,6 +230,9 @@ public final class Browser {
 
     public static String currentUrl() { return lastUrl; }
 
+    /** 给 Preview 用：拿那个隐藏的 WebView 做整页截图。 */
+    public static WebView viewForCapture() { return view; }
+
     /** 当前页面标题 + URL，方便判断加载到哪了。 */
     public static String where() {
         String t = js("document.title", 10);
