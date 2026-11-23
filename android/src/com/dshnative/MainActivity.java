@@ -2169,6 +2169,28 @@ public class MainActivity extends Activity implements Agent.Listener {
     }
 
     /** 桌面版那种居中的「＋ 新会话」大按钮。 */
+    /** 「展开其余 N 个会话 / 收起」这种次级动作：字号更小、颜色更灰，不与会话行同级。 */
+    private View drawerActionRow(String title) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(14), dp(9), dp(14), dp(9));
+
+        TextView t = new TextView(this);
+        t.setText(title);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        t.setTextColor(getColor(R.color.label_tertiary));
+        row.addView(t, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView caret = new TextView(this);
+        caret.setText("›");
+        caret.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        caret.setTextColor(getColor(R.color.label_caption));
+        row.addView(caret);
+        return row;
+    }
+
     private View newSessionButton() {
         TextView b = new TextView(this);
         b.setText("＋  新会话");
@@ -2237,20 +2259,23 @@ public class MainActivity extends Activity implements Agent.Listener {
 
             int rest = all.size() - limit;
             if (!sessionsExpanded && rest > 0) {
-                drawerBody.addView(drawerRow("展开其余 " + rest + " 个会话", "›",
-                        new View.OnClickListener() {
+                View more = drawerActionRow("展开其余 " + rest + " 个会话");
+                more.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
                         sessionsExpanded = true;
                         refreshDrawer();
                     }
-                }));
+                });
+                drawerBody.addView(more);
             } else if (sessionsExpanded && all.size() > 6) {
-                drawerBody.addView(drawerRow("收起", "⌃", new View.OnClickListener() {
+                View less = drawerActionRow("收起");
+                less.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
                         sessionsExpanded = false;
                         refreshDrawer();
                     }
-                }));
+                });
+                drawerBody.addView(less);
             }
         }
 
