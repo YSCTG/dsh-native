@@ -57,8 +57,6 @@ public class MainActivity extends Activity implements Agent.Listener {
 
     private TextView headerTitle;
     private TextView headerMeta;
-    /** 顶部标签页：对话 / 轨迹 / 上下文。 */
-    private TextView[] tabs;
     private View drawerScrim;
     private LinearLayout drawerPanel;
     private LinearLayout drawerBody;
@@ -284,23 +282,12 @@ public class MainActivity extends Activity implements Agent.Listener {
         metaRow.setGravity(Gravity.CENTER_VERTICAL);
         metaRow.setPadding(dp(20), 0, dp(20), 0);
 
-        tabs = new TextView[3];
-        String[] tabNames = {"对话", "轨迹", "上下文"};
-        for (int i = 0; i < tabNames.length; i++) {
-            final int idx = i;
-            TextView t = new TextView(this);
-            t.setText(tabNames[i]);
-            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-            t.setPadding(0, dp(10), dp(18), dp(10));
-            t.setTextColor(getColor(i == 0 ? R.color.label_primary : R.color.label_tertiary));
-            t.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) { onTab(idx); }
-            });
-            tabs[i] = t;
-            metaRow.addView(t);
-        }
+        // 电脑端那两个标签（轨迹 / 上下文）是插件带来的功能，手机端没有，不做假界面。
+        // 这里只保留和桌面一致的右侧胶囊：模型 · 推理、余额。
         View tabGap = new View(this);
         metaRow.addView(tabGap, new LinearLayout.LayoutParams(0, 1, 1f));
+        // 左侧留空：桌面端的标签栏来自插件，手机端不伪造
+
         metaRow.setPadding(dp(20), 0, dp(20), dp(10));
 
         headerMeta = new TextView(this);
@@ -1765,72 +1752,6 @@ public class MainActivity extends Activity implements Agent.Listener {
                         agent = null;
                     }
                 })
-                .show();
-    }
-
-    /** 顶栏标签：对话是默认视图；轨迹与上下文各弹一个面板。 */
-    private void onTab(int idx) {
-        for (int i = 0; i < tabs.length; i++) {
-            tabs[i].setTextColor(getColor(i == idx
-                    ? R.color.label_primary : R.color.label_tertiary));
-            tabs[i].setTypeface(i == idx
-                    ? Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                    : Typeface.create("sans-serif", Typeface.NORMAL));
-        }
-        if (idx == 0) return;
-        if (idx == 1) { showTracePanel(); return; }
-        showContextPanel();
-        // 面板是弹窗，回到对话态
-        for (int i = 0; i < tabs.length; i++) {
-            tabs[i].setTextColor(getColor(i == 0
-                    ? R.color.label_primary : R.color.label_tertiary));
-        }
-    }
-
-    /** 轨迹：这一场里模型调用过哪些工具、思考过什么。 */
-    private void showTracePanel() {
-        StringBuilder sb = new StringBuilder();
-        if (agent != null) {
-            org.json.JSONArray h = agent.history();
-            int calls = 0;
-            for (int i = 1; i < h.length(); i++) {
-                org.json.JSONObject m;
-                try { m = h.getJSONObject(i); } catch (Exception e) { continue; }
-                org.json.JSONArray tc = m.optJSONArray("tool_calls");
-                if (tc == null) continue;
-                for (int k = 0; k < tc.length(); k++) {
-                    try {
-                        org.json.JSONObject fn = tc.getJSONObject(k).getJSONObject("function");
-                        calls++;
-                        sb.append("· ").append(fn.optString("name")).append('\n');
-                    } catch (Exception ignored) {}
-                }
-            }
-            if (calls == 0) sb.append("这一场还没有工具调用。");
-            else sb.insert(0, "共 " + calls + " 次调用：\n");
-        } else {
-            sb.append("还没有开始对话。");
-        }
-        new AlertDialog.Builder(this, R.style.DshDialog)
-                .setTitle("轨迹")
-                .setMessage(sb.toString())
-                .setPositiveButton("关闭", null)
-                .show();
-    }
-
-    /** 上下文：用量、命中、花费。 */
-    private void showContextPanel() {
-        int used = agent == null ? 0 : agent.contextUsed();
-        int limit = agent == null ? 0 : agent.contextLimit();
-        String pct = limit > 0 ? String.format("%.1f%%", used * 100.0 / limit) : "—";
-        String body = "上下文：" + used + " / " + limit + "（" + pct + "）\n"
-                + "会话输入：" + (session == null ? 0 : session.tokensIn) + " tokens\n"
-                + "会话输出：" + (session == null ? 0 : session.tokensOut) + " tokens\n"
-                + "花费：$" + String.format("%.4f", session == null ? 0 : session.cost);
-        new AlertDialog.Builder(this, R.style.DshDialog)
-                .setTitle("上下文")
-                .setMessage(body)
-                .setPositiveButton("关闭", null)
                 .show();
     }
 

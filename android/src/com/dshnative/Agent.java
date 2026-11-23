@@ -535,6 +535,11 @@ public final class Agent {
                 add("fs.write", tool("dev_export",
                         "把当前会话的原始记录导出到工作区，方便排查。",
                         schema(new JSONObject(), new String[]{})));
+                add("agent.render", tool("dev_webui",
+                        "在本机起一个只监听 127.0.0.1 的 http 服务，托管电脑版那份真实前端，返回可访问地址。"
+                                + "它同时记录前端发出的每个请求（接口清单从流量里读）。traffic=true 只读记录。",
+                        schema(props(new String[]{"traffic"}, new String[]{"boolean"},
+                                     new String[]{"true 表示只读请求记录"}), new String[]{})));
             }
         } catch (Exception ignored) {}
     }
@@ -1411,6 +1416,17 @@ public final class Agent {
                 listener.onRender(html.isEmpty() ? null : html, html.isEmpty() ? url : null);
                 listener.onTool("render", html.isEmpty() ? url : (html.length() + " 字符 HTML"));
                 return html.isEmpty() ? "已渲染网页卡片：" + url : "已渲染 HTML 卡片（" + html.length() + " 字符）";
+            }
+            if ("dev_webui".equals(name)) {
+                if (a.optBoolean("traffic", false)) {
+                    java.io.File out = new java.io.File(Ws.active(ctx), "webui-traffic.log");
+                    String where = WebUi.dumpTo(ctx, out);
+                    return "前端请求记录已写入 " + where + "：\n" + WebUi.traffic();
+                }
+                int port = WebUi.start(ctx);
+                if (port == 0) return "错误：本地 http 服务起不来";
+                return "本地 UI 已启动：" + WebUi.url()
+                        + "\n用 browser_open 打开它就能看到真实前端。";
             }
             if ("dev_selfcheck".equals(name)) {
                 listener.onTool("dev_selfcheck", "端上自检");
