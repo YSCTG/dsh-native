@@ -640,7 +640,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         head.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         head.setTextColor(getColor(R.color.label_caption));
         head.setText("正在分析…");
-        head.setPadding(dp(2), dp(2), dp(2), dp(6));
+        head.setPadding(dp(2), dp(10), dp(2), dp(10));   // 加大可点高度
         head.setTag("head");
 
         View rule = new View(this);
@@ -653,26 +653,42 @@ public class MainActivity extends Activity implements Agent.Listener {
         body.setPadding(dp(2), dp(8), dp(2), dp(6));
         body.setTag("body");
         body.setVisibility(View.GONE);
-        body.setTextIsSelectable(true);
 
         thinkingBlock.addView(head);
         thinkingBlock.addView(rule, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(1)));
         thinkingBlock.addView(body);
 
-        thinkingBlock.setOnClickListener(new View.OnClickListener() {
+        // 直接把监听挂在 head 上：用户点的就是这一行字。
+        // 之前只挂在容器上，而 body 是 setTextIsSelectable 的（会吃掉触摸），
+        // 容器经常收不到点击。
+        final TextView fHead = head;
+        final TextView fBody = body;
+        View.OnClickListener toggle = new View.OnClickListener() {
             @Override public void onClick(View v) {
-                View b = v.findViewWithTag("body");
-                TextView h = (TextView) v.findViewWithTag("head");
-                if (b == null || h == null) return;
-                boolean show = b.getVisibility() != View.VISIBLE;
-                b.setVisibility(show ? View.VISIBLE : View.GONE);
+                boolean show = fBody.getVisibility() != View.VISIBLE;
+                fBody.setVisibility(show ? View.VISIBLE : View.GONE);
                 thinkingOpen = show;
-                String base = h.getText().toString().replace(" 展开 ▾", "").replace(" 收起 ▴", "");
-                h.setText(base + (show ? " 收起 ▴" : " 展开 ▾"));
-                if (show) scrollDown();
+                String base = fHead.getText().toString()
+                        .replace(" 展开 ▾", "").replace(" 收起 ▴", "");
+                fHead.setText(base + (show ? " 收起 ▴" : " 展开 ▾"));
+                android.util.Log.i("DSHN", "think toggle show=" + show
+                        + " bodyLen=" + fBody.getText().length());
+                if (show) {
+                    // 关键：展开的原文在这一块里，不能滚到底（滚到底就把它挤出屏幕，
+                    // 看起来就像"点了没反应"）。让 body 自己请求进入可视区。
+                    fBody.post(new Runnable() {
+                        @Override public void run() {
+                            fBody.requestRectangleOnScreen(new android.graphics.Rect(
+                                    0, 0, Math.max(1, fBody.getWidth()),
+                                    Math.max(1, fBody.getHeight())), true);
+                        }
+                    });
+                }
             }
-        });
+        };
+        head.setOnClickListener(toggle);
+        thinkingBlock.setOnClickListener(toggle);
 
         addView(thinkingBlock);
         thinkingOpen = false;
