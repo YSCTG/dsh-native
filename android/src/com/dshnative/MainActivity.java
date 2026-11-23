@@ -2108,37 +2108,79 @@ public class MainActivity extends Activity implements Agent.Listener {
         toast(s.pinned ? "已取消置顶" : "已置顶");
         refreshDrawer();
     }
+    /**
+     * 侧栏一行：单行标题 + 右侧相对时间（桌面版就是这样，不是两行 token 统计）。
+     * active=true 时整行加圆角底，对应桌面的当前会话高亮。
+     */
     private View drawerRow(String title, String meta, View.OnClickListener l) {
+        return drawerRow(title, meta, l, false);
+    }
+
+    private View drawerRow(String title, final String meta, View.OnClickListener l, boolean active) {
         LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.VERTICAL);
-        row.setPadding(dp(18), dp(11), dp(18), dp(11));
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(14), dp(11), dp(14), dp(11));
         if (l != null) row.setOnClickListener(l);
+        if (active) row.setBackgroundResource(R.drawable.bg_chip);
 
         TextView t = new TextView(this);
         t.setText(title);
         t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        t.setTextColor(getColor(R.color.label_primary));
+        t.setTextColor(getColor(active ? R.color.label_primary : R.color.label_secondary));
         t.setSingleLine(true);
         t.setEllipsize(TextUtils.TruncateAt.END);
-        row.addView(t);
+        row.addView(t, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         if (meta != null && !meta.isEmpty()) {
             TextView m = new TextView(this);
             m.setText(meta);
             m.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-            m.setTextColor(getColor(R.color.label_tertiary));
-            m.setPadding(0, dp(3), 0, 0);
-            row.addView(m);
+            m.setTextColor(getColor(R.color.label_caption));
+            LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            mlp.leftMargin = dp(10);
+            row.addView(m, mlp);
         }
         return row;
     }
 
-    private View sectionLabel(String text) {
+    /** 会话最近一次活动 → 桌面版那种「今天 / 1天 / 2天」。 */
+    private String relTime(long ms) {
+        long diff = System.currentTimeMillis() - ms;
+        long day = diff / 86400000L;
+        if (day <= 0) return "刚刚";
+        if (day == 1) return "1天";
+        return day + "天";
+    }
+
+    /** 桌面版那种居中的「＋ 新会话」大按钮。 */
+    private View newSessionButton() {
+        TextView b = new TextView(this);
+        b.setText("＋  新会话");
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        b.setTextColor(getColor(R.color.label_primary));
+        b.setGravity(Gravity.CENTER);
+        b.setBackgroundResource(R.drawable.bg_chip);
+        b.setPadding(0, dp(11), 0, dp(11));
+        b.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { closeDrawer(); onFresh(); }
+        });
+        LinearLayout wrap = new LinearLayout(this);
+        wrap.setPadding(dp(12), dp(8), dp(12), dp(10));
+        wrap.addView(b, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        return wrap;
+    }
+
+    /** 分组小标题：桌面端是 12sp 灰字，缩进和行内一致。 */
+    private TextView sectionLabel(String text) {
         TextView t = new TextView(this);
         t.setText(text);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        t.setTextColor(getColor(R.color.label_caption));
-        t.setPadding(dp(18), dp(16), dp(18), dp(6));
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        t.setTextColor(getColor(R.color.label_tertiary));
+        t.setPadding(dp(14), dp(16), dp(14), dp(6));
         return t;
     }
 
@@ -2146,9 +2188,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         if (drawerBody == null) return;
         drawerBody.removeAllViews();
 
-        drawerBody.addView(drawerRow("＋  新会话", "开一段新的对话", new View.OnClickListener() {
-            @Override public void onClick(View v) { closeDrawer(); onFresh(); }
-        }));
+        drawerBody.addView(newSessionButton());
 
         drawerBody.addView(sectionLabel("工作区 · " + Workspaces.current(this).name));
         drawerBody.addView(drawerRow("⇄  切换 / 新建工作区", Workspaces.current(this).path,
@@ -2168,12 +2208,11 @@ public class MainActivity extends Activity implements Agent.Listener {
                 boolean cur = session != null && session.id.equals(s.id);
                 // 置顶不用 emoji（📌 跟深色主题不搭）：改成句尾一个小标签
                 String title = s.title == null || s.title.isEmpty() ? "新会话" : s.title;
-                String name = (cur ? "●  " : "    ") + title + (s.pinned ? "   ·置顶" : "");
-                View row = drawerRow(name,
-                        s.tokensIn + " in / " + s.tokensOut + " out · $" + String.format("%.4f", s.cost),
+                String name = title + (s.pinned ? "  ·置顶" : "");
+                View row = drawerRow(name, relTime(s.updated),
                         new View.OnClickListener() {
                             @Override public void onClick(View v) { closeDrawer(); loadSession(s.id); }
-                        });
+                        }, cur);
                 row.setOnLongClickListener(new View.OnLongClickListener() {
                     @Override public boolean onLongClick(View v) {
                         sessionMenu(s);
