@@ -106,6 +106,7 @@ public class MainActivity extends Activity implements Agent.Listener {
     private boolean thinkingOpen;
     private int thinkingChars;
     private long thinkingStart;
+    private final StringBuilder thinkingBuf = new StringBuilder();
     private TextView lastToolMeta;   // 最近一个工具卡的详情行
     private TextView lastToolName;   // 最近一个工具卡的名字行（收尾时把 ▸ 换成 ✓）
     private String lastToolLabel;
@@ -624,7 +625,12 @@ public class MainActivity extends Activity implements Agent.Listener {
     }
 
     /** 思考块：默认展开，正文一来就收起成一行（桌面版是这个行为）。 */
-    /** 思考只留一行摘要：不存正文、不给展开。字数和用时说清"想了多久、多深"就够了。 */
+    /**
+     * 思考块：一行摘要 + 可展开原文。
+     *
+     * 流式期间**不刷正文**（折叠着刷是纯浪费），只在收口时一次性写进去；
+     * 原文在缓冲里保留，展开时直接显示。超过 2 万字只留尾部。
+     */
     private void ensureThinkingBlock() {
         if (thinkingBlock != null) return;
         thinkingBlock = new LinearLayout(this);
@@ -637,26 +643,67 @@ public class MainActivity extends Activity implements Agent.Listener {
         head.setPadding(dp(2), dp(2), dp(2), dp(6));
         head.setTag("head");
 
+        View rule = new View(this);
+        rule.setBackgroundColor(getColor(R.color.border_l1));
+
+        TextView body = new TextView(this);
+        body.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        body.setTextColor(getColor(R.color.label_tertiary));
+        body.setLineSpacing(dp(4), 1f);
+        body.setPadding(dp(2), dp(8), dp(2), dp(6));
+        body.setTag("body");
+        body.setVisibility(View.GONE);
+        body.setTextIsSelectable(true);
+
         thinkingBlock.addView(head);
+        thinkingBlock.addView(rule, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(1)));
+        thinkingBlock.addView(body);
+
+        thinkingBlock.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                View b = v.findViewWithTag("body");
+                TextView h = (TextView) v.findViewWithTag("head");
+                if (b == null || h == null) return;
+                boolean show = b.getVisibility() != View.VISIBLE;
+                b.setVisibility(show ? View.VISIBLE : View.GONE);
+                thinkingOpen = show;
+                String base = h.getText().toString().replace(" 展开 ▾", "").replace(" 收起 ▴", "");
+                h.setText(base + (show ? " 收起 ▴" : " 展开 ▾"));
+                if (show) scrollDown();
+            }
+        });
+
         addView(thinkingBlock);
         thinkingOpen = false;
         thinkingStart = System.currentTimeMillis();
         ui.removeCallbacks(thinkTick);
         ui.postDelayed(thinkTick, 200);
     }
+
     private void finishThinking() {
         if (thinkingBlock == null) return;
         TextView head = (TextView) thinkingBlock.findViewWithTag("head");
+        TextView body = (TextView) thinkingBlock.findViewWithTag("body");
         ui.removeCallbacks(thinkTick);
         double secs = thinkingStart == 0 ? 0 : (System.currentTimeMillis() - thinkingStart) / 1000.0;
-        if (head != null) {
-            head.setText(String.format("已完成分析 · %d 字 · 用时 %.1fs", thinkingChars, secs));
-        }
-        if (thinkingOpen) {
-            thinkingOpen = false;
+        String all = thinkingBuf.toString();
+        boolean has = !all.trim().isEmpty();
+        if (body != null && has) {
+            String show = all;
+            if (all.length() > 20000) {
+                show = "…（前面省略 " + (all.length() - 20000) + " 字）\n" + all.substring(all.length() - 20000);
             }
+            body.setText(show);
+        }
+        if (head != null) {
+            head.setText(String.format("已完成分析 · %d 字 · 用时 %.1fs%s",
+                    thinkingChars, secs, has ? (thinkingOpen ? " 收起 ▴" : " 展开 ▾") : ""));
+        }
         thinkingBlock = null;
+        thinkingOpen = false;
         thinkingChars = 0;
+        thinkingBuf.setLength(0);
     }
 
     private void ensureAssistantView() {
