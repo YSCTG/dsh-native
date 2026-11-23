@@ -134,7 +134,11 @@ public class MainActivity extends Activity implements Agent.Listener {
         // 有些网络/模拟器只有 IPv6 出网会直接连不上；所有 HTTP 都走 Java 栈，这里统一压到 IPv4。
         try { System.setProperty("java.net.preferIPv4Stack", "true"); } catch (Exception ignored) {}
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        model = prefs.getString("model", "deepseek-flash");
+        // 只用 deepseek-flash：旧版本可能存了 deepseek-v4-pro，这里强制回落
+        model = "deepseek-flash";
+        if (!"deepseek-flash".equals(prefs.getString("model", ""))) {
+            prefs.edit().putString("model", model).apply();
+        }
         // 换包名后第一次启动：把上一版导出的东西搬回来（必须早于任何 prefs 读取）
         Prefs.migrate(this);
         Browser.init(this);
@@ -1555,14 +1559,6 @@ public class MainActivity extends Activity implements Agent.Listener {
         return "Max";
     }
 
-    private void applyModel(String id) {
-        if (running) { toast("运行中不能换模型"); return; }
-        model = id;
-        prefs.edit().putString("model", model).apply();
-        agent = null;
-        refreshMeta();
-    }
-
     private TextView quickLabel(String s) {
         TextView v = new TextView(this);
         v.setText(s);
@@ -1638,19 +1634,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(12), 0, dp(12), dp(4));
 
-        box.addView(quickLabel("模型"));
-        LinearLayout mcard = quickCard();
-        quickRow(mcard, "deepseek-flash", "便宜、够快", model.equals("deepseek-flash"),
-                new View.OnClickListener() {
-                    @Override public void onClick(View v) { applyModel("deepseek-flash"); }
-                }, holder);
-        quickDivider(mcard);
-        quickRow(mcard, "deepseek-v4-pro", "更强，贵一些", !model.equals("deepseek-flash"),
-                new View.OnClickListener() {
-                    @Override public void onClick(View v) { applyModel("deepseek-v4-pro"); }
-                }, holder);
-        box.addView(mcard);
-
+        // 模型选择去掉了：deepseek-v4-pro 已经不可用，这里固定用 deepseek-flash。
         box.addView(quickLabel("推理等级"));
         LinearLayout ecard = quickCard();
         final String[][] lv = {
@@ -1683,12 +1667,6 @@ public class MainActivity extends Activity implements Agent.Listener {
         try {
             holder[0].getWindow().setBackgroundDrawableResource(R.drawable.bg_sheet);
         } catch (Exception ignored) {}
-    }
-    private void toggleModel() {
-        if (running) return;
-        model = model.equals("deepseek-flash") ? "deepseek-v4-pro" : "deepseek-flash";
-        prefs.edit().putString("model", model).apply();
-        refreshMeta();
     }
 
     private void setRoot(boolean r) {
