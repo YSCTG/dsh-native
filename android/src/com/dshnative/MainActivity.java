@@ -70,6 +70,9 @@ public class MainActivity extends Activity implements Agent.Listener {
     private TextView chipCtx;
     private TextView chipWs;
     private TextView chipHit;
+    /** 生成进度提示（只在跑的时候可见）。 */
+    private TextView genStatus;
+    private long genStart;
     private android.app.AlertDialog currentDialog;
     private static final int REQ_PICK = 1001;
     private final java.util.List<String> pendingImages = new java.util.ArrayList<>();
@@ -346,6 +349,14 @@ public class MainActivity extends Activity implements Agent.Listener {
         });
         root.addView(envBanner, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // 生成进度：长回复时让用户知道"还在写"，而不是盯着一个不动的界面
+        genStatus = new TextView(this);
+        genStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        genStatus.setTextColor(getColor(R.color.label_caption));
+        genStatus.setPadding(dp(22), dp(2), dp(22), dp(2));
+        genStatus.setVisibility(View.GONE);
+        root.addView(genStatus);
 
         // 输入区
         LinearLayout composer = new LinearLayout(this);
@@ -2716,6 +2727,17 @@ public class MainActivity extends Activity implements Agent.Listener {
 
     // ---------------- Agent.Listener ----------------
 
+    /** 生成过程中刷新进度提示（当前假设：只在写正文时显示）。 */
+    private void bumpGenStatus(boolean writing) {
+        if (genStatus == null) return;
+        if (genStart == 0) genStart = System.currentTimeMillis();
+        long sec = (System.currentTimeMillis() - genStart) / 1000;
+        int chars = assistantBuf.length();
+        if (chars <= 0 && !writing) { genStatus.setVisibility(View.GONE); return; }
+        genStatus.setVisibility(View.VISIBLE);
+        genStatus.setText("正在写 · " + chars + " 字 · " + sec + "s");
+    }
+
     @Override public void onAssistant(final String delta) {
         ui.post(new Runnable() {
             @Override public void run() {
@@ -2732,6 +2754,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                 ensureAssistantView();
                 assistantBuf.append(delta);
                 scheduleAssistantRender();
+                bumpGenStatus(true);
             }
         });
     }
@@ -2899,6 +2922,8 @@ public class MainActivity extends Activity implements Agent.Listener {
                     flushTurnFiles();                          // 本轮改过的文件做成卡片
                     appendFileChips(assistantBuf.toString());   // 收尾时把文件挂成卡片
                 if (!busy) {
+                    genStart = 0;
+                    if (genStatus != null) genStatus.setVisibility(View.GONE);
                     finishThinking();
                     refreshBalance();
         if (migratedNote != null) note(migratedNote);
