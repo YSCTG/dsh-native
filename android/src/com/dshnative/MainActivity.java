@@ -57,6 +57,8 @@ public class MainActivity extends Activity implements Agent.Listener {
 
     private TextView headerTitle;
     private TextView headerMeta;
+    /** 顶部标签页：对话 / 轨迹 / 上下文。 */
+    private TextView[] tabs;
     private View drawerScrim;
     private LinearLayout drawerPanel;
     private LinearLayout drawerBody;
@@ -276,10 +278,29 @@ public class MainActivity extends Activity implements Agent.Listener {
         });
         root.addView(header);
 
-        // 第二行：模式 · 模型（点一下换模型）            状态
+        // 第二行按桌面版改成标签页（对话 / 轨迹 / 上下文），模型与余额挤到右侧
         LinearLayout metaRow = new LinearLayout(this);
         metaRow.setOrientation(LinearLayout.HORIZONTAL);
         metaRow.setGravity(Gravity.CENTER_VERTICAL);
+        metaRow.setPadding(dp(20), 0, dp(20), 0);
+
+        tabs = new TextView[3];
+        String[] tabNames = {"对话", "轨迹", "上下文"};
+        for (int i = 0; i < tabNames.length; i++) {
+            final int idx = i;
+            TextView t = new TextView(this);
+            t.setText(tabNames[i]);
+            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            t.setPadding(0, dp(10), dp(18), dp(10));
+            t.setTextColor(getColor(i == 0 ? R.color.label_primary : R.color.label_tertiary));
+            t.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { onTab(idx); }
+            });
+            tabs[i] = t;
+            metaRow.addView(t);
+        }
+        View tabGap = new View(this);
+        metaRow.addView(tabGap, new LinearLayout.LayoutParams(0, 1, 1f));
         metaRow.setPadding(dp(20), 0, dp(20), dp(10));
 
         headerMeta = new TextView(this);
@@ -288,12 +309,11 @@ public class MainActivity extends Activity implements Agent.Listener {
         headerMeta.setSingleLine(true);
         headerMeta.setEllipsize(android.text.TextUtils.TruncateAt.END);
         headerMeta.setBackgroundResource(R.drawable.bg_chip);
-        headerMeta.setPadding(dp(11), dp(6), dp(11), dp(6));
+        headerMeta.setPadding(dp(10), dp(5), dp(10), dp(5));
         headerMeta.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { showQuickSettings(); }
         });
-        metaRow.addView(headerMeta, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        metaRow.addView(headerMeta);
 
         // 右：余额胶囊。只显示余额——每轮的 token/花费不再占界面。
         ledger = new TextView(this);
@@ -1708,6 +1728,72 @@ public class MainActivity extends Activity implements Agent.Listener {
                 .show();
     }
 
+    /** 顶栏标签：对话是默认视图；轨迹与上下文各弹一个面板。 */
+    private void onTab(int idx) {
+        for (int i = 0; i < tabs.length; i++) {
+            tabs[i].setTextColor(getColor(i == idx
+                    ? R.color.label_primary : R.color.label_tertiary));
+            tabs[i].setTypeface(i == idx
+                    ? Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    : Typeface.create("sans-serif", Typeface.NORMAL));
+        }
+        if (idx == 0) return;
+        if (idx == 1) { showTracePanel(); return; }
+        showContextPanel();
+        // 面板是弹窗，回到对话态
+        for (int i = 0; i < tabs.length; i++) {
+            tabs[i].setTextColor(getColor(i == 0
+                    ? R.color.label_primary : R.color.label_tertiary));
+        }
+    }
+
+    /** 轨迹：这一场里模型调用过哪些工具、思考过什么。 */
+    private void showTracePanel() {
+        StringBuilder sb = new StringBuilder();
+        if (agent != null) {
+            org.json.JSONArray h = agent.history();
+            int calls = 0;
+            for (int i = 1; i < h.length(); i++) {
+                org.json.JSONObject m;
+                try { m = h.getJSONObject(i); } catch (Exception e) { continue; }
+                org.json.JSONArray tc = m.optJSONArray("tool_calls");
+                if (tc == null) continue;
+                for (int k = 0; k < tc.length(); k++) {
+                    try {
+                        org.json.JSONObject fn = tc.getJSONObject(k).getJSONObject("function");
+                        calls++;
+                        sb.append("· ").append(fn.optString("name")).append('\n');
+                    } catch (Exception ignored) {}
+                }
+            }
+            if (calls == 0) sb.append("这一场还没有工具调用。");
+            else sb.insert(0, "共 " + calls + " 次调用：\n");
+        } else {
+            sb.append("还没有开始对话。");
+        }
+        new AlertDialog.Builder(this, R.style.DshDialog)
+                .setTitle("轨迹")
+                .setMessage(sb.toString())
+                .setPositiveButton("关闭", null)
+                .show();
+    }
+
+    /** 上下文：用量、命中、花费。 */
+    private void showContextPanel() {
+        int used = agent == null ? 0 : agent.contextUsed();
+        int limit = agent == null ? 0 : agent.contextLimit();
+        String pct = limit > 0 ? String.format("%.1f%%", used * 100.0 / limit) : "—";
+        String body = "上下文：" + used + " / " + limit + "（" + pct + "）\n"
+                + "会话输入：" + (session == null ? 0 : session.tokensIn) + " tokens\n"
+                + "会话输出：" + (session == null ? 0 : session.tokensOut) + " tokens\n"
+                + "花费：$" + String.format("%.4f", session == null ? 0 : session.cost);
+        new AlertDialog.Builder(this, R.style.DshDialog)
+                .setTitle("上下文")
+                .setMessage(body)
+                .setPositiveButton("关闭", null)
+                .show();
+    }
+
     private void showQuickSettings() {
         final AlertDialog[] holder = new AlertDialog[1];
 
@@ -1757,7 +1843,8 @@ public class MainActivity extends Activity implements Agent.Listener {
 
     private void refreshMeta() {
         boolean a11y = UiAgentService.isReady();
-        headerMeta.setText(mode.label + " · " + model + " · " + effortLabel());
+        // 顶栏位置窄，只留最要紧的两段：模型短名 + 推理等级（点开是完整设置）
+        headerMeta.setText(model.replace("deepseek-", "") + " · " + effortLabel() + " ▾");
         if (headerTitle != null) {
             String name = (session != null && session.title != null && !session.title.isEmpty())
                     ? session.title : "DSH Native";
