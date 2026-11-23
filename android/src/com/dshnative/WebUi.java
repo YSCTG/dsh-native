@@ -39,6 +39,17 @@ public final class WebUi {
      * 前端缺了它直接报 "bootstrap facade is missing"。这里先给一个最小实现：
      * 能创建 loader、给出空插件清单，让界面先起来——缺什么它会自己点名，按名字补。
      */
+    /**
+     * 启动门面。
+     *
+     * 契约是从 bundle 里读出来的，不是猜的：
+     *   modules.manifest.plugins[].id / .immediately
+     *   modules.entries.start(ids, ctx)      —— 之前写成数组，所以报 "entries.start is not a function"
+     *   modules.prefetch(id)                 —— 预取 immediately 的插件
+     *   modules.loader.entries()             —— 遍历已注册条目，读 options.name
+     *   modules.importError(name)            —— 导入失败时取原因
+     * 插件清单先给空数组：界面骨架（侧栏/头部/输入区）应该能先渲染出来。
+     */
     private static final String BOOT_SHIM =
         "<script>(function(){"
       + "globalThis.__DSH_BOOT_READY__={promise:Promise.resolve()};"
@@ -46,11 +57,28 @@ public final class WebUi {
       + "globalThis.__DSH_TRANSPORT__={};"
       + "globalThis.__ModuleLoader__={create:function(o){"
       + "  o=o||{};"
-      + "  return {manifest:{plugins:[],version:'0.0.0-native'},"
-      + "    load:function(){return Promise.resolve();},"
-      + "    loadEntry:function(){return Promise.resolve();},"
-      + "    resolve:function(){return null;},"
-      + "    entries:[]};"
+      + "  var modules={"
+      + "    manifest:{plugins:[],version:'0.0.0-native'},"
+      + "    entries:{start:function(ids,ctx){"
+      + "      try{"
+      + "        var proto=Object.getOwnPropertyNames(Object.getPrototypeOf(ctx)||{});"
+      + "        var own=Object.getOwnPropertyNames(ctx||{});"
+      + "        var d=document.createElement('pre');"
+      + "        d.id='dsh-probe';"
+      + "        d.textContent='CTXPROTO['+proto.join(',')+'] CTXOWN['+own.join(',')+']';"
+      + "        document.body.appendChild(d);"
+      + "      }catch(e){}"
+      + "      return Promise.resolve();"
+      + "    }},"
+      + "    prefetch:function(id){return Promise.resolve();},"
+      + "    load:function(id){return Promise.resolve();},"
+      + "    loadEntry:function(id){return Promise.resolve();},"
+      + "    resolve:function(id){return null;},"
+      + "    importError:function(name){return undefined;},"
+      + "    loader:{entries:function(){return [];}},"
+      + "    create:function(){return modules;}"
+      + "  };"
+      + "  return modules;"
       + "}};"
       + "})();</script>";
 
