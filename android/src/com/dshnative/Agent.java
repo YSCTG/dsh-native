@@ -1105,7 +1105,9 @@ public final class Agent {
                     String err = Preview.render(ctx, f, 1, shot);
                     if (err == null) {
                         pendingShot = shot.getAbsolutePath();
-                        res += "\n已自动预览（下一轮你会看到这张图）。看过再决定要不要调整排版。";
+                        res += "\n已自动预览（下一轮你会看到这张图）。"
+                                + "看到问题就直接改 spec 重新生成一次，不必先问我——"
+                                + "最多再调一次，避免来回改；没问题就一句话说明你检查了什么。";
                     } else {
                         res += "\n（自动预览失败：" + err + "）";
                     }
