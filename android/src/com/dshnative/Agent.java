@@ -183,6 +183,8 @@ public final class Agent {
                 "- **不要在 sh 里前台启动常驻进程**（http.server、nc -l、node server、tail -f、watch…）：\n" +
                 "  它们永远不返回，会把这轮任务挂死。需要后台就用 `nohup cmd >/tmp/x.log 2>&1 &`，并立刻返回。\n" +
                 "- 想看一个 HTML 的渲染效果，用 browser_open 传 `file:///sdcard/.../x.html`（内置 WebView 支持 file://），\n"                +
+                "- office_write 支持 `preview:true`：生成完立刻渲染一页/一张图给你看，用来检查排版，\n" +
+                "  比自己再调一次 office_preview 省一个来回。\n" +
                 "- **生成文档和媒体一律用 office_write**（docx/xlsx/pptx/pdf/wav/m4a/mp4）。\n" +
                 "  不要自己写 Python 去拼 OOXML、PDF、AAC —— 那是重复实现，慢、贵，还容易出错。\n" +
                 "  想看排版效果就用 office_preview 渲染成图，再据此调整一次。\n" +
@@ -1092,8 +1094,23 @@ public final class Agent {
                 if (!f.isAbsolute()) f = new File(Ws.active(ctx), path);
                 JSONObject spec = a.optJSONObject("spec");
                 listener.onTool("office_write", fmt + " → " + f.getName());
-                return Office.write(ctx, fmt, f.getAbsolutePath(),
+                String res = Office.write(ctx, fmt, f.getAbsolutePath(),
                         spec == null ? "{}" : spec.toString());
+                // preview:true —— 生成完立刻渲染，把图交给模型，省一次往返
+                boolean wantPreview = a.optBoolean("preview", false)
+                        || (spec != null && spec.optBoolean("preview", false));
+                if (wantPreview && res != null && !res.startsWith("错误")) {
+                    File shot = new File(Ws.active(ctx),
+                            "preview-" + f.getName().replaceAll("\\.[^.]+$", "") + ".png");
+                    String err = Preview.render(ctx, f, 1, shot);
+                    if (err == null) {
+                        pendingShot = shot.getAbsolutePath();
+                        res += "\n已自动预览（下一轮你会看到这张图）。看过再决定要不要调整排版。";
+                    } else {
+                        res += "\n（自动预览失败：" + err + "）";
+                    }
+                }
+                return res;
             }
             if ("sh".equals(name)) return sh(a.optString("command", ""), a.optInt("timeout", 120));
             if ("web_search".equals(name)) return webSearch(a.optString("query", ""));
