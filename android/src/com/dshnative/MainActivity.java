@@ -402,7 +402,9 @@ public class MainActivity extends Activity implements Agent.Listener {
         });
         input.setHintTextColor(getColor(R.color.label_caption));
         input.setTextColor(getColor(R.color.label_primary));
-        input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        // 桌面端输入框是 14px/22px（见其 CSS 的 ._input_ 规则）
+        input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        input.setLineSpacing(dp(4), 1f);
         input.setPadding(dp(2), dp(2), dp(2), dp(2));
         input.setMaxLines(5);
         input.setInputType(InputType.TYPE_CLASS_TEXT
