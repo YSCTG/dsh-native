@@ -1977,8 +1977,11 @@ public class MainActivity extends Activity implements Agent.Listener {
                 // 正文一开始流式，后面每个思考增量都会"关一块开一块"，产生一堆 1~2 字的残块。
                 // 思考块只在工具调用或本轮结束时收口。
                 ensureThinkingBlock();
-                // 只计数，不存正文：思考过程不展示，存下来只会占内存。
                 thinkingChars += delta.length();
+                thinkingBuf.append(delta);
+                if (thinkingBuf.length() > 40000) {
+                    thinkingBuf.delete(0, thinkingBuf.length() - 20000);
+                }
 
                 scrollDown();
             }
