@@ -714,7 +714,39 @@ public class MainActivity extends Activity implements Agent.Listener {
         assistantView.setTextColor(getColor(R.color.label_primary));
         assistantView.setLineSpacing(dp(5), 1f);
         assistantView.setTextIsSelectable(true);
-        addView(assistantView);
+
+        // 气泡 + 右下角「复制」装进同一个容器
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.addView(assistantView);
+
+        TextView copy = new TextView(this);
+        copy.setText("⧉ 复制");
+        copy.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        copy.setTextColor(getColor(R.color.label_caption));
+        copy.setPadding(dp(8), dp(2), dp(2), dp(4));
+        copy.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { copyToClipboard(assistantBuf.toString()); }
+        });
+        LinearLayout copyRow = new LinearLayout(this);
+        copyRow.setOrientation(LinearLayout.HORIZONTAL);
+        copyRow.setGravity(android.view.Gravity.END);
+        copyRow.addView(copy);
+        box.addView(copyRow);
+
+        addView(box);
+    }
+
+    /** 把文字放进剪贴板。 */
+    private void copyToClipboard(String text) {
+        try {
+            android.content.ClipboardManager cm =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (cm == null) return;
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("DSH Native",
+                    text == null ? "" : text));
+            toast("已复制");
+        } catch (Throwable ignored) {}
     }
 
     /**
