@@ -380,7 +380,24 @@ public final class Office {
             writeText(html, slidesHtml(spec, slides, d));
             // 同时写一份 spec JSON：office_preview 直接用它画图，不依赖 WebView 截图
             JSONObject pv = new JSONObject();
-            pv.put("slides", slides);
+            // 把每页图片的绝对路径带上：预览要把图画出来，否则图里只有文字
+            JSONArray pvSlides = new JSONArray();
+            for (int i = 0; i < slides.length(); i++) {
+                JSONObject one = slides.optJSONObject(i);
+                if (one == null) continue;
+                JSONObject cp = new JSONObject(one.toString());
+                String ip = one.optString("image", "").trim();
+                if (!ip.isEmpty()) {
+                    File imgF = new File(ip);
+                    if (!imgF.isAbsolute()) {
+                        imgF = new File(Ws.active(ctx), ip);
+                        if (!imgF.isFile()) imgF = new File(out.getParentFile(), ip);
+                    }
+                    cp.put("imageFile", imgF.getAbsolutePath());
+                }
+                pvSlides.put(cp);
+            }
+            pv.put("slides", pvSlides);
             pv.put("accent", String.format("#%06X", d.accent & 0xFFFFFF));
             pv.put("ink", String.format("#%06X", d.ink & 0xFFFFFF));
             pv.put("muted", String.format("#%06X", d.muted & 0xFFFFFF));

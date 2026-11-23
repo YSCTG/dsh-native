@@ -409,6 +409,26 @@ public final class Agent {
                                new String[]{"code"})));
             }
 
+            if (Plugin.isOn(ctx, "builtin.terminal")) {
+                add("shell", tool("job_start",
+                        "把耗时命令丢到后台跑，立刻返回任务 id（不占用当前回合）。\n"
+                                + "装包、编译、大文件下载、长时间脚本都用它；短命令仍然用 sh。",
+                        schema(props(new String[]{"command", "label"},
+                                     new String[]{"string", "string"},
+                                     new String[]{"要执行的 shell 命令", "任务名，用于列表显示"}),
+                               new String[]{"command"})));
+                add("shell", tool("job_list", "看后台任务：id、名字、状态。",
+                        schema(props(new String[]{}, new String[]{}, new String[]{}), new String[]{})));
+                add("shell", tool("job_output",
+                        "读后台任务的输出。给 wait 就先等几秒，适合刚起就想看结果的场景。",
+                        schema(props(new String[]{"id", "wait"},
+                                     new String[]{"string", "integer"},
+                                     new String[]{"任务 id", "最多等几秒，默认 0"}),
+                               new String[]{"id"})));
+                add("shell", tool("job_kill", "结束一个后台任务。",
+                        schema(props(new String[]{"id"}, new String[]{"string"},
+                                     new String[]{"任务 id"}), new String[]{"id"})));
+            }
             if (Plugin.isOn(ctx, "builtin.skills")) {
                 add("fs.read", tool("skill",
                         "读取一个技能的完整流程说明。调用前先看系统提示里的技能目录；"
@@ -1134,6 +1154,37 @@ public final class Agent {
                 pendingShot = out.getAbsolutePath();
                 return "已截屏 " + w + "x" + h + " 像素，保存于 " + out.getAbsolutePath()
                         + "。下一轮你会直接看到这张图。";
+            }
+            if ("job_start".equals(name)) {
+                String cmd = a.optString("command", "").trim();
+                if (cmd.isEmpty()) return "错误：command 不能为空";
+                Jobs.Job j = Jobs.start(ctx, cmd, a.optString("label", ""));
+                listener.onTool("job_start", j.label);
+                return "已启动后台任务 " + j.id + "（" + j.label + "）。用 job_output 看输出，job_list 看全部。";
+            }
+            if ("job_list".equals(name)) {
+                java.util.List<Jobs.Job> all = Jobs.all();
+                if (all.isEmpty()) return "没有后台任务。";
+                StringBuilder sb = new StringBuilder();
+                for (Jobs.Job j : all) {
+                    sb.append(j.id).append("  ").append(j.label).append("  ")
+                      .append(j.status()).append('\n');
+                }
+                return sb.toString();
+            }
+            if ("job_output".equals(name)) {
+                String id = a.optString("id", "").trim();
+                Jobs.Job j = Jobs.get(id);
+                if (j == null) return "错误：没有这个任务 " + id;
+                String out = Jobs.output(j, Math.max(0, a.optInt("wait", 0)) * 1000L);
+                if (out.length() > 8000) out = "…（只显示尾部）\n" + out.substring(out.length() - 8000);
+                return "[" + j.id + " " + j.status() + "]\n" + out;
+            }
+            if ("job_kill".equals(name)) {
+                Jobs.Job j = Jobs.get(a.optString("id", "").trim());
+                if (j == null) return "错误：没有这个任务";
+                Jobs.kill(j);
+                return "已请求结束 " + j.id;
             }
             if ("skill".equals(name)) {
                 String sid = a.optString("name", "").trim();

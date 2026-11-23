@@ -121,6 +121,23 @@ public final class Preview {
                 cv.drawRect(0, top, sw, top + 8, band);
                 cv.drawText(clip(s.optString("title", ""), pTitle, sw - 128),
                         64, top + 96, pTitle);
+                // 图片：画在右侧，等比缩进 340×250 的框里
+                String imgFile = s.optString("imageFile", "");
+                if (!imgFile.isEmpty()) {
+                    Bitmap pic = android.graphics.BitmapFactory.decodeFile(imgFile);
+                    if (pic != null) {
+                        int bx = sw - 380, by = top + 160, bw = 316, bh = 240;
+                        float scale = Math.min((float) bw / pic.getWidth(),
+                                (float) bh / pic.getHeight());
+                        int dw = Math.max(1, (int) (pic.getWidth() * scale));
+                        int dh = Math.max(1, (int) (pic.getHeight() * scale));
+                        android.graphics.Rect dst = new android.graphics.Rect(
+                                bx + (bw - dw) / 2, by + (bh - dh) / 2,
+                                bx + (bw + dw) / 2, by + (bh + dh) / 2);
+                        cv.drawBitmap(pic, null, dst, null);
+                        pic.recycle();
+                    }
+                }
                 JSONArray bullets = s.optJSONArray("bullets");
                 float y = top + 150;
                 if (bullets != null) {
