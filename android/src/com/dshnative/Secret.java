@@ -43,14 +43,26 @@ public final class Secret {
         return p.contains(PREF_ENC);
     }
 
+    /**
+     * 存 key 前先洗干净。
+     *
+     * 从网页或聊天窗口复制 API key 时经常带尾部空格、换行、零宽字符，
+     * 存进去就是脏的，服务端一律回 401——而提示里的 ****1234 还是对的，最难查。
+     */
+    private static String clean(String value) {
+        if (value == null) return "";
+        return value.replace("\uFEFF", "").replace("\u200B", "").replace("\u00A0", " ").trim();
+    }
+
     public static void put(SharedPreferences p, String value) {
-        String enc = encrypt(value);
+        String v = clean(value);
+        String enc = encrypt(v);
         SharedPreferences.Editor e = p.edit();
         if (enc != null) {
             e.putString(PREF_ENC, enc);
             e.remove(PREF_PLAIN);
         } else {
-            e.putString(PREF_PLAIN, value);
+            e.putString(PREF_PLAIN, v);
             e.remove(PREF_ENC);
         }
         e.apply();
@@ -60,9 +72,9 @@ public final class Secret {
         String enc = p.getString(PREF_ENC, null);
         if (enc != null) {
             String v = decrypt(enc);
-            if (v != null) return v;
+            if (v != null) return clean(v);
         }
-        return p.getString(PREF_PLAIN, "");
+        return clean(p.getString(PREF_PLAIN, ""));
     }
 
     /** 老版本把 key 明文存着，第一次启动时就地加密并删掉明文。 */

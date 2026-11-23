@@ -792,11 +792,20 @@ public final class Agent {
             } else {
                 String msg = e.getMessage() == null ? e.toString() : e.getMessage();
                 String low = msg.toLowerCase();
-                boolean net = msg.contains("Socket closed") || msg.contains("连接中断")
+                if (msg.contains("HTTP 401") || low.contains("authentication")
+                        || low.contains("api key")) {
+                    // 401 几乎都是 key 本身不对，别让用户对着一坨 JSON 猜
+                    msg = "API key 无效（服务器不认这个 key）。"
+                            + "去设置里重新填一遍，注意复制时不要带空格或换行。\n\n原始回应：" + msg;
+                } else if (msg.contains("HTTP 402") || low.contains("insufficient")
+                        || low.contains("balance")) {
+                    msg = "账户余额不足，充值后再试。\n\n原始回应：" + msg;
+                } else if (msg.contains("HTTP 429")) {
+                    msg = "请求太频繁，被限流了。等几十秒再试。\n\n原始回应：" + msg;
+                } else if (msg.contains("Socket closed") || msg.contains("连接中断")
                         || e instanceof java.io.IOException
                         || low.contains("timed out") || low.contains("connection")
-                        || low.contains("unreachable");
-                if (net) {
+                        || low.contains("unreachable")) {
                     msg = "网络中断（" + msg + "）。这不是任务出错，是连接被掐断了。"
                             + "回一句「继续」，我从断的地方接着跑。";
                 }
