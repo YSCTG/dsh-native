@@ -48,6 +48,8 @@ public final class Agent {
         void onTool(String name, String detail);
         /** 工具执行完，带上耗时（毫秒）。桌面版每一步都有时间，这里补上。 */
         void onToolDone(String name, long ms);
+        /** 本轮改动过的文件（绝对路径）。用来在回答下面附卡片。 */
+        void onFilesTouched(java.util.List<String> paths);
         void onStatus(String status);
         void onError(String message);
         void onBusy(boolean busy);
@@ -70,6 +72,10 @@ public final class Agent {
     private final JSONArray messages = new JSONArray();
     private final JSONArray tools = new JSONArray();
     private String pendingShot;
+    /** 本轮被写入/修改的文件：回答时会作为卡片附上。 */
+    private final java.util.LinkedHashSet<String> touched = new java.util.LinkedHashSet<>();
+    /** 开跑前的工作区快照（用来兜住 sh / python 写出来的文件）。 */
+    private java.util.Map<String, Long> beforeMtime;
     private final DeepSeekClient.Usage sessionUsage = new DeepSeekClient.Usage();
     private final String model;
     private final String apiKey;
@@ -225,7 +231,7 @@ public final class Agent {
                                      new String[]{"路径", "要被替换的原文", "替换成什么"}),
                                new String[]{"path", "old", "new"})));
 
-            add("fs.write", tool("office_write",
+            if (Plugin.isOn(ctx, "builtin.office")) add("fs.write", tool("office_write",
                     "生成文档与媒体文件：docx / xlsx / pptx / pdf / wav / m4a / mp4。纯本地生成，不需要联网，不用 ffmpeg。\n"
                             + "docx: spec={title, blocks:[{type:'h1|h2|p|bullet',text} | {type:'table',rows:[[..],[..]]}]}\n"
                             + "xlsx: spec={sheets:[{name, header:true, widths:[12,20], rows:[[\"表头\",\"值\"],[1,2]]}]}"
@@ -588,6 +594,7 @@ public final class Agent {
 
     public void run(String userText, List<String> imagePaths, boolean resumeMode) {
         listener.onBusy(true);
+        beforeMtime = snapshot();   // 开跑前拍一张，结束时对比出改动的文件
         if (cancelled) { listener.onBusy(false); return; }
         try {
             if (resumeMode) {
@@ -654,6 +661,7 @@ public final class Agent {
                     t.put("tool_call_id", str(call, "id", "call_" + i));
                     t.put("content", out);
                     addMessage(t);
+                    collectTouched(name, args);
 
                     // 截屏之后，把这张图作为一条用户消息塞进去——工具结果是纯文本，
                     // 模型想"看见"就得靠真正的 image_url 内容块。
@@ -695,6 +703,8 @@ public final class Agent {
                 }
                 Session.touch(ctx, session);
             }
+            diffAndCollect();
+            if (!touched.isEmpty()) listener.onFilesTouched(new ArrayList<>(touched));
             listener.onBusy(false);
         }
     }
@@ -731,6 +741,51 @@ public final class Agent {
     /** 工具执行的上限。超出就放弃这一次调用，把控制权还给循环。 */
     private static final long TOOL_TIMEOUT_MS = 660000;
 
+    /** 工作区快照：只扫两层、上限 2000 个文件，够兜住常见产出。 */
+    private java.util.Map<String, Long> snapshot() {
+        java.util.Map<String, Long> m = new java.util.HashMap<>();
+        try {
+            scan(Ws.active(ctx), 0, m);
+        } catch (Throwable ignored) {}
+        return m;
+    }
+
+    private void scan(File dir, int depth, java.util.Map<String, Long> m) {
+        if (dir == null || depth > 2 || m.size() > 2000) return;
+        File[] fs = dir.listFiles();
+        if (fs == null) return;
+        for (File f : fs) {
+            if (m.size() > 2000) return;
+            String n = f.getName();
+            if (n.startsWith(".") && depth == 0 && f.isDirectory()) continue;   // 跳过 .dshnative 之类
+            if (f.isDirectory()) scan(f, depth + 1, m);
+            else m.put(f.getAbsolutePath(), f.lastModified());
+        }
+    }
+
+    private void diffAndCollect() {
+        java.util.Map<String, Long> after = snapshot();
+        for (java.util.Map.Entry<String, Long> e : after.entrySet()) {
+            Long old = beforeMtime == null ? null : beforeMtime.get(e.getKey());
+            if (old == null || !old.equals(e.getValue())) {
+                File f = new File(e.getKey());
+                if (f.isFile() && f.length() <= 20L * 1024 * 1024) touched.add(e.getKey());
+            }
+        }
+    }
+    /** 从工具参数里认出被写的文件；sh / python 交给快照兜底。 */
+    private void collectTouched(String tool, String argsJson) {
+        try {
+            if (!"fs_write".equals(tool) && !"fs_edit".equals(tool)
+                    && !"office_write".equals(tool)) return;
+            JSONObject a = new JSONObject(argsJson == null || argsJson.isEmpty() ? "{}" : argsJson);
+            String p = a.optString("path", "");
+            if (p.isEmpty()) return;
+            File f = new File(p);
+            if (!f.isAbsolute()) f = new File(Ws.active(ctx), p);
+            if (f.isFile()) touched.add(f.getAbsolutePath());
+        } catch (Throwable ignored) {}
+    }
     private String executeGuarded(final String name, final String args) {
         final String[] box = new String[1];
         final Throwable[] err = new Throwable[1];

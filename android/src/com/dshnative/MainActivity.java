@@ -78,7 +78,8 @@ public class MainActivity extends Activity implements Agent.Listener {
     private boolean root;
     private volatile boolean running;
     private volatile boolean abortRequested;
-    private boolean assistantClosed;   // 上一段文字后面已经跟了工具卡
+    private boolean assistantClosed;
+    private final java.util.HashSet<String> fileCardsShown = new java.util.HashSet<>();   // 上一段文字后面已经跟了工具卡
     private String migratedNote;   // 用户按了停止；构造 Agent 期间也要认账
     private boolean dark;
     private volatile String balance;      // 账户余额，形如 ¥61.53
@@ -691,7 +692,11 @@ public class MainActivity extends Activity implements Agent.Listener {
             if (p.length() > 1 && new File(p).isFile()) paths.add(p);
         }
         if (paths.isEmpty()) return;
-        for (String p : paths) addView(buildFileCard(new File(p)));
+        for (String p : paths) {
+            if (fileCardsShown.contains(p)) continue;
+            fileCardsShown.add(p);
+            addView(buildFileCard(new File(p)));
+        }
         scrollDown();
     }
 
@@ -1032,6 +1037,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         running = true;
         abortRequested = false;
         assistantClosed = false;
+        fileCardsShown.clear();
         setSendState(true);
         RunService.start(this);
 
@@ -1166,6 +1172,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         running = true;
         abortRequested = false;
         assistantClosed = false;
+        fileCardsShown.clear();
         setSendState(true);
         RunService.start(this);
         new Thread(new Runnable() {
@@ -1858,6 +1865,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                     assistantView = null;
                     assistantBuf.setLength(0);
                     assistantClosed = false;
+        fileCardsShown.clear();
                 }
                 ensureAssistantView();
                 assistantBuf.append(delta);
@@ -1894,6 +1902,34 @@ public class MainActivity extends Activity implements Agent.Listener {
         });
     }
 
+    /** 本轮工具改动过的文件（来自 Agent 的 collectTouched + 工作区快照）。 */
+    private final java.util.LinkedHashSet<String> turnFiles = new java.util.LinkedHashSet<>();
+
+    @Override public void onFilesTouched(final java.util.List<String> paths) {
+        ui.post(new Runnable() {
+            @Override public void run() {
+                if (paths == null) return;
+                for (String p : paths) {
+                    if (p != null && !p.isEmpty() && new File(p).isFile()) turnFiles.add(p);
+                }
+            }
+        });
+    }
+
+    /** 把本轮改动的文件做成卡片；和正文里已经挂过的去重。 */
+    private void flushTurnFiles() {
+        android.util.Log.i("DSHN", "flushTurnFiles: " + turnFiles.size() + " 个");
+        if (turnFiles.isEmpty()) return;
+        for (String p : turnFiles) {
+            if (fileCardsShown.contains(p)) continue;
+            File f = new File(p);
+            if (!f.isFile()) continue;
+            fileCardsShown.add(p);
+            addView(buildFileCard(f));
+        }
+        turnFiles.clear();
+        scrollDown();
+    }
     @Override public void onToolDone(final String name, final long ms) {
         ui.post(new Runnable() {
             @Override public void run() {
@@ -1927,6 +1963,7 @@ public class MainActivity extends Activity implements Agent.Listener {
     @Override public void onBusy(final boolean busy) {
         ui.post(new Runnable() {
             @Override public void run() {
+                    flushTurnFiles();                          // 本轮改过的文件做成卡片
                     appendFileChips(assistantBuf.toString());   // 收尾时把文件挂成卡片
                 if (!busy) {
                     finishThinking();

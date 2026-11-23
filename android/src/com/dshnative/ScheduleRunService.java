@@ -116,6 +116,7 @@ public class ScheduleRunService extends Service {
         @Override public void onReasoning(String delta) {}
         @Override public void onTool(String name, String detail) {}
         @Override public void onToolDone(String name, long ms) {}
+        @Override public void onFilesTouched(java.util.List<String> paths) {}
         @Override public void onStatus(String status) {}
         @Override public void onError(String message) {}
         @Override public void onBusy(boolean busy) {}

@@ -113,6 +113,7 @@ public final class Plugin {
             {"builtin.devtools",   "开发者工具", "诊断信息 / 导出会话"},
             {"builtin.render",     "预览渲染",   "把 HTML / 网页渲染成卡片"},
             {"builtin.skills",     "DSH Ultra Mode", "技能包，一个开关"},
+        {"builtin.office",     "DSH Office",  "docx / xlsx / pptx / pdf / wav / m4a / mp4 本地生成"},
     };
 
     public static boolean isOn(Context c, String id) {

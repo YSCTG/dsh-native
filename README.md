@@ -137,6 +137,16 @@ instead of bundling ffmpeg (which would add ~100 MB of shared libraries):
 Validated by parsing the containers directly: `m4a` has `ftyp/moov/mdat` with a `soun`
 track at exactly 2.00 s, `mp4` a `vide` track at 6.00 s for three 2-second slides, and the
 WAV header is little-endian PCM mono 44100 Hz.
+
+### DSH Office (built-in plugin)
+
+One switch that turns on document and media generation. Anything it writes, or anything a
+turn changes anywhere under the workspace, is attached to the reply as a card — the file is
+listed even when the model never prints its path, because the harness snapshots the workspace
+before the turn and diffs it afterwards.
+
+Card previews are inline: images render, PDF shows page one, audio gets a play button, video
+gets a player, HTML renders in a WebView, text and markdown are shown as text.
 ## Architecture
 
 ```
