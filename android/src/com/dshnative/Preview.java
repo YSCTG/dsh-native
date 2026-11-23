@@ -133,7 +133,9 @@ public final class Preview {
         if (name.endsWith(".pdf")) return pdf(src, page, out);
         if (name.endsWith(".pptx")) return pptx(src, out);
         if (name.endsWith(".html") || name.endsWith(".htm")) return html(c, src, out);
-        return "这类文件无法渲染预览（支持 pdf / html / pptx）。docx/xlsx 请让用户打开。";
+        if (name.endsWith(".docx")) return renderDocx(src, out);
+        if (name.endsWith(".xlsx")) return renderXlsx(src, out);
+        return "这类文件无法渲染预览（支持 pdf / html / pptx / docx / xlsx）。";
     }
 
     private static String pdf(File src, int page, File out) {
@@ -286,6 +288,261 @@ public final class Preview {
         bm.compress(Bitmap.CompressFormat.PNG, 92, os);
         os.close();
         bm.recycle();
+    }
+
+
+    // ---------------- docx / xlsx：自己解析，用 Canvas 画 ----------------
+    //
+    // 不走 WebView 截图：隐藏的 WebView 是硬件图层，draw 出来是白图（踩过）。
+    // 这两类文件结构简单，直接按段落/单元格画更可控。
+
+    /** docx：段落 + 表格，按 A4 宽度连续排，超长自动拉高。 */
+    public static String renderDocx(File src, File out) {
+        try {
+            String xml = readZipEntry(src, "word/document.xml");
+            if (xml == null) return "这个 docx 里没有 word/document.xml";
+            java.util.List<float[]> dummy = null;   // 占位，保持结构清晰
+
+            int w = 1240, margin = 100;
+            int h = 1754;                    // A4 @ 2x
+            java.util.List<Object[]> blocks = parseDocx(xml);
+
+            Bitmap bm = Bitmap.createBitmap(w, Math.max(h, blocks.size() * 40 + 200),
+                    Bitmap.Config.ARGB_8888);
+            Canvas cv = new Canvas(bm);
+            cv.drawColor(Color.WHITE);
+
+            Paint titleP = new Paint(Paint.ANTI_ALIAS_FLAG);
+            titleP.setTextSize(46);
+            titleP.setFakeBoldText(true);
+            titleP.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+            Paint bodyP = new Paint(Paint.ANTI_ALIAS_FLAG);
+            bodyP.setTextSize(28);
+            bodyP.setColor(0xFF111418);
+            Paint smallP = new Paint(Paint.ANTI_ALIAS_FLAG);
+            smallP.setTextSize(24);
+            smallP.setColor(0xFF333333);
+            Paint line = new Paint();
+            line.setColor(0xFFDDDDDD);
+            line.setStrokeWidth(1.4f);
+
+            float y = margin + 40;
+            for (Object[] b : blocks) {
+                String type = (String) b[0];
+                if ("table".equals(type)) {
+                    java.util.List<java.util.List<String>> rows =
+                            (java.util.List<java.util.List<String>>) b[1];
+                    int cols = 0;
+                    for (java.util.List<String> r : rows) cols = Math.max(cols, r.size());
+                    if (cols == 0) continue;
+                    float cw = (w - margin * 2f) / cols;
+                    for (int ri = 0; ri < rows.size(); ri++) {
+                        java.util.List<String> r = rows.get(ri);
+                        if (ri == 0) {
+                            Paint head = new Paint();
+                            head.setColor(0xFFF3F4F6);
+                            cv.drawRect(margin, y - 26, w - margin, y + 6, head);
+                        }
+                        for (int ci = 0; ci < r.size(); ci++) {
+                            cv.drawText(clip(r.get(ci), smallP, cw - 16),
+                                    margin + ci * cw + 8, y, smallP);
+                        }
+                        y += 34;
+                        cv.drawLine(margin, y - 22, w - margin, y - 22, line);
+                    }
+                    y += 24;
+                } else {
+                    String text = (String) b[1];
+                    boolean bold = b.length > 2 && Boolean.TRUE.equals(b[2]);
+                    boolean big = b.length > 3 && Boolean.TRUE.equals(b[3]);
+                    Paint p = bold || big ? (Paint) titleP : bodyP;
+                    float size = big ? 40 : (bold ? 32 : 28);
+                    p.setTextSize(size);
+                    for (String ln : wrapText(text, p, w - margin * 2)) {
+                        cv.drawText(ln, margin, y, p);
+                        y += size * 1.5f;
+                    }
+                    y += big ? 24 : 10;
+                }
+            }
+            save(bm, out);
+            return null;
+        } catch (Throwable e) {
+            return "渲染 docx 失败：" + e.getMessage();
+        }
+    }
+
+    /** xlsx：第一张工作表，画成网格。 */
+    public static String renderXlsx(File src, File out) {
+        try {
+            java.util.List<String> shared = new java.util.ArrayList<>();
+            String ss = readZipEntry(src, "xl/sharedStrings.xml");
+            if (ss != null) {
+                java.util.regex.Matcher m = java.util.regex.Pattern
+                        .compile("<si>(.*?)</si>", java.util.regex.Pattern.DOTALL).matcher(ss);
+                while (m.find()) shared.add(stripTags(m.group(1)));
+            }
+            String sheet = readZipEntry(src, "xl/worksheets/sheet1.xml");
+            if (sheet == null) return "这个 xlsx 里没有第一张工作表";
+
+            java.util.List<java.util.List<String>> grid = new java.util.ArrayList<>();
+            java.util.regex.Matcher rm = java.util.regex.Pattern
+                    .compile("<row[^>]*>(.*?)</row>", java.util.regex.Pattern.DOTALL).matcher(sheet);
+            while (rm.find()) {
+                java.util.List<String> row = new java.util.ArrayList<>();
+                java.util.regex.Matcher cm = java.util.regex.Pattern
+                        .compile("<c([^>]*)>(.*?)</c>", java.util.regex.Pattern.DOTALL).matcher(rm.group(1));
+                while (cm.find()) {
+                    String attrs = cm.group(1);
+                    String body = cm.group(2);
+                    boolean isShared = attrs.contains("t=\"s\"");
+                    // 三种存法都要认：共享字符串(t="s")、内联字符串(<is><t>)、数值(<v>)
+                    String val = "";
+                    java.util.regex.Matcher im = java.util.regex.Pattern
+                            .compile("<is>\\s*<t(?:\\s[^>]*)?>(.*?)</t>", java.util.regex.Pattern.DOTALL)
+                            .matcher(body);
+                    if (im.find()) {
+                        val = im.group(1);
+                    } else {
+                        java.util.regex.Matcher vm = java.util.regex.Pattern
+                                .compile("<v>(.*?)</v>", java.util.regex.Pattern.DOTALL).matcher(body);
+                        val = vm.find() ? vm.group(1) : "";
+                        if (isShared) {
+                            try {
+                                int i = Integer.parseInt(val.trim());
+                                val = i >= 0 && i < shared.size() ? shared.get(i) : val;
+                            } catch (Throwable ignored) {}
+                        }
+                    }
+                    val = val.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">");
+                    row.add(val);
+                }
+                if (!row.isEmpty()) grid.add(row);
+            }
+            if (grid.isEmpty()) return "工作表是空的";
+
+            int cols = 0;
+            for (java.util.List<String> r : grid) cols = Math.max(cols, r.size());
+            int cw = 190, rh = 40, margin = 40;
+            int w = margin * 2 + cols * cw;
+            int h = margin * 2 + grid.size() * rh;
+            Bitmap bm = Bitmap.createBitmap(Math.min(w, 4000), Math.min(h, 6000),
+                    Bitmap.Config.ARGB_8888);
+            Canvas cv = new Canvas(bm);
+            cv.drawColor(Color.WHITE);
+
+            Paint cell = new Paint(Paint.ANTI_ALIAS_FLAG);
+            cell.setTextSize(22);
+            cell.setColor(0xFF111418);
+            Paint gridLine = new Paint();
+            gridLine.setColor(0xFFE0E0E0);
+            gridLine.setStrokeWidth(1f);
+            Paint head = new Paint();
+            head.setColor(0xFFF0F2F5);
+
+            for (int ri = 0; ri < grid.size(); ri++) {
+                java.util.List<String> r = grid.get(ri);
+                float y = margin + ri * rh;
+                if (ri == 0) cv.drawRect(margin, y, margin + cols * cw, y + rh, head);
+                for (int ci = 0; ci < cols; ci++) {
+                    String v = ci < r.size() ? r.get(ci) : "";
+                    cv.drawText(clip(v, cell, cw - 12), margin + ci * cw + 6, y + rh - 12, cell);
+                }
+                cv.drawLine(margin, y, margin + cols * cw, y, gridLine);
+            }
+            for (int ci = 0; ci <= cols; ci++) {
+                cv.drawLine(margin + ci * cw, margin, margin + ci * cw,
+                        margin + grid.size() * rh, gridLine);
+            }
+            save(bm, out);
+            return null;
+        } catch (Throwable e) {
+            return "渲染 xlsx 失败：" + e.getMessage();
+        }
+    }
+
+    private static String stripTags(String s) {
+        return s.replaceAll("<[^>]+>", "");
+    }
+
+    private static java.util.List<String> wrapText(String text, Paint p, float max) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        if (text == null || text.isEmpty()) { out.add(""); return out; }
+        StringBuilder cur = new StringBuilder();
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            cur.append(ch);
+            if (p.measureText(cur.toString()) > max) {
+                cur.setLength(cur.length() - 1);
+                out.add(cur.toString());
+                cur.setLength(0);
+                cur.append(ch);
+            }
+        }
+        if (cur.length() > 0) out.add(cur.toString());
+        return out;
+    }
+
+    /** docx 的 document.xml → [{type, ...}]，只取段落和表格。 */
+    private static java.util.List<Object[]> parseDocx(String xml) {
+        java.util.List<Object[]> blocks = new java.util.ArrayList<>();
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("<w:(p|tbl)[ >].*?</w:\\1>", java.util.regex.Pattern.DOTALL).matcher(xml);
+        while (m.find()) {
+            String chunk = m.group();
+            if (chunk.startsWith("<w:tbl")) {
+                java.util.List<java.util.List<String>> rows = new java.util.ArrayList<>();
+                java.util.regex.Matcher rm = java.util.regex.Pattern
+                        .compile("<w:tr[ >].*?</w:tr>", java.util.regex.Pattern.DOTALL).matcher(chunk);
+                while (rm.find()) {
+                    java.util.List<String> cells = new java.util.ArrayList<>();
+                    java.util.regex.Matcher cm = java.util.regex.Pattern
+                            .compile("<w:tc[ >].*?</w:tc>", java.util.regex.Pattern.DOTALL).matcher(rm.group());
+                    while (cm.find()) cells.add(textOf(cm.group()));
+                    if (!cells.isEmpty()) rows.add(cells);
+                }
+                if (!rows.isEmpty()) blocks.add(new Object[]{"table", rows});
+            } else {
+                String text = textOf(chunk);
+                if (text.isEmpty()) continue;
+                boolean bold = chunk.contains("<w:b/>");
+                boolean big = false;
+                java.util.regex.Matcher sm = java.util.regex.Pattern
+                        .compile("<w:sz w:val=\"(\\d+)\"").matcher(chunk);
+                if (sm.find()) {
+                    try { big = Integer.parseInt(sm.group(1)) >= 30; } catch (Throwable ignored) {}
+                }
+                blocks.add(new Object[]{"p", text, bold, big});
+            }
+        }
+        return blocks;
+    }
+
+    private static String textOf(String chunk) {
+        StringBuilder sb = new StringBuilder();
+        java.util.regex.Matcher tm = java.util.regex.Pattern
+                .compile("<w:t(?:\\s[^>]*)?>(.*?)</w:t>", java.util.regex.Pattern.DOTALL).matcher(chunk);
+        while (tm.find()) sb.append(tm.group(1));
+        return sb.toString().replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+                .replace("&quot;", "\"").replace("&apos;", "'");
+    }
+
+    private static String readZipEntry(File zipF, String name) {
+        try {
+            java.util.zip.ZipFile z = new java.util.zip.ZipFile(zipF);
+            java.util.zip.ZipEntry e = z.getEntry(name);
+            if (e == null) { z.close(); return null; }
+            java.io.InputStream in = z.getInputStream(e);
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            in.close();
+            z.close();
+            return bo.toString("UTF-8");
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     /** HTML：在内置 WebView 里加载后整页截图（失败时如实回报）。 */

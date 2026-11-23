@@ -58,6 +58,7 @@ public final class SelfCheck {
         checkProcessIo(out);
         checkTodo(out, c);
         checkPreviewMulti(out, c, dir);
+        checkOfficePreview(out, c, dir);
         checkMcpStdio(out, c, dir);
         checkWav(out, c, dir);
         checkM4a(out, c, dir);
@@ -471,6 +472,30 @@ public final class SelfCheck {
             out.add(new Item("多页对照预览", ok, detail));
         } catch (Throwable e) {
             out.add(new Item("多页对照预览", false, String.valueOf(e.getMessage())));
+        }
+    }
+
+    /** docx / xlsx 预览：解析 + 画图都要能出图。 */
+    private static void checkOfficePreview(List<Item> out, Context c, File dir) {
+        try {
+            File d = new File(dir, "pv.docx");
+            Office.write(c, "docx", d.getAbsolutePath(),
+                    "{\"title\":\"标题\",\"blocks\":[{\"type\":\"p\",\"text\":\"正文\"},"
+                            + "{\"type\":\"table\",\"rows\":[[\"a\",\"b\"],[\"1\",\"2\"]]}]}");
+            File dp = new File(dir, "pv-docx.png");
+            String e1 = Preview.renderDocx(d, dp);
+            boolean ok1 = e1 == null && dp.isFile() && dp.length() > 3000;
+            out.add(new Item("docx 预览", ok1, ok1 ? (dp.length() / 1024) + " KB" : String.valueOf(e1)));
+
+            File x = new File(dir, "pv.xlsx");
+            Office.write(c, "xlsx", x.getAbsolutePath(),
+                    "{\"sheets\":[{\"name\":\"S1\",\"header\":true,\"rows\":[[\"列一\",\"列二\"],[1,2]]}]}");
+            File xp = new File(dir, "pv-xlsx.png");
+            String e2 = Preview.renderXlsx(x, xp);
+            boolean ok2 = e2 == null && xp.isFile() && xp.length() > 2000;
+            out.add(new Item("xlsx 预览", ok2, ok2 ? (xp.length() / 1024) + " KB" : String.valueOf(e2)));
+        } catch (Throwable e) {
+            out.add(new Item("docx/xlsx 预览", false, String.valueOf(e.getMessage())));
         }
     }
 
