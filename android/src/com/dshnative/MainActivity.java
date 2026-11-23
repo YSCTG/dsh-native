@@ -68,6 +68,7 @@ public class MainActivity extends Activity implements Agent.Listener {
     private TextView chipA11y;
     private TextView chipSh;
     private TextView chipCtx;
+    private TextView chipWs;
     private static final int REQ_PICK = 1001;
     private final java.util.List<String> pendingImages = new java.util.ArrayList<>();
     private TextView chipNew;
@@ -391,6 +392,13 @@ public class MainActivity extends Activity implements Agent.Listener {
 
         chipCtx = chip("ctx —", null);
         bar.addView(chipCtx, chipLp());
+
+        // 工作区选项卡：完全权限 / 自建工作区，会话历史按它分开
+        chipWs = chip(Workspaces.current(this).name + " ▾", new View.OnClickListener() {
+            @Override public void onClick(View v) { showWorkspaceSheet(); }
+        });
+        chipWs.setTag("ws");
+        bar.addView(chipWs, chipLp());
 
         View s2 = new View(this);
         bar.addView(s2, new LinearLayout.LayoutParams(0, 1, 1f));
@@ -1313,6 +1321,8 @@ public class MainActivity extends Activity implements Agent.Listener {
         transcript.removeAllViews();
         transcript.addView(buildEmptyState());
         session = Session.create(this);
+        session.ws = Workspaces.currentId(this);   // 新会话归到当前工作区
+        Session.touch(this, session);
         prefs.edit().putString("session_id", session.id).apply();
         refreshMeta();
     }
@@ -1731,8 +1741,14 @@ public class MainActivity extends Activity implements Agent.Listener {
             @Override public void onClick(View v) { closeDrawer(); onFresh(); }
         }));
 
+        drawerBody.addView(sectionLabel("工作区 · " + Workspaces.current(this).name));
+        drawerBody.addView(drawerRow("⇄  切换 / 新建工作区", Workspaces.current(this).path,
+                new View.OnClickListener() {
+            @Override public void onClick(View v) { closeDrawer(); showWorkspaceSheet(); }
+        }));
+
         drawerBody.addView(sectionLabel("历史会话 · 长按置顶 / 删除"));
-        List<Session> all = Session.list(this);
+        List<Session> all = Session.list(this, Workspaces.currentId(this));
         if (all.isEmpty()) {
             drawerBody.addView(drawerRow("（还没有会话）", null, null));
         } else {
@@ -1829,6 +1845,8 @@ public class MainActivity extends Activity implements Agent.Listener {
         }
         if (session == null) {
             session = Session.create(this);
+            session.ws = Workspaces.currentId(this);
+            Session.touch(this, session);
             prefs.edit().putString("session_id", session.id).apply();
         }
         if (Session.body(this, session.id).isFile()) {
@@ -1842,6 +1860,69 @@ public class MainActivity extends Activity implements Agent.Listener {
             }).start();
         }
         refreshMeta();
+    }
+
+    /** 工作区选项卡：选一个，立刻切过去（会话列表跟着变）。 */
+    private void showWorkspaceSheet() {
+        final List<Workspaces.W> all = Workspaces.all(this);
+        final String cur = Workspaces.currentId(this);
+        String[] items = new String[all.size() + 1];
+        for (int i = 0; i < all.size(); i++) {
+            Workspaces.W w = all.get(i);
+            items[i] = (w.id.equals(cur) ? "✓  " : "    ") + w.name + "\n" + w.path;
+        }
+        items[all.size()] = "＋  新建工作区…";
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("工作区")
+                .setItems(items, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        if (which == all.size()) { promptNewWorkspace(); return; }
+                        switchWorkspace(all.get(which).id);
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void promptNewWorkspace() {
+        final android.widget.EditText input = new android.widget.EditText(this);
+        input.setHint("工作区名字，例如 论文 / 网站 / 实验");
+        input.setSingleLine(true);
+        int pad = dp(20);
+        android.widget.FrameLayout wrap = new android.widget.FrameLayout(this);
+        wrap.setPadding(pad, pad / 2, pad, 0);
+        wrap.addView(input);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("新建工作区")
+                .setView(wrap)
+                .setPositiveButton("创建", new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        String name = input.getText().toString().trim();
+                        if (name.isEmpty()) return;
+                        // 目录放在完全权限工作区下面，跟老文件放一起
+                        File base = Ws.preferred(MainActivity.this);
+                        File dir = new File(base, "ws_" + name.replaceAll("[^\\w\\u4e00-\\u9fa5]", "_"));
+                        Workspaces.W w = Workspaces.create(MainActivity.this, name, dir.getAbsolutePath());
+                        switchWorkspace(w.id);
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void switchWorkspace(String id) {
+        if (id.equals(Workspaces.currentId(this))) return;
+        Workspaces.setCurrent(this, id);
+        if (chipWs != null) chipWs.setText(Workspaces.current(this).name + " ▾");
+        // 切到该工作区最近的一段会话；没有就开一段新的
+        List<Session> mine = Session.list(this, id);
+        if (mine.isEmpty()) {
+            onFresh();
+        } else {
+            loadSession(mine.get(0).id);
+        }
+        refreshDrawer();
+        toast("已切到工作区：" + Workspaces.current(this).name);
     }
 
     private void loadSession(String id) {

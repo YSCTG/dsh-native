@@ -28,6 +28,8 @@ public final class Session {
     public long tokensIn, tokensOut;
     /** 置顶：抽屉里永远排最前。 */
     public boolean pinned;
+    /** 属于哪个工作区（会话列表按它分组）。 */
+    public String ws = Workspaces.FULL_ID;
     public double cost;
 
     public Session(String id) {
@@ -63,6 +65,15 @@ public final class Session {
         return s;
     }
 
+    /** 只列某个工作区的会话。 */
+    public static List<Session> list(Context c, String wsId) {
+        List<Session> all = list(c);
+        if (wsId == null) return all;
+        List<Session> out = new java.util.ArrayList<>();
+        for (Session s : all) if (wsId.equals(s.ws)) out.add(s);
+        return out;
+    }
+
     public static List<Session> list(Context c) {
         List<Session> out = new ArrayList<>();
         File f = indexFile(c);
@@ -83,6 +94,7 @@ public final class Session {
                 s.tokensOut = o.optLong("out", 0);
                 s.cost = o.optDouble("cost", 0);
                 s.pinned = o.optBoolean("pinned", false);
+            s.ws = o.optString("ws", Workspaces.FULL_ID);
                 out.add(s);
             }
         } catch (Exception ignored) {}
@@ -107,6 +119,7 @@ public final class Session {
                 o.put("out", s.tokensOut);
                 o.put("cost", s.cost);
                 o.put("pinned", s.pinned);
+        o.put("ws", s.ws == null ? Workspaces.FULL_ID : s.ws);
                 arr.put(o);
             }
             FileWriter w = new FileWriter(indexFile(c));

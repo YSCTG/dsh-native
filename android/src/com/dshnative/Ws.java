@@ -41,8 +41,12 @@ public final class Ws {
         return new File(c.getFilesDir(), "workspace");
     }
 
-    /** 真正可用的根：外部存储建不出来就退回私有目录。 */
+    /** 真正可用的根：当前工作区优先，其次外部存储，最后私有目录。 */
     public static File active(Context c) {
+        try {
+            File cur = Workspaces.currentDir(c);
+            if (cur != null && cur.isDirectory()) return cur;
+        } catch (Throwable ignored) {}
         File p = preferred(c);
         if (p.isDirectory()) return p;
         if (p.mkdirs()) return p;
