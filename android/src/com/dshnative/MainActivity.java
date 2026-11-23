@@ -71,6 +71,7 @@ public class MainActivity extends Activity implements Agent.Listener {
     private TextView chipWs;
     private android.app.AlertDialog currentDialog;
     private static final int REQ_PICK = 1001;
+    private static final int REQ_VOICE = 1002;
     private final java.util.List<String> pendingImages = new java.util.ArrayList<>();
     private TextView chipNew;
 
@@ -411,6 +412,11 @@ public class MainActivity extends Activity implements Agent.Listener {
 
         View s2 = new View(this);
         bar.addView(s2, new LinearLayout.LayoutParams(0, 1, 1f));
+
+        TextView mic = chip("🎤", new View.OnClickListener() {
+            @Override public void onClick(View v) { startVoice(); }
+        });
+        bar.addView(mic, chipLp());
 
         TextView attach = chip("📎", new View.OnClickListener() {
             @Override public void onClick(View v) { pickFile(); }
@@ -1099,6 +1105,91 @@ public class MainActivity extends Activity implements Agent.Listener {
     // ---------------- 交互 ----------------
 
     /** 选一个文件，复制进工作区的 uploads/，把绝对路径写进输入框。 */
+    /** 语音输入：交给系统识别器（华为自带引擎，不需要 GMS）。 */
+    private void startVoice() {
+        try {
+            android.content.Intent i = new android.content.Intent(
+                    android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "zh-CN");
+            i.putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "说话…");
+            startActivityForResult(i, REQ_VOICE);
+        } catch (Throwable e) {
+            toast("这台手机没有系统语音识别引擎；可以用输入法自带的语音键");
+        }
+    }
+
+    /** 查 GitHub Releases，有新版本就问一句。 */
+    private void checkUpdate() {
+        toast("正在检查更新…");
+        new Thread(new Runnable() {
+            @Override public void run() {
+                final Updater.Info info = Updater.latest();
+                final String cur = Updater.currentVersion(MainActivity.this);
+                ui.post(new Runnable() {
+                    @Override public void run() {
+                        if (info == null) { toast("查不到更新（网络或 API 不可达）"); return; }
+                        if (!Updater.isNewer(info.tag, cur)) {
+                            android.util.Log.i("DSHN", "更新 已是最新 " + cur);
+                            toast("已是最新版本 " + cur);
+                            return;
+                        }
+                        String notes = info.notes == null ? "" : info.notes.trim();
+                        if (notes.length() > 400) notes = notes.substring(0, 400) + "…";
+                        showPanelDialog(buildConfirmPanel(
+                                "发现新版本 " + info.tag,
+                                "当前 " + cur + " → " + info.tag + "（"
+                                        + (info.size / 1024 / 1024) + " MB）\n\n" + notes,
+                                "下载并安装", R.color.accent,
+                                new Runnable() {
+                                    @Override public void run() { downloadAndInstall(info); }
+                                }));
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void downloadAndInstall(final Updater.Info info) {
+        if (!Updater.canInstall(this)) {
+            toast("先允许「安装未知应用」，然后再点一次检查更新");
+            Updater.openInstallPermission(this);
+            return;
+        }
+        android.util.Log.i("DSHN", "更新 开始下载 " + info.apkUrl);
+        toast("开始下载 " + info.tag + "…");
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    File apk = Updater.download(MainActivity.this, info,
+                            new Updater.Progress() {
+                                @Override public void onProgress(long got, long total) {
+                                    // 进度只打日志，避免每 64KB 弹一次 toast
+                                    if (total > 0 && got % (8L * 1024 * 1024) < 64 * 1024) {
+                                        android.util.Log.i("DSHN", "更新下载 " + got / 1024 / 1024
+                                                + "/" + total / 1024 / 1024 + " MB");
+                                    }
+                                }
+                            });
+                    ui.post(new Runnable() {
+                        @Override public void run() {
+                            android.util.Log.i("DSHN", "更新 下载完成，转安装器");
+                            toast("下载完成，交给系统安装");
+                        }
+                    });
+                    Updater.install(MainActivity.this, apk);
+                } catch (Throwable e) {
+                    ui.post(new Runnable() {
+                        @Override public void run() {
+                            android.util.Log.i("DSHN", "更新 下载失败: " + e);
+                            toast("下载失败：" + e.getMessage());
+                        }
+                    });
+                }
+            }
+        }).start();
+    }
     private void pickFile() {
         try {
             android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_GET_CONTENT);
@@ -1117,6 +1208,19 @@ public class MainActivity extends Activity implements Agent.Listener {
             String err = Screen.start(this, res, data);
             toast(err == null ? "截屏已授权，模型现在能看见屏幕" : err);
             refreshDrawer();
+            return;
+        }
+        if (req == REQ_VOICE) {
+            if (res == RESULT_OK && data != null) {
+                java.util.ArrayList<String> r =
+                        data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);
+                if (r != null && !r.isEmpty() && !r.get(0).trim().isEmpty()) {
+                    String said = r.get(0).trim();
+                    String cur = input.getText().toString();
+                    input.setText(cur.isEmpty() ? said : cur + (cur.endsWith(" ") ? "" : " ") + said);
+                    input.setSelection(input.getText().length());
+                }
+            }
             return;
         }
         if (req != REQ_PICK || res != RESULT_OK || data == null || data.getData() == null) return;
@@ -1194,6 +1298,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         fileCardsShown.clear();
         setSendState(true);
         RunService.start(this);
+        KeepAlive.acquire(this);   // 锁屏也别让这一轮被打断
 
         new Thread(new Runnable() {
             @Override public void run() {
@@ -1209,6 +1314,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                         running = false;
                         setSendState(false);
                         RunService.stop(MainActivity.this);
+                        KeepAlive.release();
                         refreshMeta();
                     }
                 });
@@ -1363,6 +1469,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         fileCardsShown.clear();
         setSendState(true);
         RunService.start(this);
+        KeepAlive.acquire(this);   // 锁屏也别让这一轮被打断
         new Thread(new Runnable() {
             @Override public void run() {
                 final Agent a = ensureAgent();
@@ -1372,6 +1479,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                         running = false;
                         setSendState(false);
                         RunService.stop(MainActivity.this);
+                        KeepAlive.release();
                         refreshMeta();
                     }
                 });
@@ -1740,6 +1848,9 @@ public class MainActivity extends Activity implements Agent.Listener {
                 try { startActivity(new android.content.Intent(MainActivity.this, FilesActivity.class)); }
                 catch (Exception e) { toast("打不开：" + e.getMessage()); }
             }
+        }));
+        footer.addView(drawerRow("检查更新", "当前 " + Updater.currentVersion(this), new View.OnClickListener() {
+            @Override public void onClick(View v) { closeDrawer(); checkUpdate(); }
         }));
         footer.addView(drawerRow("审计", Policy.Audit.count(getFilesDir()) + " 条记录", new View.OnClickListener() {
             @Override public void onClick(View v) { closeDrawer(); showAudit(); }

@@ -58,9 +58,23 @@ public class FileProviderX extends ContentProvider {
         }
     }
 
+    /**
+     * 系统安装器在装 APK 之前会查这两个列：文件名和大小。
+     * 以前这里返回 null，结果"交给系统安装"什么都弹不出来——不报错，也不安装。
+     */
     @Override public Cursor query(Uri uri, String[] projection, String selection,
                                   String[] selectionArgs, String sortOrder) {
-        return null;
+        try {
+            File f = fileOf(uri);
+            String[] cols = {"_display_name", "_size"};
+            Object[] vals = {f.getName(), f.length()};
+            android.database.MatrixCursor c =
+                    new android.database.MatrixCursor(cols);
+            c.addRow(vals);
+            return c;
+        } catch (Throwable e) {
+            return null;
+        }
     }
 
     @Override public Uri insert(Uri uri, ContentValues values) { return null; }
