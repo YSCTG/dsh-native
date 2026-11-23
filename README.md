@@ -1,17 +1,23 @@
 # DSH Native
 
+[![Download APK](https://img.shields.io/badge/download-APK-2ea44f?style=flat-square&logo=android&logoColor=white)](https://github.com/YSCTG/dsh-native/releases/latest)
+![Android 8+](https://img.shields.io/badge/android-8.0%2B-3ddc84?style=flat-square&logo=android&logoColor=white)
+![arm64](https://img.shields.io/badge/arch-arm64--v8a-555?style=flat-square)
+![License MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
+
 **An agent that runs on your Android phone — not a chat app.**
 
 DeepSeek Harness, reimplemented natively for Android. One API key, no root, no PC.
 It reads your screen and taps for you, writes files, runs shell commands and Python,
-browses the web in a built-in browser, and can fan work out to a team of sub-agents.
+browses the web in a built-in browser, generates Office documents and media, and can fan
+work out to a team of sub-agents.
 
-<p align="center">
-  <img src="docs/shots/bottom-bar.png" width="270" alt="transcript">
-  <img src="docs/shots/panel-english.png" width="270" alt="browser panel">
-</p>
+## Install
 
----
+Grab the APK from [**Releases**](https://github.com/YSCTG/dsh-native/releases/latest), install it,
+paste your DeepSeek API key. The setup screen walks through the five permissions.
+
+> Android 8.0+ (API 26), arm64-v8a. No root, no PC, no companion app.
 
 ## What makes it an agent
 
@@ -32,6 +38,7 @@ Most "AI on Android" apps are a text box in front of an API. This one has hands.
 | Plugins | `.dshp` packages with your own tools, loaded without a rebuild |
 | MCP | Model Context Protocol servers with auto-discovery |
 | Schedules | Recurring tasks that survive screen-off, run in a foreground service |
+| Workspaces | Named folders on the phone, each with its own conversation history |
 
 Forty tools at full capability. The tool list is frozen per session on purpose:
 toggling a plugin affects new sessions only, so a running task never loses a tool mid-flight.

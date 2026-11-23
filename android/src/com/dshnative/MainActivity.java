@@ -326,10 +326,10 @@ public class MainActivity extends Activity implements Agent.Listener {
         div2.setBackgroundColor(getColor(R.color.border_l1));
         root.addView(div2, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)));
 
-        // 环境提醒（缺东西时常驻，不偷偷放行）
+        // 环境提醒（缺东西时常驻，但不吵人：灰字 + 低对比底）
         envBanner = new TextView(this);
-        envBanner.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        envBanner.setTextColor(getColor(R.color.danger));
+        envBanner.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        envBanner.setTextColor(getColor(R.color.label_caption));
         envBanner.setBackgroundColor(getColor(R.color.bg_subtle));
         envBanner.setPadding(dp(20), dp(9), dp(20), dp(9));
         envBanner.setVisibility(View.GONE);
@@ -449,19 +449,24 @@ public class MainActivity extends Activity implements Agent.Listener {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER_HORIZONTAL);
-        box.setPadding(dp(6), dp(84), dp(6), dp(20));
+        box.setPadding(dp(6), dp(72), dp(6), dp(20));
         box.setTag("empty");
 
         TextView w = new TextView(this);
         w.setText("DSH Native");
-        w.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        w.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
         w.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        w.setLetterSpacing(0.10f);
+        w.setLetterSpacing(0.08f);
         w.setTextColor(getColor(R.color.label_primary));
+        w.setPadding(0, 0, 0, dp(4));
         box.addView(w);
 
-        // 副标题去掉：只留名字，不要那行英文小字
-        w.setPadding(0, 0, 0, dp(28));
+        TextView sub = new TextView(this);
+        sub.setText("在手机上做事的 agent");
+        sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        sub.setTextColor(getColor(R.color.label_caption));
+        sub.setPadding(0, 0, 0, dp(26));
+        box.addView(sub);
 
         String[] hints = {
                 "看看当前屏幕上有什么",
@@ -474,7 +479,7 @@ public class MainActivity extends Activity implements Agent.Listener {
             t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
             t.setTextColor(getColor(R.color.label_secondary));
             t.setBackgroundResource(R.drawable.bg_chip);
-            t.setPadding(dp(14), dp(12), dp(14), dp(12));
+            t.setPadding(dp(18), dp(15), dp(18), dp(15));
             t.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) {
                     input.setText(h);
@@ -484,7 +489,7 @@ public class MainActivity extends Activity implements Agent.Listener {
             });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.bottomMargin = dp(8);
+            lp.bottomMargin = dp(7);
             box.addView(t, lp);
         }
         return box;
@@ -1538,7 +1543,7 @@ public class MainActivity extends Activity implements Agent.Listener {
             if (missing == 0) {
                 envBanner.setVisibility(View.GONE);
             } else {
-                envBanner.setText("环境未完整（缺 " + missing + " 项：" + what.toString().trim() + "）· 点这里补全");
+                envBanner.setText("⚠ 还差 " + what.toString().trim() + "· 点此补全");
                 envBanner.setVisibility(View.VISIBLE);
             }
         }
