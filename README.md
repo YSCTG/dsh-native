@@ -877,3 +877,31 @@ build-apk.ps1             手工构建（ASCII-only，PS 5.1/7 都能跑）
 
 构建脚本默认 ASCII 文案：Windows PowerShell 5.1 会把无 BOM 的 UTF-8 当 ANSI 读，
 中文会破坏解析。改文案请保持 ASCII，或者给文件加 BOM。
+
+## 构建
+
+没有 Gradle、没有 AndroidX，就是 aapt2 → javac → d8 → zipalign → apksigner 五步：
+
+```powershell
+. .\tools\env.ps1      # 指向本机的 JDK / Android SDK build-tools
+.\build-apk.ps1        # 产出 DSHNative.apk
+```
+
+依赖三个外部件（**不在仓库里**，太大）：
+
+| 文件 | 大小 | 用途 |
+|---|---|---|
+| `android/assets/tools.zip` | 65 MB | git / gh / curl / jq / node / less 的 Termux 二进制 |
+| `android/assets/py_stdlib.zip` | 4.8 MB | Python 3.14 标准库（已在仓库） |
+| `android/native/arm64-v8a/libpython3.14.so` | 5.7 MB | Python 解释器（已在仓库） |
+
+`tools.zip` 需要自己从 Termux 的 aarch64 包里拼：`git` `gh` `curl` `jq` `nodejs` `less`，
+解到 `bin/ lib/ libexec/ share/ etc/` 结构后打包。没有它 App 也能跑，只是终端里没有这些命令。
+
+## 它是什么
+
+一个**跑在手机上的 agent**，不是聊天窗口：
+
+- 能读写任意文件、跑 shell / Python、操作界面（无障碍）、截屏、内置浏览器
+- 有子智能体、任务板、并行 team、29 个技能、`.dshp` 插件、MCP
+- 一个 API key 就能用，不依赖电脑
