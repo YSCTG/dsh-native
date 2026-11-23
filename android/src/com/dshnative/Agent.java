@@ -58,7 +58,8 @@ public final class Agent {
         boolean confirm(String title, String body);
     }
 
-    private static final int MAX_TURNS = 40;
+    private static final int MAX_TURNS = 80;      // 轮次兜底（数的是模型往返，不是工具数）
+    private static final double BUDGET_USD = 0.15;  // 单轮预算闸：约 ¥1
     private static final int READ_LIMIT = 200;
     private static final int READ_MAX_BYTES = 64 * 1024;
     private static final int UI_MAX_NODES = 120;
@@ -662,6 +663,9 @@ public final class Agent {
             }
 
             turnsUsed = 0;
+            String guardNote = null;         // 被某道闸拦下时的说明（null = 正常结束）
+            String lastSig = null, lastOut = null;
+            int sameSig = 0, sameOut = 0;
             for (int turn = 0; turn < MAX_TURNS && !cancelled; turn++) {
                 turnsUsed = turn + 1;
                 // 插话：上一轮工具跑完、下一次请求还没发时把它接进来。
@@ -677,6 +681,14 @@ public final class Agent {
                 listener.onStatus(statusLine(r.usage));
                 addMessage(r.assistant);
 
+                // 闸二：预算。大 ctx 下慢慢烧钱比跑飞更难察觉。
+                if (sessionUsage.costUsd() > BUDGET_USD) {
+                    guardNote = "⚠ 本轮已花掉 $" + String.format("%.2f", sessionUsage.costUsd())
+                            + "（超过 $" + String.format("%.2f", BUDGET_USD)
+                            + " 的预算闸），先停下让你看一眼。要继续就回一句「继续」。";
+                    break;
+                }
+
                 JSONArray calls = r.assistant.optJSONArray("tool_calls");
                 if (calls == null || calls.length() == 0) break;
 
@@ -687,12 +699,28 @@ public final class Agent {
                     String name = call.has("function") ? str(fn, "name", "") : "";
                     String args = str(fn, "arguments", "{}");
                     if (args.isEmpty()) args = "{}";
+
+                    // 闸一：卡循环。同样的调用、同样的结果反复出现，多半是它在原地打转。
+                    String sig = name + "|" + args;
+                    if (sig.equals(lastSig)) sameSig++; else { lastSig = sig; sameSig = 1; }
+                    if (sameSig >= 4) {
+                        guardNote = "⚠ 同一个调用连续出现 " + sameSig + " 次（" + name
+                                + "），看起来卡住了，我先停下。换个思路告诉我就行。";
+                        break;
+                    }
+
                     long tTool = System.currentTimeMillis();
                     // 看门狗：任何工具都不许无限期挂住整轮对话。
                     // sh / python / Shizuku 各自有超时，但插件工具、MCP、界面调用没有，
                     // 一旦它们卡住，用户看到的就是"卡死 + 停止按钮也没反应"。
                     String out = executeGuarded(name, args);
                     listener.onToolDone(name, System.currentTimeMillis() - tTool);
+
+                    if (out != null && out.equals(lastOut)) sameOut++; else { lastOut = out; sameOut = 1; }
+                    if (sameOut >= 5) {
+                        guardNote = "⚠ 连续 " + sameOut + " 次工具返回完全相同的内容，没有进展，我先停下。";
+                        break;
+                    }
 
                     JSONObject t = new JSONObject();
                     t.put("role", "tool");
@@ -725,19 +753,23 @@ public final class Agent {
                         pendingShot = null;
                     }
                 }
+                if (guardNote != null) break;     // 闸一拦下：别再进下一轮
             }
-            // 撞上限不能静默退出：用户会以为"任务自己断了"
-            if (!cancelled && turnsUsed >= MAX_TURNS) {
-                String note = "⚠ 已经连续执行 " + MAX_TURNS
+            // 停下来的原因必须说出来，否则用户只会看到"任务自己断了"
+            String stopNote = guardNote;
+            if (stopNote == null && !cancelled && turnsUsed >= MAX_TURNS) {
+                stopNote = "⚠ 已经连续执行 " + MAX_TURNS
                         + " 轮工具调用，本轮到此为止（不是出错，是上限）。"
                         + "任务还没完的话回一句「继续」，我接着跑。";
+            }
+            if (stopNote != null) {
                 try {
                     JSONObject m = new JSONObject();
                     m.put("role", "assistant");
-                    m.put("content", note);
+                    m.put("content", stopNote);
                     addMessage(m);
                 } catch (Throwable ignored) {}
-                listener.onAssistant("\n\n" + note);
+                listener.onAssistant("\n\n" + stopNote);
             }
             if (cancelled) listener.onError("已中止");
         } catch (Exception e) {
