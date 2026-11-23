@@ -2125,6 +2125,7 @@ public class MainActivity extends Activity implements Agent.Listener {
     private void showPanelDialog(View panel) {
         final android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
                 .setView(panel).create();
+        currentDialog = dlg;          // 按钮要用它来关闭；忘了这行就"点了不关"
         dlg.show();
         if (dlg.getWindow() != null) {
             dlg.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
