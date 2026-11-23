@@ -305,7 +305,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         headerMeta.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { showQuickSettings(); }
         });
-        metaRow.addView(headerMeta);
+        // 模型/推理胶囊已移入输入框，顶栏这里不再重复
 
         // 右：余额胶囊。只显示余额——每轮的 token/花费不再占界面。
         ledger = new TextView(this);
@@ -459,6 +459,22 @@ public class MainActivity extends Activity implements Agent.Listener {
         View gap = new View(this);
         tools.addView(gap, new LinearLayout.LayoutParams(0, dp(1), 1f));
 
+        // 模型 + 推理等级：桌面版就放在输入框这一排的右侧
+        TextView effortPill = new TextView(this);
+        effortPill.setText(modelShort() + " · " + effortLabel() + " ▾");
+        effortPill.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        effortPill.setTextColor(getColor(R.color.label_tertiary));
+        effortPill.setPadding(dp(8), dp(4), dp(8), dp(4));
+        effortPill.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showQuickSettings(); }
+        });
+        LinearLayout.LayoutParams epLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        epLp.rightMargin = dp(8);
+        tools.addView(effortPill, epLp);
+        headerMeta = effortPill;   // 顶栏那个胶囊不再单独出现
+
         sendBtn = new TextView(this);
         sendBtn.setText("↑");
         sendBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
@@ -516,12 +532,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         chipWs.setTag("ws");
         chipWs.setVisibility(View.GONE);   // 由输入卡片里那枚胶囊承担，避免重复
 
-        TextView gear = flat("⚙");
-        gear.setPadding(dp(10), dp(4), dp(10), dp(4));
-        gear.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { openSettings(); }
-        });
-        barOuter.addView(gear);
+        // 桌面版右下角没有齿轮；设置入口在抽屉里（见 openDrawer）
 
         root.addView(barOuter);
         return root;
@@ -781,27 +792,19 @@ public class MainActivity extends Activity implements Agent.Listener {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(dp(2), dp(5), dp(6), dp(5));
+        card.setPadding(0, dp(4), dp(6), dp(4));
 
-        // 左侧细竖线：工具调用是旁注，不该用一整块底色和正文抢
-        View rule = new View(this);
-        rule.setBackgroundColor(getColor(done ? R.color.border_l1 : R.color.border_l2));
-        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(dp(2), dp(15));
-        rlp.rightMargin = dp(10);
-        card.addView(rule, rlp);
-
+        // 桌面版就是这样一行：chevron + 人话动作，浅灰小字，没有任何底色或竖线
         TextView nm = new TextView(this);
-        String doneLabel = verbOf(name, true) + " · " + name;
-        nm.setText((done ? "✓ " : "▸ ") + verbOf(name, done) + " · " + name);
-        nm.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        nm.setTypeface(Typeface.MONOSPACE);
+        String doneLabel = verbOf(name, true);
+        nm.setText((done ? "› " : "▾ ") + verbOf(name, done));
+        nm.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         nm.setTextColor(getColor(done ? R.color.label_secondary : R.color.label_primary));
         card.addView(nm);
 
         TextView dt = new TextView(this);
         dt.setText(detail == null ? "" : detail);
-        dt.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        dt.setTypeface(Typeface.MONOSPACE);
+        dt.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         dt.setTextColor(getColor(R.color.label_tertiary));
         dt.setSingleLine(true);
         dt.setEllipsize(TextUtils.TruncateAt.MIDDLE);
@@ -1544,7 +1547,7 @@ public class MainActivity extends Activity implements Agent.Listener {
     
                     root,
                     this);
-            final String note0 = agent.toolCount() + " 个工具 · " + agent.tiers();
+            final String note0 = agent.toolCount() + " 个工具 · " + tierLabel();
             final boolean warn = a11yEnabledButNotConnected();
             ui.post(new Runnable() {
                 @Override public void run() {
@@ -2233,6 +2236,11 @@ public class MainActivity extends Activity implements Agent.Listener {
     private String apiKey() { return Secret.get(prefs); }
 
     /** 权限胶囊的口径和桌面版一致：完全权限 / 仅 app / 全部开放。 */
+    /** 顶栏/输入框都太窄，模型名只留短名。 */
+    private String modelShort() {
+        return model == null ? "flash" : model.replace("deepseek-", "");
+    }
+
     private String tierLabel() {
         boolean a = UiAgentService.isReady() || Compat.a11yInSettings(this);
         boolean r = root;
@@ -3204,13 +3212,13 @@ public class MainActivity extends Activity implements Agent.Listener {
                 }
                 if (hit == null && !pendingTools.isEmpty()) hit = pendingTools.get(0);
                 if (hit != null) {
-                    hit.view.setText("✓ " + hit.doneLabel);
+                    hit.view.setText("› " + hit.doneLabel);
                     hit.view.setTextColor(getColor(R.color.label_secondary));
                     hit.meta.setText(hit.base + "   " + dur);
                     pendingTools.remove(hit);
                 refreshAgentCounts();
                 } else if (lastToolName != null && lastToolLabel != null) {
-                    lastToolName.setText("✓ " + lastToolLabel);
+                    lastToolName.setText("› " + lastToolLabel);
                     if (lastToolMeta != null) {
                         lastToolMeta.setText((lastToolBase == null ? "" : lastToolBase) + "   " + dur);
                     }
