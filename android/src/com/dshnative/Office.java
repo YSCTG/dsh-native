@@ -46,7 +46,10 @@ public final class Office {
             if ("xlsx".equals(format)) return xlsx(out, spec);
             if ("pptx".equals(format)) return pptx(out, spec);
             if ("pdf".equals(format)) return pdf(out, spec);
-            return "错误：format 只能是 docx / xlsx / pptx / pdf";
+            if ("wav".equals(format) || "m4a".equals(format) || "mp4".equals(format)) {
+                return Media.write(out, format, spec);
+            }
+            return "错误：format 只能是 docx / xlsx / pptx / pdf / wav / m4a / mp4";
         } catch (Exception e) {
             return "错误：" + e.getMessage();
         }

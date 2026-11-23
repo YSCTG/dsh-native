@@ -226,16 +226,20 @@ public final class Agent {
                                new String[]{"path", "old", "new"})));
 
             add("fs.write", tool("office_write",
-                    "生成 Office 文件：docx / xlsx / pptx / pdf。纯本地生成，不需要联网。\n"
+                    "生成文档与媒体文件：docx / xlsx / pptx / pdf / wav / m4a / mp4。纯本地生成，不需要联网，不用 ffmpeg。\n"
                             + "docx: spec={title, blocks:[{type:'h1|h2|p|bullet',text} | {type:'table',rows:[[..],[..]]}]}\n"
                             + "xlsx: spec={sheets:[{name, header:true, widths:[12,20], rows:[[\"表头\",\"值\"],[1,2]]}]}"
                             + "  （数字写成数字、公式以 = 开头）\n"
                             + "pptx: spec={slides:[{title, bullets:[\"第一条\",\"第二条\"]}]}  （16:9 页面里的普通文本框）\n"
                             + "pdf:  spec={pages:[{title, lines:[\"一行\",\"另一行\"]}]}  （A4，自动折行，中文正常）\n"
+                            + "wav/m4a: spec={notes:[{freq:440,dur:0.4},{freq:523,dur:0.4}], waveform:'sine|square|saw|noise', volume:0.5}\n"
+                            + "         或 spec={tone:440, seconds:1} —— m4a 是 AAC 编码（平台没有 MP3 编码器）\n"
+                            + "mp4:  spec={size:[1280,720], fps:30, slides:[{title, bullets:[\"要点\"], seconds:2.5, bg:'#101418', fg:'#FFFFFF', accent:'#7FB2FF'}]}"
+                            + "  —— H.264 硬件编码，用来做幻灯片视频\n"
                             + "路径给绝对路径或相对工作区的路径；父目录会自动建。",
                     schema(props(new String[]{"format", "path", "spec"},
                                  new String[]{"string", "string", "object"},
-                                 new String[]{"docx / xlsx / pptx / pdf", "输出路径，如 out/report.docx", "结构见描述"}),
+                                 new String[]{"docx / xlsx / pptx / pdf / wav / m4a / mp4", "输出路径，如 out/report.docx", "结构见描述"}),
                            new String[]{"format", "path"})));
             add("app.list", tool("app_list", "列出已安装应用（名字 + 包名）。",
                     schema(obj("query", "string", "按名字或包名过滤，可省略"), new String[]{})));

@@ -710,11 +710,16 @@ public class MainActivity extends Activity implements Agent.Listener {
         boolean image = lower.endsWith(".png") || lower.endsWith(".jpg")
                 || lower.endsWith(".jpeg") || lower.endsWith(".webp");
         boolean pdf = lower.endsWith(".pdf");
+        boolean audio = lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".m4a")
+                || lower.endsWith(".ogg") || lower.endsWith(".aac") || lower.endsWith(".flac");
+        boolean video = lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".3gp")
+                || lower.endsWith(".mkv");
+        boolean html = lower.endsWith(".html") || lower.endsWith(".htm");
         String sz = f.length() < 1024 ? (f.length() + " B")
                 : String.format("%.1f KB", f.length() / 1024.0);
 
         TextView icon = new TextView(this);
-        icon.setText(image ? "🖼" : "📄");
+        icon.setText(image ? "🖼" : audio ? "🎵" : video ? "🎬" : html ? "🌐" : "📄");
         icon.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         head.addView(icon);
 
@@ -745,11 +750,14 @@ public class MainActivity extends Activity implements Agent.Listener {
 
         final boolean isImage = image;
         final boolean isPdf = pdf;
+        final boolean isAudio = audio;
+        final boolean isVideo = video;
+        final boolean isHtml = html;
         final String sizeText = sz;
         card.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 boolean open = body.getVisibility() != View.VISIBLE;
-                if (open && body.getChildCount() == 0) fillFileBody(body, f, isImage, isPdf);
+                if (open && body.getChildCount() == 0) fillFileBody(body, f, isImage, isPdf, isAudio, isVideo, isHtml);
                 body.setVisibility(open ? View.VISIBLE : View.GONE);
                 toggle.setText(sizeText + (open ? " · 收起 ▴" : " · 展开 ▾"));
             }
@@ -758,8 +766,76 @@ public class MainActivity extends Activity implements Agent.Listener {
     }
 
     /** 内嵌预览：图片渲染出来，文本读前几 KB，二进制给提示。 */
-    private void fillFileBody(LinearLayout body, File f, boolean image, boolean pdf) {
+    private void fillFileBody(LinearLayout body, File f, boolean image, boolean pdf,
+                             boolean audio, boolean video, boolean html) {
         try {
+            if (html) {
+                // HTML 直接在内嵌 WebView 里渲染，带 JS
+                android.webkit.WebView wv = new android.webkit.WebView(this);
+                wv.getSettings().setJavaScriptEnabled(true);
+                wv.getSettings().setDomStorageEnabled(true);
+                wv.setBackgroundColor(0xFFFFFFFF);
+                wv.loadUrl("file://" + f.getAbsolutePath());
+                LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(360));
+                body.addView(wv, wlp);
+                TextView tip = new TextView(this);
+                tip.setText("（内嵌渲染 · 点标题可用浏览器打开）");
+                tip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+                tip.setTextColor(getColor(R.color.label_tertiary));
+                body.addView(tip);
+                return;
+            }
+            if (audio) {
+                final android.media.MediaPlayer mp = new android.media.MediaPlayer();
+                mp.setDataSource(f.getAbsolutePath());
+                mp.prepare();
+                int dur = mp.getDuration() / 1000;
+                LinearLayout row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                final TextView play = new TextView(this);
+                play.setText("▶  播放");
+                play.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+                play.setTextColor(getColor(R.color.brand_fg));
+                play.setBackgroundResource(R.drawable.bg_chip);
+                play.setPadding(dp(14), dp(8), dp(14), dp(8));
+                final android.media.MediaPlayer player = mp;
+                play.setOnClickListener(new View.OnClickListener() {
+                    boolean on;
+                    @Override public void onClick(View v) {
+                        try {
+                            if (player.isPlaying()) { player.pause(); play.setText("▶  播放"); }
+                            else { player.start(); play.setText("⏸  暂停"); }
+                        } catch (Throwable ignored) {}
+                    }
+                });
+                row.addView(play);
+                TextView info = new TextView(this);
+                info.setText("   时长 " + (dur / 60) + ":" + String.format("%02d", dur % 60)
+                        + " · " + (f.length() / 1024) + " KB");
+                info.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+                info.setTextColor(getColor(R.color.label_tertiary));
+                row.addView(info);
+                body.addView(row);
+                return;
+            }
+            if (video) {
+                android.widget.VideoView vv = new android.widget.VideoView(this);
+                vv.setVideoPath(f.getAbsolutePath());
+                android.widget.MediaController mc = new android.widget.MediaController(this);
+                mc.setAnchorView(vv);
+                vv.setMediaController(mc);
+                body.addView(vv, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(220)));
+                vv.seekTo(1);
+                TextView tip = new TextView(this);
+                tip.setText("（点播放开始；控件在画面下方）");
+                tip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+                tip.setTextColor(getColor(R.color.label_tertiary));
+                body.addView(tip);
+                return;
+            }
             if (pdf) {
                 // PDF 首页渲染成图：Android 自带 PdfRenderer，不用第三方
                 try {

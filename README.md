@@ -117,6 +117,26 @@ built for Android); xlsx uses inline strings and a minimal style sheet. PDF goes
 system font stack for free.
 
 Verified against `python-docx`, `openpyxl`, `python-pptx` and `pypdf` — all four round-trip.
+
+### Media files
+
+The same tool also generates audio and video, using the platform's hardware codecs
+instead of bundling ffmpeg (which would add ~100 MB of shared libraries):
+
+| format | how | notes |
+|---|---|---|
+| `wav` | PCM written by hand | 16-bit mono, 44.1 kHz, fade in/out per segment |
+| `m4a` | PCM → AAC via `MediaCodec` → `MediaMuxer` | the platform ships an AAC encoder, not an MP3 one |
+| `mp4` | slides rendered to bitmaps → NV12 → H.264 → `MediaMuxer` | explicit PTS, no EGL, no vendor surprises |
+
+```json
+{"notes":[{"freq":523,"dur":0.4},{"freq":659,"dur":0.4}]}
+{"size":[1280,720],"fps":30,"slides":[{"title":"Q2","bullets":["收入增长 7.3%"],"seconds":2.5}]}
+```
+
+Validated by parsing the containers directly: `m4a` has `ftyp/moov/mdat` with a `soun`
+track at exactly 2.00 s, `mp4` a `vide` track at 6.00 s for three 2-second slides, and the
+WAV header is little-endian PCM mono 44100 Hz.
 ## Architecture
 
 ```
