@@ -71,7 +71,6 @@ public class MainActivity extends Activity implements Agent.Listener {
     private TextView chipWs;
     private android.app.AlertDialog currentDialog;
     private static final int REQ_PICK = 1001;
-    private static final int REQ_VOICE = 1002;
     private final java.util.List<String> pendingImages = new java.util.ArrayList<>();
     private TextView chipNew;
 
@@ -413,11 +412,6 @@ public class MainActivity extends Activity implements Agent.Listener {
         View s2 = new View(this);
         bar.addView(s2, new LinearLayout.LayoutParams(0, 1, 1f));
 
-        TextView mic = chip("🎤", new View.OnClickListener() {
-            @Override public void onClick(View v) { startVoice(); }
-        });
-        bar.addView(mic, chipLp());
-
         TextView attach = chip("📎", new View.OnClickListener() {
             @Override public void onClick(View v) { pickFile(); }
         });
@@ -602,7 +596,36 @@ public class MainActivity extends Activity implements Agent.Listener {
         else { a = "正在调用工具"; b = "调用了工具"; }
         return done ? b : a;
     }
+    /** 还没收到完成回执的工具芯片。一次请求可能并行发多个工具，所以要按名字配对。 */
+    private static final class PendingTool {
+        final String name;
+        final TextView view;
+        final TextView meta;
+        final String base;
+        final String doneLabel;
+
+        PendingTool(String name, TextView view, TextView meta, String base, String doneLabel) {
+            this.name = name;
+            this.view = view;
+            this.meta = meta;
+            this.base = base;
+            this.doneLabel = doneLabel;
+        }
+    }
+
+    private final java.util.List<PendingTool> pendingTools = new java.util.ArrayList<>();
+
     private void addToolChip(String name, String detail) {
+        addToolChip(name, detail, false);
+    }
+
+    /**
+     * 工具芯片。
+     *
+     * done=true 用于历史重放：那些调用早就结束了，不该显示"正在…"。
+     * 之前重放一律画成进行时，所以老会话里满屏"正在运行命令"。
+     */
+    private void addToolChip(String name, String detail, boolean done) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
@@ -610,18 +633,17 @@ public class MainActivity extends Activity implements Agent.Listener {
 
         // 左侧细竖线：工具调用是旁注，不该用一整块底色和正文抢
         View rule = new View(this);
-        rule.setBackgroundColor(getColor(R.color.border_l2));
+        rule.setBackgroundColor(getColor(done ? R.color.border_l1 : R.color.border_l2));
         LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(dp(2), dp(15));
         rlp.rightMargin = dp(10);
         card.addView(rule, rlp);
 
         TextView nm = new TextView(this);
-        lastToolLabel = verbOf(name, true) + " · " + name;
-        nm.setText("▸ " + verbOf(name, false) + " · " + name);
-        lastToolName = nm;
+        String doneLabel = verbOf(name, true) + " · " + name;
+        nm.setText((done ? "✓ " : "▸ ") + verbOf(name, done) + " · " + name);
         nm.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         nm.setTypeface(Typeface.MONOSPACE);
-        nm.setTextColor(getColor(R.color.label_secondary));
+        nm.setTextColor(getColor(done ? R.color.label_secondary : R.color.label_primary));
         card.addView(nm);
 
         TextView dt = new TextView(this);
@@ -635,8 +657,14 @@ public class MainActivity extends Activity implements Agent.Listener {
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         dlp.leftMargin = dp(10);
         card.addView(dt, dlp);
-        lastToolMeta = dt;
-        lastToolBase = detail == null ? "" : detail;
+
+        if (!done) {
+            lastToolName = nm;
+            lastToolMeta = dt;
+            lastToolBase = detail == null ? "" : detail;
+            lastToolLabel = doneLabel;
+            pendingTools.add(new PendingTool(name, nm, dt, lastToolBase, doneLabel));
+        }
 
         addView(card);
     }
@@ -1105,20 +1133,6 @@ public class MainActivity extends Activity implements Agent.Listener {
     // ---------------- 交互 ----------------
 
     /** 选一个文件，复制进工作区的 uploads/，把绝对路径写进输入框。 */
-    /** 语音输入：交给系统识别器（华为自带引擎，不需要 GMS）。 */
-    private void startVoice() {
-        try {
-            android.content.Intent i = new android.content.Intent(
-                    android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-            i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                    android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-            i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "zh-CN");
-            i.putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "说话…");
-            startActivityForResult(i, REQ_VOICE);
-        } catch (Throwable e) {
-            toast("这台手机没有系统语音识别引擎；可以用输入法自带的语音键");
-        }
-    }
 
     /** 查 GitHub Releases，有新版本就问一句。 */
     private void checkUpdate() {
@@ -1210,19 +1224,6 @@ public class MainActivity extends Activity implements Agent.Listener {
             refreshDrawer();
             return;
         }
-        if (req == REQ_VOICE) {
-            if (res == RESULT_OK && data != null) {
-                java.util.ArrayList<String> r =
-                        data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);
-                if (r != null && !r.isEmpty() && !r.get(0).trim().isEmpty()) {
-                    String said = r.get(0).trim();
-                    String cur = input.getText().toString();
-                    input.setText(cur.isEmpty() ? said : cur + (cur.endsWith(" ") ? "" : " ") + said);
-                    input.setSelection(input.getText().length());
-                }
-            }
-            return;
-        }
         if (req != REQ_PICK || res != RESULT_OK || data == null || data.getData() == null) return;
         android.net.Uri uri = data.getData();
         String name = "file";
@@ -1296,6 +1297,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         abortRequested = false;
         assistantClosed = false;
         fileCardsShown.clear();
+        pendingTools.clear();
         setSendState(true);
         RunService.start(this);
         KeepAlive.acquire(this);   // 锁屏也别让这一轮被打断
@@ -1467,6 +1469,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         abortRequested = false;
         assistantClosed = false;
         fileCardsShown.clear();
+        pendingTools.clear();
         setSendState(true);
         RunService.start(this);
         KeepAlive.acquire(this);   // 锁屏也别让这一轮被打断
@@ -1952,8 +1955,9 @@ public class MainActivity extends Activity implements Agent.Listener {
                 // 只渲染最近 20 条：抽屉每轮都会重建，历史多了会明显卡
                 if (shown++ >= 20) break;
                 boolean cur = session != null && session.id.equals(s.id);
-                String name = (cur ? "●  " : "    ") + (s.pinned ? "📌 " : "")
-                        + (s.title == null || s.title.isEmpty() ? "新会话" : s.title);
+                // 置顶不用 emoji（📌 跟深色主题不搭）：改成句尾一个小标签
+                String title = s.title == null || s.title.isEmpty() ? "新会话" : s.title;
+                String name = (cur ? "●  " : "    ") + title + (s.pinned ? "   ·置顶" : "");
                 View row = drawerRow(name,
                         s.tokensIn + " in / " + s.tokensOut + " out · $" + String.format("%.4f", s.cost),
                         new View.OnClickListener() {
@@ -2636,7 +2640,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                     for (int k = 0; k < calls.length(); k++) {
                         try {
                             JSONObject fn = calls.getJSONObject(k).getJSONObject("function");
-                            addToolChip(fn.optString("name"), fn.optString("arguments", ""));
+                            addToolChip(fn.optString("name"), fn.optString("arguments", ""), true);
                         } catch (Exception ignored) {}
                     }
                 }
@@ -2713,6 +2717,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                     assistantBuf.setLength(0);
                     assistantClosed = false;
         fileCardsShown.clear();
+        pendingTools.clear();
                 }
                 ensureAssistantView();
                 assistantBuf.append(delta);
@@ -2824,11 +2829,22 @@ public class MainActivity extends Activity implements Agent.Listener {
             @Override public void run() {
                 ui.removeCallbacks(toolTick);
                 String dur = ms < 1000 ? ms + "ms" : String.format("%.1fs", ms / 1000.0);
-                if (lastToolName != null && lastToolLabel != null) {
-                    lastToolName.setText("✓ " + lastToolLabel);   // 完成后换过去
+                // 按名字找最早那个还没完成的芯片——并行调用时不能只认最后一个
+                PendingTool hit = null;
+                for (PendingTool p : pendingTools) {
+                    if (p.name.equals(name)) { hit = p; break; }
                 }
-                if (lastToolMeta != null) {
-                    lastToolMeta.setText((lastToolBase == null ? "" : lastToolBase) + "   " + dur);
+                if (hit == null && !pendingTools.isEmpty()) hit = pendingTools.get(0);
+                if (hit != null) {
+                    hit.view.setText("✓ " + hit.doneLabel);
+                    hit.view.setTextColor(getColor(R.color.label_secondary));
+                    hit.meta.setText(hit.base + "   " + dur);
+                    pendingTools.remove(hit);
+                } else if (lastToolName != null && lastToolLabel != null) {
+                    lastToolName.setText("✓ " + lastToolLabel);
+                    if (lastToolMeta != null) {
+                        lastToolMeta.setText((lastToolBase == null ? "" : lastToolBase) + "   " + dur);
+                    }
                 }
             }
         });
