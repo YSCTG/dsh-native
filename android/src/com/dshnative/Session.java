@@ -26,6 +26,8 @@ public final class Session {
     public String title = "";
     public long updated;
     public long tokensIn, tokensOut;
+    /** 置顶：抽屉里永远排最前。 */
+    public boolean pinned;
     public double cost;
 
     public Session(String id) {
@@ -80,11 +82,15 @@ public final class Session {
                 s.tokensIn = o.optLong("in", 0);
                 s.tokensOut = o.optLong("out", 0);
                 s.cost = o.optDouble("cost", 0);
+                s.pinned = o.optBoolean("pinned", false);
                 out.add(s);
             }
         } catch (Exception ignored) {}
         Collections.sort(out, new Comparator<Session>() {
-            @Override public int compare(Session a, Session b) { return Long.compare(b.updated, a.updated); }
+            @Override public int compare(Session a, Session b) {
+                if (a.pinned != b.pinned) return a.pinned ? -1 : 1;   // 置顶的在最前
+                return Long.compare(b.updated, a.updated);
+            }
         });
         return out;
     }
@@ -100,6 +106,7 @@ public final class Session {
                 o.put("in", s.tokensIn);
                 o.put("out", s.tokensOut);
                 o.put("cost", s.cost);
+                o.put("pinned", s.pinned);
                 arr.put(o);
             }
             FileWriter w = new FileWriter(indexFile(c));

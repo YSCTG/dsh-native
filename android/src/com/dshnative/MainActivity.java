@@ -1446,6 +1446,36 @@ public class MainActivity extends Activity implements Agent.Listener {
         return outer;
     }
 
+    /** 长按会话：置顶 / 取消置顶 / 删除。 */
+    private void sessionMenu(final Session s) {
+        String pin = s.pinned ? "取消置顶" : "置顶";
+        new android.app.AlertDialog.Builder(this, R.style.DshDialog)
+                .setTitle(s.title == null || s.title.isEmpty() ? "新会话" : s.title)
+                .setItems(new String[]{pin, "删除", "取消"}, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        if (which == 0) {
+                            togglePin(s);
+                        } else if (which == 1) {
+                            confirmDeleteSession(s);
+                        }
+                    }
+                })
+                .show();
+    }
+
+    private void togglePin(Session s) {
+        List<Session> all = Session.list(this);
+        for (Session x : all) {
+            if (x.id.equals(s.id)) {
+                x.pinned = !x.pinned;
+                x.updated = x.updated;   // 时间不动，置顶靠 pinned 排序
+                break;
+            }
+        }
+        Session.saveIndex(this, all);
+        toast(s.pinned ? "已取消置顶" : "已置顶");
+        refreshDrawer();
+    }
     private View drawerRow(String title, String meta, View.OnClickListener l) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.VERTICAL);
@@ -1488,7 +1518,7 @@ public class MainActivity extends Activity implements Agent.Listener {
             @Override public void onClick(View v) { closeDrawer(); onFresh(); }
         }));
 
-        drawerBody.addView(sectionLabel("历史会话 · 长按删除"));
+        drawerBody.addView(sectionLabel("历史会话 · 长按置顶 / 删除"));
         List<Session> all = Session.list(this);
         if (all.isEmpty()) {
             drawerBody.addView(drawerRow("（还没有会话）", null, null));
@@ -1498,7 +1528,8 @@ public class MainActivity extends Activity implements Agent.Listener {
                 // 只渲染最近 20 条：抽屉每轮都会重建，历史多了会明显卡
                 if (shown++ >= 20) break;
                 boolean cur = session != null && session.id.equals(s.id);
-                String name = (cur ? "●  " : "    ") + (s.title == null || s.title.isEmpty() ? "新会话" : s.title);
+                String name = (cur ? "●  " : "    ") + (s.pinned ? "📌 " : "")
+                        + (s.title == null || s.title.isEmpty() ? "新会话" : s.title);
                 View row = drawerRow(name,
                         s.tokensIn + " in / " + s.tokensOut + " out · $" + String.format("%.4f", s.cost),
                         new View.OnClickListener() {
@@ -1506,7 +1537,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                         });
                 row.setOnLongClickListener(new View.OnLongClickListener() {
                     @Override public boolean onLongClick(View v) {
-                        confirmDeleteSession(s);
+                        sessionMenu(s);
                         return true;
                     }
                 });
