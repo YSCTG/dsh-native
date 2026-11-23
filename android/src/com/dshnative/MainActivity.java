@@ -66,6 +66,7 @@ public class MainActivity extends Activity implements Agent.Listener {
     private TextView chipModel;
     private TextView chipA11y;
     private TextView chipSh;
+    private TextView ledger;
     private TextView chipCtx;
     private TextView chipWs;
     private TextView chipHit;
@@ -283,6 +284,28 @@ public class MainActivity extends Activity implements Agent.Listener {
         });
         metaRow.addView(headerMeta, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        // 右：余额胶囊。只显示余额——每轮的 token/花费不再占界面。
+        ledger = new TextView(this);
+        ledger.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        ledger.setTextColor(getColor(R.color.label_secondary));
+        ledger.setBackgroundResource(R.drawable.bg_chip);
+        ledger.setPadding(dp(11), dp(6), dp(11), dp(6));
+        ledger.setSingleLine(true);
+        ledger.setGravity(Gravity.CENTER);
+        ledger.setText("余额 –");
+        ledger.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                if (!Secret.hasKey(prefs)) { askKey(); return; }
+                balanceAge = 0;
+                refreshBalance();
+                toast("正在查余额…");
+            }
+        });
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        blp.leftMargin = dp(8);
+        metaRow.addView(ledger, blp);
 
         root.addView(metaRow);
 
@@ -1697,6 +1720,15 @@ public class MainActivity extends Activity implements Agent.Listener {
                         : pct >= 60 ? R.color.label_primary : R.color.label_tertiary));
             }
         }
+        if (ledger != null) {
+            if (!Secret.hasKey(prefs)) {
+                ledger.setText("未设置 key");
+                ledger.setTextColor(getColor(R.color.danger));
+            } else {
+                ledger.setText(balance == null ? "余额 –" : "余额 " + balance);
+                ledger.setTextColor(getColor(R.color.label_secondary));
+            }
+        }
         refreshDrawer();
         if (envBanner != null) {
             int missing = 0;
@@ -1825,14 +1857,6 @@ public class MainActivity extends Activity implements Agent.Listener {
                 closeDrawer();
                 try { startActivity(new android.content.Intent(MainActivity.this, FilesActivity.class)); }
                 catch (Exception e) { toast("打不开：" + e.getMessage()); }
-            }
-        }));
-        footer.addView(drawerRow("余额", balance == null ? "点这里刷新" : balance, new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                closeDrawer();
-                if (!Secret.hasKey(prefs)) { askKey(); return; }
-                balanceAge = 0;
-                refreshBalance();
             }
         }));
         footer.addView(drawerRow("检查更新", "当前 " + Updater.currentVersion(this), new View.OnClickListener() {
