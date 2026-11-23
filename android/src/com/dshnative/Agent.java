@@ -400,6 +400,17 @@ public final class Agent {
                         schema(obj("name", "string", "teammate 名字"), new String[]{"name"})));
             }
 
+            if (Plugin.isOn(ctx, "builtin.core")) {
+                add("fs.write", tool("todo",
+                        "待办清单：多步任务先摊开，做完一条就更新。\n"
+                                + "items 是整张表（不是增量），每项 {text, status}，status 取 pending/doing/done。\n"
+                                + "不带 items 就返回当前清单。",
+                        schema(props(new String[]{"items", "clear"},
+                                     new String[]{"array", "boolean"},
+                                     new String[]{"整张清单 [{text,status}]", "true 表示清空"}),
+                               new String[]{})));
+            }
+
             if (Plugin.isOn(ctx, "builtin.terminal")) {
                 add("shell", tool("python",
                         "用内置 Python 3.14 跑一段代码（有标准库，没有第三方包）。"
@@ -1186,6 +1197,28 @@ public final class Agent {
                 if (j == null) return "错误：没有这个任务";
                 Jobs.kill(j);
                 return "已请求结束 " + j.id;
+            }
+            if ("todo".equals(name)) {
+                if (a.optBoolean("clear", false)) {
+                    Todo.clear(ctx, session == null ? "" : session.id);
+                    return "清单已清空。";
+                }
+                JSONArray items = a.optJSONArray("items");
+                if (items == null) return "当前清单：\n" + Todo.render(ctx, session == null ? "" : session.id);
+                java.util.List<Todo.Item> list = new java.util.ArrayList<>();
+                for (int i = 0; i < items.length(); i++) {
+                    JSONObject o = items.optJSONObject(i);
+                    if (o == null) continue;
+                    String st = o.optString("status", "pending");
+                    if (!"done".equals(st) && !"doing".equals(st)) st = "pending";
+                    list.add(new Todo.Item(o.optString("text", ""), st));
+                }
+                Todo.save(ctx, session == null ? "" : session.id, list);
+                int done = 0;
+                for (Todo.Item it : list) if ("done".equals(it.status)) done++;
+                listener.onTool("todo", done + "/" + list.size());
+                return "清单已更新（" + done + "/" + list.size() + " 完成）：\n"
+                        + Todo.render(ctx, session == null ? "" : session.id);
             }
             if ("skill".equals(name)) {
                 String sid = a.optString("name", "").trim();

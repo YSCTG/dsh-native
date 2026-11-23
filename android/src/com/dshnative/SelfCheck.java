@@ -56,6 +56,7 @@ public final class SelfCheck {
         checkTypography(out, c, dir);
         checkAttach(out, c, dir);
         checkProcessIo(out);
+        checkTodo(out, c);
         checkMcpStdio(out, c, dir);
         checkWav(out, c, dir);
         checkM4a(out, c, dir);
@@ -427,6 +428,29 @@ public final class SelfCheck {
                        : ("list=" + listed + " call=" + called)));
         } catch (Throwable e) {
             out.add(new Item("MCP stdio 端到端", false, String.valueOf(e.getMessage())));
+        }
+    }
+
+    /** 待办清单：写入、读回、状态汇总、清空。 */
+    private static void checkTodo(List<Item> out, Context c) {
+        String sid = "selfcheck-" + System.currentTimeMillis();
+        try {
+            java.util.List<Todo.Item> items = new java.util.ArrayList<>();
+            items.add(new Todo.Item("第一步", "done"));
+            items.add(new Todo.Item("第二步", "doing"));
+            items.add(new Todo.Item("第三步", "pending"));
+            Todo.save(c, sid, items);
+            java.util.List<Todo.Item> back = Todo.load(c, sid);
+            String sum = Todo.summary(c, sid);
+            String render = Todo.render(c, sid);
+            boolean ok = back.size() == 3 && sum.contains("1/3") && sum.contains("第二步")
+                    && render.contains("[x]") && render.contains("[>]");
+            Todo.clear(c, sid);
+            boolean cleared = Todo.load(c, sid).isEmpty();
+            out.add(new Item("待办清单", ok && cleared,
+                    ok ? ("写入/读回/汇总正常，" + sum) : ("读回=" + back.size() + " 汇总=" + sum)));
+        } catch (Throwable e) {
+            out.add(new Item("待办清单", false, String.valueOf(e.getMessage())));
         }
     }
 

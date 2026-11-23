@@ -26,6 +26,25 @@ It reads what is on the screen and taps for you, runs shell commands and Python,
 real browser, writes Office documents and media files, and can fan work out to a team of
 sub-agents.
 
+### What changed recently
+
+Releases 15–16 went from "generates documents" to "can judge and fix its own output":
+
+- **A design layer for Office.** Five style presets, cover pages, block layout, table headers,
+  page numbers — first for PDF, then for docx and pptx.
+- **`office_preview`** renders a PDF or a deck to an image and hands it to the model, so layout work
+  is a loop (generate → look → adjust) instead of a guess.
+- **Images inside slides**, converted to PNG and wired through the package relationships.
+- **Background jobs** and a **todo list**, so long work no longer freezes the conversation.
+- **MCP over stdio** next to the existing HTTP client.
+- **A file-card filter**: only real deliverables are attached (scripts, JSON, logs and
+  `probe*/pv_*/preview-*` intermediates are refused).
+
+Three real bugs were found and fixed along the way — a PDF writer that reported success while
+writing a zero-byte file, a `spec` passed as a JSON string being silently ignored, and tools that
+vanished because an unknown capability name was rejected without a word. Each one now has an
+assertion or a log line behind it.
+
 ### What it actually does
 
 | Capability | How |
@@ -37,16 +56,18 @@ sub-agents.
 | Shell | Bundled Termux aarch64 binaries: `git`, `gh`, `curl`, `jq`, `node`, `less` |
 | Python | Bundled CPython 3.14 with the standard library, no network needed |
 | Web | Five browser tools driving a real WebView: open, read text, run JS, click, type |
-| Office | `docx`, `xlsx`, `pptx`, `pdf` generated locally by hand-written OOXML and `PdfDocument` |
+| Office | Native `docx`/`xlsx`/`pptx`/`pdf` with a design layer: five style presets, cover pages, tables, page numbers, and **embedded images in slides**. `office_preview` renders a PDF page or a deck back to an image so the model can look at its own layout |
 | Media | `wav`, `m4a` (AAC), `mp4` (H.264) through the platform's hardware codecs — no ffmpeg |
 | Parallel work | `subagent`, `loop`, and a team with a shared, revision-locked task board |
 | Skills | 29 built-in procedures, loaded on demand |
 | Plugins | `.dshp` packages that add tools without a rebuild |
-| MCP | Model Context Protocol servers over HTTP |
+| MCP | Model Context Protocol servers over **HTTP and stdio** (local process, newline JSON-RPC) |
+| Background jobs | `job_start` / `job_output` / `job_list` / `job_kill` — long commands run off the turn |
+| Plan and track | `todo` keeps a per-session checklist (`pending`/`doing`/`done`) that survives a process kill |
 | Schedules | Recurring tasks in a foreground service |
 | Workspaces | Any folder on the phone, each with its own conversation history |
 
-42 tools in total. The tool list is frozen per session on purpose: toggling a plugin affects
+48 tools in total. The tool list is frozen per session on purpose: toggling a plugin affects
 new sessions only, so a running task never loses a tool mid-flight.
 
 ### Why not just bundle a Linux runtime
@@ -71,14 +92,15 @@ Both are legitimate. The trade is breadth for weight, and this project chose wei
 
 ### Measured, not claimed
 
-Run on a HUAWEI ADA-AL10U (Android 12, arm64), release 14.1:
+Run on a HUAWEI ADA-AL10U (Android 12, arm64). Startup, PSS and APK size were measured at
+release 14.1 and have not regressed since; the self check is measured on every release:
 
 | Metric | Value |
 |---|---|
 | Cold start (`am start -W`) | **321 / 330 / 424 ms** |
 | PSS at idle | **74 MB** |
 | APK size | **76 MB**, of which 65 MB is the bundled toolchain |
-| On-device self check | **12/12 in 225 ms** |
+| On-device self check | **19/19 in about 250 ms** |
 | Context compaction | `1,200,463 → 61,223 characters` |
 
 `dev_selfcheck` is a tool, not a script you run on a PC. It generates a docx / xlsx / pptx /
@@ -205,6 +227,20 @@ MIT — see [LICENSE](LICENSE). Use it, fork it, ship it, sell it.
 它能读屏幕、替你点、跑 shell 和 Python、开一个真正的浏览器、生成本地 Office 与媒体文件，
 还能把活派给一队子智能体。
 
+### 最近改了什么
+
+15–16 这两个版本，从"能生成文档"走到了"能看、能改自己的产出"：
+
+- **Office 有了设计层**：五套风格预设、封面、块级排版、表头底色、页脚页码——先 PDF，再 docx 和 pptx。
+- **`office_preview`** 把 PDF 或幻灯片渲染成图交给模型，于是排版工作成了闭环（生成 → 看 → 调），而不是猜。
+- **幻灯片能放图片**：统一转 PNG，走包内的关系与媒体部件。
+- **后台任务**和**待办清单**：长活不再占着对话。
+- **MCP 支持 stdio**，和原有的 HTTP 客户端并存。
+- **文件卡片加了筛选**：只挂真正的成品，脚本、JSON、日志、`probe*/pv_*/preview-*` 一律不挂。
+
+顺带挖出并修掉三个真 bug：PDF 写入器"报成功却写 0 字节"、`spec` 传成 JSON 字符串被静默忽略、
+能力名写错导致工具静默消失。每一个现在都有断言或日志兜着。
+
 ### 它到底能做什么
 
 | 能力 | 实现方式 |
@@ -225,7 +261,7 @@ MIT — see [LICENSE](LICENSE). Use it, fork it, ship it, sell it.
 | 定时 | 前台服务里的周期任务 |
 | 工作区 | 手机上任意目录，各自独立的对话历史 |
 
-一共 42 个工具。工具表按会话冻结：开关插件只影响新会话，跑着的任务不会中途丢工具。
+一共 48 个工具。工具表按会话冻结：开关插件只影响新会话，跑着的任务不会中途丢工具。
 
 ### 为什么不干脆塞一个 Linux 运行时
 
@@ -242,7 +278,7 @@ MIT — see [LICENSE](LICENSE). Use it, fork it, ship it, sell it.
 | 工具开销 | 每次调用穿过兼容层 | 直接 `fork/exec` 原生二进制 |
 | 构建 | Flutter + Node + JDK + SDK/NDK | `aapt2 + javac + d8 + apksigner` |
 | 许可 | AGPL-3.0 | **MIT** |
-| 生态广度 | `apt install` 能装的都能用 | 固定 42 个工具 |
+| 生态广度 | `apt install` 能装的都能用 | 固定 48 个工具（+ MCP 扩展）|
 
 两条路都成立。这笔交易是"用广度换重量"，这个项目选了重量。
 
@@ -255,7 +291,7 @@ MIT — see [LICENSE](LICENSE). Use it, fork it, ship it, sell it.
 | 冷启动（`am start -W`） | **321 / 330 / 424 ms** |
 | 空闲 PSS | **74 MB** |
 | APK | **76 MB**（其中 65 MB 是内置工具链） |
-| 端上自检 | **12/12，225 ms** |
+| 端上自检 | **19/19，约 250 ms** |
 | 上下文压缩 | `1,200,463 → 61,223 字符` |
 
 `dev_selfcheck` 是个工具，不是电脑上跑的脚本。它会真的生成 docx / xlsx / pptx / pdf /
