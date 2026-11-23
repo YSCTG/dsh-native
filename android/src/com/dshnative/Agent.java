@@ -52,6 +52,8 @@ public final class Agent {
         void onUsage(int hit, int miss, int out, double costUsd);
         /** 本轮改动过的文件（绝对路径）。用来在回答下面附卡片。 */
         void onFilesTouched(java.util.List<String> paths);
+        /** 待办清单变化（渲染好的一行摘要，空串表示清空）。 */
+        default void onTodo(String summary) {}
         void onStatus(String status);
         void onError(String message);
         void onBusy(boolean busy);
@@ -528,7 +530,22 @@ public final class Agent {
         }
     }
     private void add(String cap, JSONObject tool) throws Exception {
-        if (mode.allows(cap) && Policy.decide(cap, root, a11y(), adb || shell()) != Policy.Decision.DENY) tools.put(tool);
+        String name = tool.optJSONObject("function").optString("name");
+        // 能力名写错会让工具凭空消失——这个坑踩过两次（job_* 一次、todo 一次）。
+        // 未知名字、被模式拦、被策略拦，三种情况分开报，别再静默。
+        if (Policy.cap(cap) == null) {
+            android.util.Log.e("DSHN", "工具用了未声明的能力名：" + cap + "（" + name + "）");
+            return;
+        }
+        if (!mode.allows(cap)) {
+            android.util.Log.w("DSHN", "工具被模式拦下：" + name + "（能力 " + cap + "）");
+            return;
+        }
+        if (Policy.decide(cap, root, a11y(), adb || shell()) == Policy.Decision.DENY) {
+            android.util.Log.w("DSHN", "工具被策略拦下：" + name + "（能力 " + cap + "）");
+            return;
+        }
+        tools.put(tool);
     }
 
     private JSONObject tool(String name, String desc, JSONObject params) throws Exception {
@@ -1201,6 +1218,7 @@ public final class Agent {
             if ("todo".equals(name)) {
                 if (a.optBoolean("clear", false)) {
                     Todo.clear(ctx, session == null ? "" : session.id);
+                    listener.onTodo("");
                     return "清单已清空。";
                 }
                 JSONArray items = a.optJSONArray("items");
@@ -1217,6 +1235,7 @@ public final class Agent {
                 int done = 0;
                 for (Todo.Item it : list) if ("done".equals(it.status)) done++;
                 listener.onTool("todo", done + "/" + list.size());
+                listener.onTodo(Todo.summary(ctx, session == null ? "" : session.id));
                 return "清单已更新（" + done + "/" + list.size() + " 完成）：\n"
                         + Todo.render(ctx, session == null ? "" : session.id);
             }

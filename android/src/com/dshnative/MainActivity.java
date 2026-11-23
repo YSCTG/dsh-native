@@ -70,6 +70,9 @@ public class MainActivity extends Activity implements Agent.Listener {
     private TextView chipCtx;
     private TextView chipWs;
     private TextView chipHit;
+    /** 待办摘要（模型更新清单时变化）。 */
+    private String todoSummary = "";
+
     /** 生成进度提示（只在跑的时候可见）。 */
     private TextView genStatus;
     private long genStart;
@@ -2711,6 +2714,24 @@ public class MainActivity extends Activity implements Agent.Listener {
 
     // ---------------- Agent.Listener ----------------
 
+    /** 把「生成进度」和「待办进度」合成一行，空着就整行隐藏。 */
+    private void refreshTodoLine() {
+        if (genStatus == null) return;
+        StringBuilder sb = new StringBuilder();
+        if (!todoSummary.isEmpty()) sb.append(todoSummary);
+        if (running && genStart > 0) {
+            if (sb.length() > 0) sb.append("   ·   ");
+            sb.append("正在写 · ").append(assistantBuf.length()).append(" 字 · ")
+              .append((System.currentTimeMillis() - genStart) / 1000).append('s');
+        }
+        if (sb.length() == 0) {
+            genStatus.setVisibility(View.GONE);
+        } else {
+            genStatus.setText(sb.toString());
+            genStatus.setVisibility(View.VISIBLE);
+        }
+    }
+
     /** 生成过程中刷新进度提示（当前假设：只在写正文时显示）。 */
     private void bumpGenStatus(boolean writing) {
         if (genStatus == null) return;
@@ -2870,6 +2891,15 @@ public class MainActivity extends Activity implements Agent.Listener {
         });
     }
 
+    @Override public void onTodo(final String summary) {
+        ui.post(new Runnable() {
+            @Override public void run() {
+                todoSummary = summary == null ? "" : summary;
+                refreshTodoLine();
+            }
+        });
+    }
+
     @Override public void onStatus(final String status) {
         // 状态行不再占用界面（原来挂在顶部的余额胶囊上）。
         // 有需要时它仍然会被写进日志，便于排查。
@@ -2907,7 +2937,8 @@ public class MainActivity extends Activity implements Agent.Listener {
                     appendFileChips(assistantBuf.toString());   // 收尾时把文件挂成卡片
                 if (!busy) {
                     genStart = 0;
-                    if (genStatus != null) genStatus.setVisibility(View.GONE);
+                    // 回合结束了，但待办进度要留着——不能连整行一起关掉
+                    refreshTodoLine();
                     finishThinking();
                     refreshBalance();
         if (migratedNote != null) note(migratedNote);
