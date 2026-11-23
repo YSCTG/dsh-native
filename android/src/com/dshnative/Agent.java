@@ -537,6 +537,36 @@ public final class Agent {
         return v == null ? fallback : v;
     }
 
+    // ---------------- 插话 / 排队 ----------------
+
+    /** 跑着的时候用户打的字：等下一次请求前接进对话，不打断当前工具。 */
+    private final java.util.concurrent.ConcurrentLinkedQueue<String> steers =
+            new java.util.concurrent.ConcurrentLinkedQueue<>();
+
+    /** 用户插一句话。返回 false 表示当前没在跑，应该走正常发送。 */
+    public boolean steer(String text) {
+        if (text == null || text.trim().isEmpty()) return false;
+        steers.add(text.trim());
+        android.util.Log.i("DSHN", "steer 入队: " + text.trim());
+        return true;
+    }
+
+    public int steerCount() { return steers.size(); }
+
+    /** 把排队的插话写成 user 消息塞进对话（只在不处于工具调用中间时调用）。 */
+    private void drainSteers() {
+        String s;
+        while ((s = steers.poll()) != null) {
+            try {
+                JSONObject u = new JSONObject();
+                u.put("role", "user");
+                u.put("content", "（插话，不用停下当前任务，按这个调整）" + s);
+                addMessage(u);
+                android.util.Log.i("DSHN", "steer 注入对话: " + s);
+                listener.onStatus("收到插话：" + (s.length() > 24 ? s.substring(0, 24) + "…" : s));
+            } catch (Throwable ignored) {}
+        }
+    }
     public void cancel() {
         cancelled = true;
         client.cancel();
@@ -629,6 +659,9 @@ public final class Agent {
             }
 
             for (int turn = 0; turn < MAX_TURNS && !cancelled; turn++) {
+                // 插话：上一轮工具跑完、下一次请求还没发时把它接进来。
+                // 只在这个位置注入，消息序列才合法（tool 结果紧跟着它的 tool_calls）。
+                drainSteers();
                 DeepSeekClient.Result r = client.complete(messages, tools, new DeepSeekClient.Hooks() {
                     @Override public void onContent(String d) { listener.onAssistant(d); }
                     @Override public void onReasoning(String d) { listener.onReasoning(d); }

@@ -356,7 +356,12 @@ public class MainActivity extends Activity implements Agent.Listener {
 
         input = new EditText(this);
         input.setBackground(null);
-        input.setHint("说点什么…");
+         input.setHint("说点什么…");
+        input.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) { refreshSendIcon(); }
+        });
         input.setHintTextColor(getColor(R.color.label_caption));
         input.setTextColor(getColor(R.color.label_primary));
         input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
@@ -1151,7 +1156,17 @@ public class MainActivity extends Activity implements Agent.Listener {
         }
     }
     private void onSend() {
-        if (running) return;
+        if (running) {
+            // 跑着的时候：输入框有字就是"插话"，没字才是"停"。
+            // 手机打字慢，想纠偏不该逼用户先停再重发。
+            String s = input.getText().toString().trim();
+            if (!s.isEmpty() && agent != null && agent.steer(s)) {
+                input.setText("");
+                addSteerChip(s);
+                toast("已插话，当前任务不会中断");
+            }
+            return;
+        }
         final String text = input.getText().toString().trim();
         if (text.isEmpty()) return;
         if (apiKey().isEmpty()) { askKey(); return; }
@@ -1203,16 +1218,50 @@ public class MainActivity extends Activity implements Agent.Listener {
 
     private void setSendState(boolean busy) {
         if (busy) {
-            sendBtn.setText("■");
-            sendBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-            sendBtn.setTextColor(getColor(R.color.danger));
-            sendBtn.setBackgroundResource(R.drawable.bg_ghost);
+            refreshSendIcon();
         } else {
             sendBtn.setText("↑");
             sendBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
             sendBtn.setTextColor(getColor(R.color.brand_fg));
             sendBtn.setBackgroundResource(R.drawable.bg_send);
         }
+    }
+
+    /** 跑着的时候，按钮随输入框内容切换：有字=插话，没字=停止。 */
+    private void refreshSendIcon() {
+        if (!running) return;
+        boolean hasText = input != null && input.getText().length() > 0;
+        if (hasText) {
+            sendBtn.setText("↪");
+            sendBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+            sendBtn.setTextColor(getColor(R.color.brand_fg));
+            sendBtn.setBackgroundResource(R.drawable.bg_send);
+        } else {
+            sendBtn.setText("■");
+            sendBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            sendBtn.setTextColor(getColor(R.color.danger));
+            sendBtn.setBackgroundResource(R.drawable.bg_ghost);
+        }
+    }
+
+    /** 插话在对话里的痕迹：一条小块，跟用户气泡区分开。 */
+    private void addSteerChip(String text) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(android.view.Gravity.END);
+        TextView t = new TextView(this);
+        String body = text.startsWith("插话") ? text : "插话：" + text;
+        t.setText("↪ " + body);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        t.setTextColor(getColor(R.color.label_secondary));
+        t.setBackgroundResource(R.drawable.bg_chip);
+        t.setPadding(dp(12), dp(8), dp(12), dp(8));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(6);
+        row.addView(t, lp);
+        addView(row);
+        scrollDown();
     }
 
     private Agent ensureAgent() {
@@ -2749,7 +2798,8 @@ public class MainActivity extends Activity implements Agent.Listener {
         String p = intent == null ? null : intent.getStringExtra("prompt");
         if (p != null && !p.trim().isEmpty()) {
             input.setText(p.trim());
-            if (!running) onSend();
+            // 忙的时候也要交给 onSend：它自己判断是"插话"还是"发送"
+            onSend();
         }
     }
 
