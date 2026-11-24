@@ -581,7 +581,10 @@ public final class Office {
                 + "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>"
                 + "<a:solidFill><a:srgbClr val=\"" + accent + "\"/></a:solidFill>"
                 + "<a:ln><a:noFill/></a:ln></p:spPr></p:sp>");
-        body.append(shapeColored(2, 457200, 274638, 8229600, 1143000, title, 2800, true, accent));
+        // 统一网格：左右边距跟着预设走（1pt = 12700 EMU），不同风格因此有不同留白
+        int m = (int) (d.margin * 12700L);
+        int cw = Math.max(3000000, 9144000 - m * 2);
+        body.append(shapeColored(2, m, 274638, cw, 1143000, title, 2800, true, accent));
         if (bullets != null && bullets.length() > 0) {
             StringBuilder t = new StringBuilder();
             for (int i = 0; i < bullets.length(); i++) {
@@ -590,15 +593,15 @@ public final class Office {
                  .append("<a:t>• ").append(esc(bullets.optString(i, "")))
                  .append("</a:t></a:r></a:p>");
             }
-            body.append(shapeRaw(3, 457200, 1600200, 8229600, 4525963, t.toString()));
+            body.append(shapeRaw(3, m, 1600200, cw, 4525963, t.toString()));
         }
-        body.append(shapeColored(4, 7772400, 6248400, 1100000, 300000,
+        body.append(shapeColored(4, m + cw - 1100000, 6248400, 1100000, 300000,
                 index + " / " + total, 1100, false, muted));
         if (imgPart != null) {
             body.append("<p:pic><p:nvPicPr><p:cNvPr id=\"20\" name=\"Picture\"/>"
                     + "<p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>"
                     + "<p:blipFill><a:blip r:embed=\"rId20\"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>"
-                    + "<p:spPr><a:xfrm><a:off x=\"5120640\" y=\"1600200\"/>"
+                    + "<p:spPr><a:xfrm><a:off x=\"" + (m + (int) (cw * 0.55)) + "\" y=\"1600200\"/>"
                     + "<a:ext cx=\"3474720\" cy=\"2606040\"/></a:xfrm>"
                     + "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr></p:pic>");
         }
