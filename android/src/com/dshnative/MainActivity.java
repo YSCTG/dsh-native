@@ -112,6 +112,8 @@ public class MainActivity extends Activity implements Agent.Listener {
     private int turnViewStart = -1;
     private View assistantBox;
     private long turnStartMs;
+    /** 当前是第几轮（历史折叠按它取耗时）。 */
+    private int turnOrdinal;
     private String lastSegment = "";
     /** shell/python 这类"执行命令"是外层归类，具体命令收在它下面（桌面版就是两层）。 */
     private LinearLayout execGroupBody;
@@ -766,6 +768,7 @@ public class MainActivity extends Activity implements Agent.Listener {
 
         row.addView(bubble, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        row.setTag("user");
         addView(row);
 
         // 气泡下面右侧一行小字：时间 + 复制（桌面版就是这样排的）
@@ -1232,19 +1235,29 @@ public class MainActivity extends Activity implements Agent.Listener {
         }
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(android.view.Gravity.END);
+        row.setGravity(android.view.Gravity.END | android.view.Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(2), 0, dp(6));
 
-        TextView copy = new TextView(this);
-        copy.setText("⧉ 复制");
-        copy.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        copy.setTextColor(getColor(R.color.label_caption));
-        copy.setPadding(dp(8), dp(2), dp(2), dp(4));
-        copy.setOnClickListener(new View.OnClickListener() {
+        row.addView(iconButton("⧉", new View.OnClickListener() {
             @Override public void onClick(View v) {
                 copyToClipboard(lastSegment.isEmpty() ? assistantBuf.toString() : lastSegment);
             }
-        });
-        row.addView(copy);
+        }));
+        row.addView(iconButton("↗", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                shareText(lastSegment.isEmpty() ? assistantBuf.toString() : lastSegment);
+            }
+        }));
+
+        TextView time = new TextView(this);
+        time.setText(nowLabel());
+        time.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        time.setTextColor(getColor(R.color.label_caption));
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tlp.leftMargin = dp(6);
+        row.addView(time, tlp);
+
         copyBar = row;
         transcript.addView(row);
     }
@@ -1279,7 +1292,9 @@ public class MainActivity extends Activity implements Agent.Listener {
             }
             holder.setVisibility(View.GONE);
 
-            String dur = humanDuration(System.currentTimeMillis() - turnStartMs);
+            long elapsed = System.currentTimeMillis() - turnStartMs;
+            String dur = humanDuration(elapsed);
+            try { saveAnswerDuration(turnOrdinal, elapsed); } catch (Throwable ignored) {}
             final TextView head = new TextView(this);
             head.setText("▸ 已完成，用时 " + dur);
             head.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
@@ -1305,11 +1320,127 @@ public class MainActivity extends Activity implements Agent.Listener {
         }
     }
 
+    /**
+     * 历史重绘后再收一遍：每个回合（以用户气泡分隔）里，最后一段助手正文留在外面，
+     * 它前面的思考/工具行/交错正文收进「▸ 已完成，用时 …」。
+     */
+    private void foldHistoryTurns() {
+        try {
+            java.util.Map<Integer, Long> durs = loadAnswerDurations();
+            int turn = -1;
+            int i = 0;
+            while (i < transcript.getChildCount()) {
+                View v = transcript.getChildAt(i);
+                if ("user".equals(v.getTag())) { turn++; i++; continue; }
+
+                // 本回合的范围：i .. 下一个 user 之前
+                int end = i;
+                while (end < transcript.getChildCount()
+                        && !"user".equals(transcript.getChildAt(end).getTag())) end++;
+                int lastText = -1;
+                for (int k = i; k < end; k++) {
+                    if ("atext".equals(transcript.getChildAt(k).getTag())) lastText = k;
+                }
+                // 只有"最后一段正文之前还有内容"才值得折
+                if (lastText > i) {
+                    java.util.List<View> moved = new java.util.ArrayList<>();
+                    for (int k = i; k < lastText; k++) moved.add(transcript.getChildAt(k));
+                    for (View mv : moved) transcript.removeView(mv);
+
+                    final LinearLayout holder = new LinearLayout(this);
+                    holder.setOrientation(LinearLayout.VERTICAL);
+                    for (View mv : moved) holder.addView(mv, new LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                    holder.setVisibility(View.GONE);
+
+                    Long d = durs.get(turn);
+                    String label = d == null ? "已完成" : "已完成，用时 " + humanDuration(d);
+                    final String labelFinal = label;
+                    final TextView head = new TextView(this);
+                    head.setText("▸ " + label);
+                    head.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+                    head.setTextColor(getColor(R.color.label_secondary));
+                    head.setPadding(0, dp(6), 0, dp(6));
+                    head.setOnClickListener(new View.OnClickListener() {
+                        @Override public void onClick(View v) {
+                            boolean show = holder.getVisibility() != View.VISIBLE;
+                            holder.setVisibility(show ? View.VISIBLE : View.GONE);
+                            head.setText((show ? "▾ " : "▸ ") + labelFinal);
+                        }
+                    });
+                    transcript.addView(head, i);
+                    transcript.addView(holder, i + 1);
+                    i = i + 2 + (end - lastText);
+                } else {
+                    i = end;
+                }
+            }
+        } catch (Throwable t) {
+            android.util.Log.w("DSHN", "foldHistoryTurns: " + t);
+        }
+    }
+
+    /** 每回合耗时：第几轮 <TAB> 毫秒。 */
+    private void saveAnswerDuration(int turn, long ms) {
+        try {
+            if (session == null) return;
+            java.io.File f = new java.io.File(Session.dir(this), "durations_" + session.id + ".txt");
+            java.io.FileOutputStream os = new java.io.FileOutputStream(f, true);
+            os.write((turn + "\t" + ms + "\n").getBytes("UTF-8"));
+            os.close();
+        } catch (Throwable ignored) {}
+    }
+
+    private java.util.Map<Integer, Long> loadAnswerDurations() {
+        java.util.Map<Integer, Long> out = new java.util.HashMap<>();
+        try {
+            if (session == null) return out;
+            java.io.File f = new java.io.File(Session.dir(this), "durations_" + session.id + ".txt");
+            if (!f.isFile()) return out;
+            java.io.BufferedReader r = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(new java.io.FileInputStream(f), "UTF-8"));
+            String line;
+            while ((line = r.readLine()) != null) {
+                int tab = line.indexOf('\t');
+                if (tab <= 0) continue;
+                try {
+                    out.put(Integer.parseInt(line.substring(0, tab).trim()),
+                            Long.parseLong(line.substring(tab + 1).trim()));
+                } catch (NumberFormatException ignored) {}
+            }
+            r.close();
+        } catch (Throwable ignored) {}
+        return out;
+    }
+
     /** 1分12秒 / 43秒 */
     private static String humanDuration(long ms) {
         long sec = Math.max(0, ms / 1000);
         if (sec < 60) return sec + "秒";
         return (sec / 60) + "分" + String.format("%02d", sec % 60) + "秒";
+    }
+
+    /** 回答下面那一排小图标：复制 / 分享（桌面版还有点赞踩，这里不做）。 */
+    private TextView iconButton(String glyph, View.OnClickListener l) {
+        TextView t = new TextView(this);
+        t.setText(glyph);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        t.setTextColor(getColor(R.color.label_caption));
+        t.setPadding(dp(10), dp(4), dp(10), dp(4));
+        t.setOnClickListener(l);
+        return t;
+    }
+
+    /** 分享这段回答（系统分享面板）。 */
+    private void shareText(String text) {
+        try {
+            android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_SEND);
+            i.setType("text/plain");
+            i.putExtra(android.content.Intent.EXTRA_TEXT, text == null ? "" : text);
+            startActivity(android.content.Intent.createChooser(i, "分享"));
+        } catch (Throwable t) {
+            toast("分享失败：" + t.getMessage());
+        }
     }
 
     /** 把文字放进剪贴板。 */
@@ -1791,6 +1922,10 @@ public class MainActivity extends Activity implements Agent.Listener {
         input.setText("");
         addUserBubble(text);
         turnViewStart = transcript.getChildCount();
+        turnOrdinal = 0;
+        for (int i = 0; i < transcript.getChildCount(); i++) {
+            if ("user".equals(transcript.getChildAt(i).getTag())) turnOrdinal++;
+        }
         turnStartMs = System.currentTimeMillis();
         scrollDown(true);
         assistantView = null;
@@ -3387,6 +3522,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                     tv.setLineSpacing(dp(5), 1f);
                     tv.setTextIsSelectable(true);
                     tv.setText(Markdown.render(this, c));
+                    tv.setTag("atext");
                     addView(tv);
                 }
             }
@@ -3407,7 +3543,8 @@ public class MainActivity extends Activity implements Agent.Listener {
                 }
             }
         }
-        if (!lastSegment.isEmpty()) moveCopyBar();   // 历史里也留一个复制，内容是最末段
+        if (!lastSegment.isEmpty()) moveCopyBar();
+        foldHistoryTurns();
         scrollDown();
     }
 
