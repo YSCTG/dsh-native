@@ -2076,6 +2076,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         }
         running = true;
         final String sendSid = session == null ? null : session.id;
+        final String sendTitle = session == null ? "" : session.title;
         if (sendSid != null) runningSessions.add(sendSid);
         abortRequested = false;
         assistantClosed = false;
@@ -2111,7 +2112,13 @@ public class MainActivity extends Activity implements Agent.Listener {
                             moveCopyBar();      // 只在最终回答下面挂一个
                             refreshMeta();
                         }
-                        // 切到别的会话了：这一轮在后台收尾，不动当前界面
+                        // 切到别的会话了：这一轮在后台收尾，不动当前界面，但要告诉用户它完成了
+                        if (!stillCurrent) {
+                            String nm = sendTitle == null || sendTitle.isEmpty()
+                                    ? "后台会话" : sendTitle;
+                            if (nm.length() > 14) nm = nm.substring(0, 14) + "…";
+                            toast("「" + nm + "」已完成");
+                        }
                     }
                 });
             }
@@ -2191,7 +2198,11 @@ public class MainActivity extends Activity implements Agent.Listener {
         }
         @Override public void onTodo(String sum) { if (fg()) MainActivity.this.onTodo(sum); }
         @Override public void onStatus(String st) { if (fg()) MainActivity.this.onStatus(st); }
-        @Override public void onError(String msg) { if (fg()) MainActivity.this.onError(msg); }
+        @Override public void onError(String msg) {
+            if (fg()) MainActivity.this.onError(msg);
+            else toast("后台会话出错：" + (msg == null ? "" : (msg.length() > 40
+                    ? msg.substring(0, 40) + "…" : msg)));
+        }
         @Override public void onBusy(boolean busy) { if (fg()) MainActivity.this.onBusy(busy); }
         @Override public void onRender(String html, String url) { if (fg()) MainActivity.this.onRender(html, url); }
 
@@ -2650,7 +2661,17 @@ public class MainActivity extends Activity implements Agent.Listener {
         Agent cur = currentAgent();
         if (chipCtx != null) {
             if (cur == null) {
-                chipCtx.setText("上下文 —");
+                // Agent 被 LRU 淘汰（或还没建）：用会话里记下的输入量配模型上限估算，
+                // 否则回到旧会话时只能看到"上下文 —"，好像状态丢了。
+                int lim = DeepSeekClient.contextLimit(model);
+                if (session != null && session.promptTokens > 0 && lim > 0) {
+                    int pct = (int) Math.round(session.promptTokens * 100.0 / lim);
+                    chipCtx.setText("上下文 " + pct + "%");
+                    chipCtx.setTextColor(getColor(pct >= 80 ? R.color.danger
+                            : pct >= 60 ? R.color.label_primary : R.color.label_tertiary));
+                } else {
+                    chipCtx.setText("上下文 —");
+                }
             } else if (cur.contextUsed() <= 0 && session != null && session.promptTokens > 0) {
                 // 刚切过来，本轮还没发请求：用上次记下的输入量，而不是显示 0%
                 int lim = cur.contextLimit();
