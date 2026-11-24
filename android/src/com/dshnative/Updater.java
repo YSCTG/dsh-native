@@ -192,8 +192,9 @@ public final class Updater {
      */
     private static final String[] MIRRORS = {
             "",
-            "https://ghproxy.net/",
-            "https://gh-proxy.com/",
+            // 实测（2026-11-25）：gh-proxy.org 可用；ghproxy.net / gh-proxy.com 已死，
+            // glfast/mirror.ghproxy/gh.llkk/moeyy 全部超时，所以只留活着的那个。
+            "https://gh-proxy.org/",
     };
 
     /** 下载 APK 到缓存目录，直连不通就换镜像。 */
