@@ -75,9 +75,9 @@ public final class Office {
                 if ("table".equals(type)) {
                     body.append(table(b.optJSONArray("rows")));
                 } else if ("h1".equals(type)) {
-                    body.append(para(b.optString("text", ""), true, 30, d.accent, 240, 120));
+                    body.append(para(b.optString("text", ""), true, 30, d.accent, 240, 120, "Heading1"));
                 } else if ("h2".equals(type)) {
-                    body.append(para(b.optString("text", ""), true, 26, d.ink, 200, 100));
+                    body.append(para(b.optString("text", ""), true, 26, d.ink, 200, 100, "Heading2"));
                 } else if ("bullet".equals(type)) {
                     body.append(para("• " + b.optString("text", ""), false, 22, d.ink, 0, 60));
                 } else if ("divider".equals(type)) {
@@ -92,9 +92,11 @@ public final class Office {
             }
         }
         String doc = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-                + "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
+                + "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\""
+                + " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
                 + "<w:body>" + body
-                + "<w:sectPr><w:pgMar w:top=\"1134\" w:right=\"1134\" w:bottom=\"1134\" w:left=\"1134\"/></w:sectPr>"
+                + "<w:sectPr><w:footerReference w:type=\"default\" r:id=\"rId2\"/>"
+                + "<w:pgMar w:top=\"1134\" w:right=\"1134\" w:bottom=\"1134\" w:left=\"1134\"/></w:sectPr>"
                 + "</w:body></w:document>";
         List<String[]> files = new ArrayList<>();
         files.add(new String[]{"[Content_Types].xml",
@@ -103,6 +105,8 @@ public final class Office {
                         + "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
                         + "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
                         + "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>"
+                        + "<Override PartName=\"/word/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/>"
+                        + "<Override PartName=\"/word/footer1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml\"/>"
                         + "</Types>"});
         files.add(new String[]{"_rels/.rels",
                 "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
@@ -110,6 +114,26 @@ public final class Office {
                         + "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/>"
                         + "</Relationships>"});
         files.add(new String[]{"word/document.xml", doc});
+        // 样式表：标题/正文由它决定，改一处颜色全文档生效
+        files.add(new String[]{"word/styles.xml", STYLES_XML});
+        // 页脚：居中的页码域
+        files.add(new String[]{"word/footer1.xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                        + "<w:ftr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
+                        + "<w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr>"
+                        + "<w:r><w:rPr><w:sz w:val=\"18\"/><w:color w:val=\"888888\"/></w:rPr>"
+                        + "<w:t>— </w:t></w:r>"
+                        + "<w:fldSimple w:instr=\" PAGE \"><w:r><w:rPr><w:sz w:val=\"18\"/>"
+                        + "<w:color w:val=\"888888\"/></w:rPr><w:t>1</w:t></w:r></w:fldSimple>"
+                        + "<w:r><w:rPr><w:sz w:val=\"18\"/><w:color w:val=\"888888\"/></w:rPr>"
+                        + "<w:t> —</w:t></w:r></w:p></w:ftr>"});
+        // document.xml.rels：文档 → 样式表(rId3)、页脚(rId2)
+        files.add(new String[]{"word/_rels/document.xml.rels",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                        + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                        + "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer\" Target=\"footer1.xml\"/>"
+                        + "<Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>"
+                        + "</Relationships>"});
         zip(out, files);
         return "已生成 docx：" + out.getAbsolutePath() + "（" + out.length() / 1024 + " KB）";
     }
@@ -117,15 +141,43 @@ public final class Office {
     /** 段落：字号用半磅，颜色是 ARGB，段前段后单位 twips（1/20 磅）。 */
     private static String para(String text, boolean bold, int sizeHalfPt, int colorArgb,
                                int spaceBefore, int spaceAfter) {
+        return para(text, bold, sizeHalfPt, colorArgb, spaceBefore, spaceAfter, null);
+    }
+
+    /** 带样式的版本：styleName 非空时写入 w:pStyle，由 styles.xml 决定字号/颜色。 */
+    private static String para(String text, boolean bold, int sizeHalfPt, int colorArgb,
+                               int spaceBefore, int spaceAfter, String styleName) {
         String hex = String.format("%06X", colorArgb & 0xFFFFFF);
         String rPr = "<w:rPr>" + (bold ? "<w:b/>" : "")
                 + "<w:sz w:val=\"" + sizeHalfPt + "\"/>"
                 + "<w:color w:val=\"" + hex + "\"/></w:rPr>";
-        String pPr = "<w:pPr><w:spacing w:before=\"" + spaceBefore + "\" w:after=\""
+        String pPr = "<w:pPr>" + (styleName == null ? "" : "<w:pStyle w:val=\"" + styleName + "\"/>")
+                + "<w:spacing w:before=\"" + spaceBefore + "\" w:after=\""
                 + spaceAfter + "\" w:line=\"320\" w:lineRule=\"auto\"/></w:pPr>";
         return "<w:p>" + pPr + "<w:r>" + rPr
                 + "<w:t xml:space=\"preserve\">" + esc(text) + "</w:t></w:r></w:p>";
     }
+
+    /** 最小但够用的样式表：Normal / Heading1 / Heading2。 */
+    private static final String STYLES_XML =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            + "<w:styles xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
+            + "<w:docDefaults><w:rPrDefault><w:rPr>"
+            + "<w:rFonts w:ascii=\"Calibri\" w:eastAsia=\"Microsoft YaHei\" w:hAnsi=\"Calibri\"/>"
+            + "<w:sz w:val=\"22\"/><w:szCs w:val=\"22\"/><w:color w:val=\"1A1A1A\"/>"
+            + "</w:rPr></w:rPrDefault>"
+            + "<w:pPrDefault><w:pPr><w:spacing w:after=\"120\" w:line=\"320\" w:lineRule=\"auto\"/>"
+            + "</w:pPr></w:pPrDefault></w:docDefaults>"
+            + "<w:style w:type=\"paragraph\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/></w:style>"
+            + "<w:style w:type=\"paragraph\" w:styleId=\"Heading1\"><w:name w:val=\"heading 1\"/>"
+            + "<w:basedOn w:val=\"Normal\"/><w:qFormat/>"
+            + "<w:pPr><w:spacing w:before=\"360\" w:after=\"160\"/></w:pPr>"
+            + "<w:rPr><w:b/><w:sz w:val=\"32\"/><w:color w:val=\"0F1115\"/></w:rPr></w:style>"
+            + "<w:style w:type=\"paragraph\" w:styleId=\"Heading2\"><w:name w:val=\"heading 2\"/>"
+            + "<w:basedOn w:val=\"Normal\"/><w:qFormat/>"
+            + "<w:pPr><w:spacing w:before=\"280\" w:after=\"120\"/></w:pPr>"
+            + "<w:rPr><w:b/><w:sz w:val=\"26\"/><w:color w:val=\"2A2F36\"/></w:rPr></w:style>"
+            + "</w:styles>";
 
     private static String table(JSONArray rows) {
         if (rows == null || rows.length() == 0) return "";
