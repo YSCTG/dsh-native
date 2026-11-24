@@ -292,6 +292,32 @@ public final class Office {
         StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                 + "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
         JSONArray widths = sh.optJSONArray("widths");
+        // 没指定列宽就按内容估算：中文按 2 个宽度算，夹在 8–60 之间。
+        // 之前不填就全是默认列宽，长表格一律挤在一起。
+        if ((widths == null || widths.length() == 0) && rows != null && rows.length() > 0) {
+            int cols = 0;
+            for (int r = 0; r < rows.length(); r++) {
+                JSONArray row = rows.optJSONArray(r);
+                if (row != null) cols = Math.max(cols, row.length());
+            }
+            int[] w = new int[cols];
+            for (int c = 0; c < cols; c++) w[c] = 8;
+            for (int r = 0; r < Math.min(rows.length(), 60); r++) {
+                JSONArray row = rows.optJSONArray(r);
+                if (row == null) continue;
+                for (int c = 0; c < row.length() && c < cols; c++) {
+                    String v = row.optString(c, "");
+                    int len = 0;
+                    for (int i = 0; i < v.length(); i++) {
+                        len += v.charAt(i) > 0x2E80 ? 2 : 1;
+                    }
+                    w[c] = Math.max(w[c], Math.min(60, len + 2));
+                }
+            }
+            org.json.JSONArray auto = new org.json.JSONArray();
+            for (int c = 0; c < cols; c++) auto.put(w[c]);
+            widths = auto;
+        }
         if (widths != null && widths.length() > 0) {
             sb.append("<cols>");
             for (int c = 0; c < widths.length(); c++) {
