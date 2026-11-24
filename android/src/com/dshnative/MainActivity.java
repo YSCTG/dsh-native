@@ -2031,10 +2031,13 @@ public class MainActivity extends Activity implements Agent.Listener {
             // 跑着的时候：输入框有字就是"插话"，没字才是"停"。
             // 手机打字慢，想纠偏不该逼用户先停再重发。
             String s = input.getText().toString().trim();
-            if (!s.isEmpty() && agent != null && agent.steer(s)) {
+            Agent a = currentAgent();
+            if (!s.isEmpty() && a != null && a.steer(s)) {
                 input.setText("");
                 addSteerChip(s);
                 toast("已插话，当前任务不会中断");
+            } else if (!s.isEmpty()) {
+                toast("这一轮还没连上，稍等一下再发");
             }
             return;
         }
@@ -2195,6 +2198,16 @@ public class MainActivity extends Activity implements Agent.Listener {
         @Override public String askChoice(String title, String[] options, boolean multi) {
             return fg() ? MainActivity.this.askChoice(title, options, multi) : null;
         }
+    }
+
+    /** 当前会话的 Agent：优先字段，其次池子。多会话之后字段经常是 null，不能只看它。 */
+    private Agent currentAgent() {
+        if (agent != null) return agent;
+        if (session != null) {
+            Agent a = agentPool.get(session.id);
+            if (a != null) { agent = a; return a; }
+        }
+        return null;
     }
 
     private Agent ensureAgent() {
@@ -2599,19 +2612,20 @@ public class MainActivity extends Activity implements Agent.Listener {
             headerTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, "DSH Native".equals(name) ? 13 : 14);
         }
 
+        Agent cur = currentAgent();
         if (chipCtx != null) {
-            if (agent == null) {
+            if (cur == null) {
                 chipCtx.setText("上下文 —");
-            } else if (agent.contextUsed() <= 0 && session != null && session.promptTokens > 0) {
+            } else if (cur.contextUsed() <= 0 && session != null && session.promptTokens > 0) {
                 // 刚切过来，本轮还没发请求：用上次记下的输入量，而不是显示 0%
-                int lim = agent.contextLimit();
+                int lim = cur.contextLimit();
                 int pct = lim <= 0 ? 0 : (int) Math.round(session.promptTokens * 100.0 / lim);
                 chipCtx.setText("上下文 " + pct + "%");
                 chipCtx.setTextColor(getColor(pct >= 80 ? R.color.danger
                         : pct >= 60 ? R.color.label_primary : R.color.label_tertiary));
             } else {
-                int used = agent.contextUsed();
-                int lim = agent.contextLimit();
+                int used = cur.contextUsed();
+                int lim = cur.contextLimit();
                 // 百分比比绝对 token 更有意义：用户关心的是"还剩多少空间"
                 int pct = lim <= 0 ? 0 : (int) Math.round(used * 100.0 / lim);
                 chipCtx.setText("上下文 " + pct + "%");
@@ -4382,6 +4396,8 @@ public class MainActivity extends Activity implements Agent.Listener {
 
     @Override
     protected void onDestroy() {
+        // 多会话：池子里可能还有在跑的实例，一并取消，避免退出后留下孤儿线程
+        for (Agent a : agentPool.values()) if (a != null) a.cancel();
         if (agent != null) agent.cancel();
         super.onDestroy();
     }
