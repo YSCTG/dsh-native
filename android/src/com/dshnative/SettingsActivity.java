@@ -159,6 +159,45 @@ public class SettingsActivity extends Activity {
     /** 拉远程目录：URL 存在 prefs.market_url，拉回来写 files/market-cache.json。 */
 
     /** 目录来源：填一个返回 market JSON 的地址；留空则回到内置示例目录。 */
+
+    /** 从电脑版插件导入：走 npm 元数据 → Native 技能包。 */
+    private void importFromDesktop() {
+        final android.widget.EditText input = new android.widget.EditText(this);
+        input.setHint("npm 包名，例如 @deepseek-ai/dsh-skill");
+        input.setTextSize(13);
+        input.setSingleLine(true);
+        new AlertDialog.Builder(this, R.style.DshDialog)
+                .setTitle("从电脑版导入")
+                .setMessage("会读取 npm 上的包元数据与 README，转成一个 Native 技能包。\n"
+                        + "它的 JavaScript 实现在手机上没有运行时，转换后的产物是\"怎么用\"而不是\"能跑\"。")
+                .setView(input)
+                .setPositiveButton("转换并安装", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        final String pkg = input.getText().toString().trim();
+                        if (pkg.isEmpty()) return;
+                        toast("正在读取 npm…");
+                        new Thread(new Runnable() {
+                            @Override public void run() {
+                                final DesktopImport.Result r = DesktopImport.fromNpm(SettingsActivity.this, pkg);
+                                if (r.manifest != null) DesktopImport.install(SettingsActivity.this, r.manifest);
+                                runOnUiThread(new Runnable() {
+                                    @Override public void run() {
+                                        if (r.manifest == null) {
+                                            toast(r.error == null ? "转换失败" : r.error);
+                                        } else {
+                                            toast("已转换并安装，新会话生效（技能里能看到）");
+                                            recreate();
+                                        }
+                                    }
+                                });
+                            }
+                        }).start();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
     private void editMarketSource() {
         final android.widget.EditText input = new android.widget.EditText(this);
         input.setText(prefs.getString("market_url", ""));
@@ -464,6 +503,14 @@ public class SettingsActivity extends Activity {
                         }
                     });
         }
+        divider(marketCard);
+        divider(marketCard);
+        actionRow(marketCard, "从电脑版导入",
+                "填 npm 包名（如 @deepseek-ai/dsh-skill）。电脑版插件是 Node 模块，代码跑不了，"
+                        + "能迁过来的是它的用法→变成技能提示词",
+                new View.OnClickListener() {
+                    @Override public void onClick(View v) { importFromDesktop(); }
+                });
         divider(marketCard);
         actionRow(marketCard, "目录来源 / 刷新",
                 Market.sourceDetail(this),

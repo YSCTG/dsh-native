@@ -38,6 +38,9 @@ public final class Skill {
 
     private Skill() {}
 
+    /** 技能表变了（装了/卸了插件）要作废缓存。 */
+    public static synchronized void invalidate() { cache = null; }
+
     public static synchronized List<S> all(Context c) {
         if (cache != null) return cache;
         List<S> out = new ArrayList<>();
@@ -58,6 +61,25 @@ public final class Skill {
                         o.optString("desc"), o.optString("body")));
             }
         } catch (Exception ignored) {}
+        // 插件带来的技能（含电脑版转换过来的）：files/skills-extra.json
+        try {
+            java.io.File extra = new java.io.File(c.getFilesDir(), "skills-extra.json");
+            if (extra.isFile()) {
+                String txt = Market.read(extra);
+                if (txt != null && txt.trim().startsWith("[")) {
+                    JSONArray arr = new JSONArray(txt);
+                    for (int i = 0; i < arr.length(); i++) {
+                        JSONObject o = arr.getJSONObject(i);
+                        String id = o.optString("id", "");
+                        if (id.isEmpty()) continue;
+                        boolean dup = false;
+                        for (S e : out) if (e.id.equals(id)) { dup = true; break; }
+                        if (!dup) out.add(new S(id, o.optString("name", id),
+                                o.optString("desc", ""), o.optString("body", "")));
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
         cache = out;
         return out;
     }
