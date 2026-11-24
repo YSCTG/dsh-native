@@ -90,7 +90,11 @@ public class MainActivity extends Activity implements Agent.Listener {
 
     private Agent agent;
     /** 每个会话各自的 Agent：切走/新建不再中断上一个会话。 */
-    private final java.util.Map<String, Agent> agentPool = new java.util.HashMap<>();
+    /** 每会话一个 Agent。按访问序排列，用于 LRU 淘汰；上限见 AGENT_POOL_MAX。 */
+    private final java.util.Map<String, Agent> agentPool = java.util.Collections.synchronizedMap(
+            new java.util.LinkedHashMap<String, Agent>(16, 0.75f, true));
+    /** 池子里最多留几个空闲 Agent。超出的最久未用者被丢弃（历史在磁盘上，重建即可）。 */
+    private static final int AGENT_POOL_MAX = 6;
     /** 正在跑的会话 id（可以有多个并行）。 */
     private final java.util.Set<String> runningSessions = new java.util.HashSet<>();
     private Mode mode;
@@ -2095,6 +2099,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                         if (sendSid != null) runningSessions.remove(sendSid);
                         boolean stillCurrent = session != null && session.id.equals(sendSid);
                         // 还有别的会话在跑就别撤前锋：服务与 WakeLock 都要留着
+                        trimAgentPool();
                         if (runningSessions.isEmpty()) {
                             RunService.stop(MainActivity.this);
                             KeepAlive.release();
@@ -2201,6 +2206,31 @@ public class MainActivity extends Activity implements Agent.Listener {
     }
 
     /** 当前会话的 Agent：优先字段，其次池子。多会话之后字段经常是 null，不能只看它。 */
+    /**
+     * 淘汰空闲 Agent：只留最近用过的几个。
+     *
+     * 不能淘汰正在跑的（runningSessions 里有它的会话），也不能淘汰当前会话——
+     * 否则用户回到会话时上下文会重置。
+     */
+    private void trimAgentPool() {
+        try {
+            synchronized (agentPool) {
+                int size = agentPool.size();
+                if (size <= AGENT_POOL_MAX) return;
+                String keep = session == null ? null : session.id;
+                java.util.Iterator<java.util.Map.Entry<String, Agent>> it =
+                        agentPool.entrySet().iterator();
+                while (it.hasNext() && size > AGENT_POOL_MAX) {
+                    java.util.Map.Entry<String, Agent> e = it.next();
+                    String id = e.getKey();
+                    if (id.equals(keep) || runningSessions.contains(id)) continue;
+                    it.remove();
+                    size--;
+                }
+            }
+        } catch (Throwable ignored) {}
+    }
+
     private Agent currentAgent() {
         if (agent != null) return agent;
         if (session != null) {
@@ -2222,7 +2252,10 @@ public class MainActivity extends Activity implements Agent.Listener {
     
                     root,
                     new SessionUi(session.id));
-            if (session != null) agentPool.put(session.id, agent);
+            if (session != null) {
+                agentPool.put(session.id, agent);
+                trimAgentPool();
+            }
             final String note0 = agent.toolCount() + " 个工具 · " + tierLabel();
             final boolean warn = a11yEnabledButNotConnected();
             ui.post(new Runnable() {
@@ -2341,7 +2374,9 @@ public class MainActivity extends Activity implements Agent.Listener {
         Agent runningAgent = agent;
         if (runningAgent == null && session != null) runningAgent = agentPool.get(session.id);
         if (runningAgent == null && session == null) {
-            for (Agent a : agentPool.values()) if (a != null) { runningAgent = a; break; }
+            synchronized (agentPool) {
+                for (Agent a : agentPool.values()) if (a != null) { runningAgent = a; break; }
+            }
         }
         if (runningAgent != null) {
             runningAgent.cancel();
@@ -4397,7 +4432,9 @@ public class MainActivity extends Activity implements Agent.Listener {
     @Override
     protected void onDestroy() {
         // 多会话：池子里可能还有在跑的实例，一并取消，避免退出后留下孤儿线程
-        for (Agent a : agentPool.values()) if (a != null) a.cancel();
+        synchronized (agentPool) {
+            for (Agent a : agentPool.values()) if (a != null) a.cancel();
+        }
         if (agent != null) agent.cancel();
         super.onDestroy();
     }
