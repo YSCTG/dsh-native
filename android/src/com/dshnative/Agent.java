@@ -1182,9 +1182,13 @@ public final class Agent {
             if ("sh".equals(name)) return sh(a.optString("command", ""), a.optInt("timeout", 120));
             if ("web_search".equals(name)) return webSearch(a.optString("query", ""));
             if ("browser_open".equals(name)) {
-                String url = a.optString("url", "");
-                if (!url.startsWith("http")) return "错误：url 要以 http(s):// 开头";
-                String err = Browser.openVisible(ctx, url, 40);
+                String url = a.optString("url", "").trim();
+                if (url.startsWith("/")) url = "file://" + url;
+                if (!url.startsWith("http") && !url.startsWith("file://")) {
+                    return "错误：url 要是 http(s):// 或 file:// 或绝对路径";
+                }
+                // 用隐藏的 WebView 取内容：模型自己浏览不该把内置浏览器顶到用户面前
+                String err = Browser.open(url, 40);
                 if (err != null) return err;
                 String txt = Browser.text(20);
                 if (txt.length() > 6000) txt = txt.substring(0, 6000) + "\n…已截断";

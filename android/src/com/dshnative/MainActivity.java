@@ -631,10 +631,30 @@ public class MainActivity extends Activity implements Agent.Listener {
         scrollDown();
     }
 
-    private void scrollDown() {
+    /**
+     * 自动滚动。
+     *
+     * 以前只要模型开始输出（包括思考阶段）就强制拉到底，用户往上翻着看历史会被拽回来。
+     * 现在只有"本来就在底部附近"才跟着滚；用户主动上翻就保持不动。
+     * 用户自己发消息、切换会话时仍然强制到底——那是明确的意图。
+     */
+    private void scrollDown() { scrollDown(false); }
+
+    private void scrollDown(final boolean force) {
         scroller.post(new Runnable() {
-            @Override public void run() { scroller.fullScroll(View.FOCUS_DOWN); }
+            @Override public void run() {
+                if (!force && !nearBottom()) return;
+                scroller.fullScroll(View.FOCUS_DOWN);
+            }
         });
+    }
+
+    /** 距离底部 120dp 以内算"在看最新内容"。 */
+    private boolean nearBottom() {
+        if (scroller == null || scroller.getChildCount() == 0) return true;
+        View child = scroller.getChildAt(0);
+        int gap = child.getBottom() - (scroller.getScrollY() + scroller.getHeight());
+        return gap <= dp(120);
     }
 
     /** 用户消息：右对齐气泡，和桌面版一致（浅蓝底，不是自己的头像）。 */
@@ -1430,6 +1450,7 @@ public class MainActivity extends Activity implements Agent.Listener {
 
         input.setText("");
         addUserBubble(text);
+        scrollDown(true);
         assistantView = null;
         assistantBuf.setLength(0);
         thinkingBlock = null;
@@ -2384,7 +2405,12 @@ public class MainActivity extends Activity implements Agent.Listener {
                 @Override public void run() {
                     ensureAgent();
                     ui.post(new Runnable() {
-                        @Override public void run() { renderHistory(); refreshMeta(); autoResumeIfNeeded(); }
+                        @Override public void run() {
+                        renderHistory();
+                        scrollDown(true);   // 切会话后回到最新一条
+                        refreshMeta();
+                        autoResumeIfNeeded();
+                    }
                     });
                 }
             }).start();
@@ -2914,6 +2940,7 @@ public class MainActivity extends Activity implements Agent.Listener {
     }
 
     private void loadSession(String id) {
+        // 切会话后重新从底部开始看
         if (agent != null) agent.cancel();
         agent = null;
         assistantView = null;
