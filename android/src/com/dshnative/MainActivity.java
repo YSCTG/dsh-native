@@ -109,6 +109,8 @@ public class MainActivity extends Activity implements Agent.Listener {
     /** 每个回答只保留一个复制入口，跟着最后一个输出段落走。 */
     private View copyBar;
     /** 本回合在对话流里的起始下标 / 最后一段正文的容器 / 起始时间，用来做「已完成」总收口。 */
+    /** 用户是否还贴着底部；只有为真时流式输出才跟着滚。 */
+    private boolean stickToBottom = true;
     private int turnViewStart = -1;
     private View assistantBox;
     private long turnStartMs;
@@ -366,6 +368,18 @@ public class MainActivity extends Activity implements Agent.Listener {
         scroller.setVerticalScrollBarEnabled(true);
         scroller.setScrollbarFadingEnabled(false);
         scroller.setScrollBarSize(dp(3));
+        // 跟随与否由用户手势决定：离开底部超过 8dp 就停手。
+        // 之前用 120dp 阈值，往上滑一点点仍被当成"在底部"，于是被拽回去。
+        scroller.setOnScrollChangeListener(new View.OnScrollChangeListener() {
+            @Override public void onScrollChange(View v, int x, int y, int oldX, int oldY) {
+                if (!(v instanceof ScrollView)) return;
+                ScrollView sv = (ScrollView) v;
+                if (sv.getChildCount() == 0) { stickToBottom = true; return; }
+                View child = sv.getChildAt(0);
+                int gap = child.getBottom() - (sv.getScrollY() + sv.getHeight());
+                stickToBottom = gap <= dp(8);
+            }
+        });
         scroller.setClipToPadding(false);
         transcript = new LinearLayout(this);
         transcript.setOrientation(LinearLayout.VERTICAL);
@@ -681,7 +695,7 @@ public class MainActivity extends Activity implements Agent.Listener {
     private void scrollDown(final boolean force) {
         scroller.post(new Runnable() {
             @Override public void run() {
-                if (!force && !nearBottom()) return;
+                if (!force && !stickToBottom) return;   // 用户已经往上翻了，不打扰
                 scroller.fullScroll(View.FOCUS_DOWN);
             }
         });
