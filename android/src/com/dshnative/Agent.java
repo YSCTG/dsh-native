@@ -1502,6 +1502,10 @@ public final class Agent {
                 @Override public boolean allow(String cap, String target) { return gate(cap, target); }
             });
             if (pr != null) return pr;
+            // 插件市场的工具：mkt_<插件id>_<工具名>
+            if (name != null && name.startsWith(Market.PREFIX)) {
+                return Market.run(ctx, name, a, 60);
+            }
             return "错误：没有这个工具：" + name;
         } catch (Exception e) {
             return "错误：" + (e.getMessage() == null ? e.toString() : e.getMessage());

@@ -418,7 +418,7 @@ public class SettingsActivity extends Activity {
                 new View.OnClickListener() {
                     @Override public void onClick(View v) { refreshMarket(); }
                 });
-        content.addView(marketCard);
+        // card() 已经把这张卡挂到 content 上了，不能再 addView 一次（会抛 "already has a parent"）
 
         section("后台保活");
         LinearLayout aliveCard = card();
