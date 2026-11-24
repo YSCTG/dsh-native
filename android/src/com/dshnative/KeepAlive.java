@@ -17,6 +17,8 @@ public final class KeepAlive {
 
     private static PowerManager.WakeLock lock;
     private static int depth;
+    /** 一次抓多久。宁可长一点：释放由 release() 负责，超时只是兜底。 */
+    private static final long HOLD_MS = 60 * 60 * 1000L;
 
     private KeepAlive() {}
 
@@ -24,13 +26,17 @@ public final class KeepAlive {
     public static synchronized void acquire(Context c) {
         try {
             depth++;
-            if (lock != null && lock.isHeld()) return;
+            if (lock != null && lock.isHeld()) {
+                // 已经持有就延长时限：否则长任务会在 11 分钟处悄悄丢锁，锁屏后直接断
+                lock.acquire(HOLD_MS);
+                return;
+            }
             PowerManager pm = (PowerManager) c.getApplicationContext()
                     .getSystemService(Context.POWER_SERVICE);
             if (pm == null) return;
             lock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "dshnative:run");
             lock.setReferenceCounted(false);
-            lock.acquire(11 * 60 * 1000L);   // 和看门狗同一个量级，超时自动放
+            lock.acquire(HOLD_MS);
         } catch (Throwable ignored) {}
     }
 

@@ -123,6 +123,36 @@ public class SettingsActivity extends Activity {
 
     // ---------------- 组件 ----------------
 
+
+    /** 是否已在电池优化白名单里。不在就直说，用户才能判断要不要点。 */
+    private String batteryOptHint() {
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager)
+                    getSystemService(POWER_SERVICE);
+            boolean ok = pm != null && pm.isIgnoringBatteryOptimizations(getPackageName());
+            return ok ? "已允许后台不受限（锁屏可继续跑）" : "未允许：点这里申请，否则锁屏后可能被系统掐断";
+        } catch (Throwable t) {
+            return "无法读取（系统版本限制）";
+        }
+    }
+
+    private void askIgnoreBattery() {
+        try {
+            android.content.Intent i = new android.content.Intent(
+                    android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            i.setData(android.net.Uri.parse("package:" + getPackageName()));
+            startActivity(i);
+        } catch (Throwable t) {
+            try {
+                startActivity(new android.content.Intent(
+                        android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+            } catch (Throwable t2) {
+                android.widget.Toast.makeText(this, "请到系统设置里允许本应用后台运行",
+                        android.widget.Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
     private void section(String title) {
         TextView t = new TextView(this);
         t.setText(title);
@@ -306,6 +336,17 @@ public class SettingsActivity extends Activity {
         content.removeAllViews();
 
         // 模式
+        section("后台保活");
+        LinearLayout aliveCard = card();
+        actionRow(aliveCard, "电池优化白名单",
+                batteryOptHint(),
+                new View.OnClickListener() {
+                    @Override public void onClick(View v) { askIgnoreBattery(); }
+                });
+        actionRow(aliveCard, "厂商后台限制",
+                "华为/小米等：设置里允许「自启动」「后台运行」，否则锁屏后仍可能被系统清掉",
+                null);
+
         section("模式");
         LinearLayout modeCard = card();
         final Mode cur = Mode.byId(getSharedPreferences("dshnative", MODE_PRIVATE).getString("mode", "standard"));

@@ -2076,11 +2076,14 @@ public class MainActivity extends Activity implements Agent.Listener {
                     @Override public void run() {
                         if (sendSid != null) runningSessions.remove(sendSid);
                         boolean stillCurrent = session != null && session.id.equals(sendSid);
+                        // 还有别的会话在跑就别撤前锋：服务与 WakeLock 都要留着
+                        if (runningSessions.isEmpty()) {
+                            RunService.stop(MainActivity.this);
+                            KeepAlive.release();
+                        }
                         if (stillCurrent) {
                             running = false;
                             setSendState(false);
-                            RunService.stop(MainActivity.this);
-                            KeepAlive.release();
                             foldAnswerBody();
                             moveCopyBar();      // 只在最终回答下面挂一个
                             refreshMeta();
