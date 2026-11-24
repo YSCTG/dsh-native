@@ -385,52 +385,6 @@ public class SettingsActivity extends Activity {
         content.removeAllViews();
 
         // 模式
-        section("插件市场");
-        LinearLayout marketCard = card();
-        java.util.List<JSONObject> catalog = Market.plugins(this);
-        if (catalog.isEmpty()) {
-            actionRow(marketCard, "目录为空", "内置目录没有条目", null);
-        } else {
-            for (final JSONObject mp : catalog) {
-                final String pid = mp.optString("id", "");
-                boolean on = Market.installed(this, pid);
-                String sub = mp.optString("version", "") + " · " + mp.optString("category", "")
-                        + " · " + mp.optString("description", "");
-                actionRow(marketCard, (on ? "✓ " : "") + mp.optString("name", pid)
-                                + (on ? "（已安装）" : "（点按安装）"),
-                        sub,
-                        new View.OnClickListener() {
-                            @Override public void onClick(View v) {
-                                if (Market.installed(SettingsActivity.this, pid)) {
-                                    Market.uninstall(SettingsActivity.this, pid);
-                                    toast("已移除，新会话生效");
-                                } else {
-                                    Market.install(SettingsActivity.this, mp);
-                                    toast("已安装，新会话生效");
-                                }
-                                recreate();
-                            }
-                        });
-            }
-        }
-        actionRow(marketCard, "从网络刷新目录",
-                prefs.getString("market_url", "未设置：在下面填一个目录 JSON 的 URL"),
-                new View.OnClickListener() {
-                    @Override public void onClick(View v) { refreshMarket(); }
-                });
-        // card() 已经把这张卡挂到 content 上了，不能再 addView 一次（会抛 "already has a parent"）
-
-        section("后台保活");
-        LinearLayout aliveCard = card();
-        actionRow(aliveCard, "电池优化白名单",
-                batteryOptHint(),
-                new View.OnClickListener() {
-                    @Override public void onClick(View v) { askIgnoreBattery(); }
-                });
-        actionRow(aliveCard, "厂商后台限制",
-                "华为/小米等：设置里允许「自启动」「后台运行」，否则锁屏后仍可能被系统清掉",
-                null);
-
         section("模式");
         LinearLayout modeCard = card();
         final Mode cur = Mode.byId(getSharedPreferences("dshnative", MODE_PRIVATE).getString("mode", "standard"));
@@ -458,6 +412,40 @@ public class SettingsActivity extends Activity {
                     });
             if (i < Plugin.BUILTINS.length - 1) divider(plugCard);
         }
+
+        // ---- 插件市场：和内置能力同属"插件"，放在同一张卡里，不再另起一节 ----
+        divider(plugCard);
+        actionRow(plugCard, "插件市场 · 内置目录",
+                Market.plugins(this).size() + " 个可安装插件（装完开新会话生效）", null);
+        java.util.List<JSONObject> catalog = Market.plugins(this);
+        for (final JSONObject mp : catalog) {
+            final String pid = mp.optString("id", "");
+            boolean on = Market.installed(this, pid);
+            String sub = mp.optString("version", "") + " · " + mp.optString("category", "")
+                    + " · " + mp.optString("description", "");
+            divider(plugCard);
+            actionRow(plugCard, (on ? "✓ " : "") + mp.optString("name", pid)
+                            + (on ? "（已安装，点按移除）" : "（点按安装）"),
+                    sub,
+                    new View.OnClickListener() {
+                        @Override public void onClick(View v) {
+                            if (Market.installed(SettingsActivity.this, pid)) {
+                                Market.uninstall(SettingsActivity.this, pid);
+                                toast("已移除，新会话生效");
+                            } else {
+                                Market.install(SettingsActivity.this, mp);
+                                toast("已安装，新会话生效");
+                            }
+                            recreate();
+                        }
+                    });
+        }
+        divider(plugCard);
+        actionRow(plugCard, "从网络刷新目录",
+                prefs.getString("market_url", "未配置远程目录：当前用内置目录"),
+                new View.OnClickListener() {
+                    @Override public void onClick(View v) { refreshMarket(); }
+                });
 
         // 插件（.dshp）
         List<Plugin> ds = Plugin.installed(this);
@@ -635,7 +623,8 @@ public class SettingsActivity extends Activity {
                 });
         divider(envCard);
         envRow(envCard, Compat.batteryIgnored(this), "电池优化白名单",
-                Compat.batteryIgnored(this) ? "已白名单" : "锁屏久了可能被回收",
+                (Compat.batteryIgnored(this) ? "已白名单" : "锁屏久了可能被回收")
+                        + " · 华为/小米还需允许「自启动」「后台运行」",
                 new View.OnClickListener() {
                     @Override public void onClick(View v) { Compat.openBattery(SettingsActivity.this); }
                 });
