@@ -1235,7 +1235,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         }
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(android.view.Gravity.END | android.view.Gravity.CENTER_VERTICAL);
+        row.setGravity(android.view.Gravity.START | android.view.Gravity.CENTER_VERTICAL);
         row.setPadding(0, dp(2), 0, dp(6));
 
         row.addView(iconButton("⧉", new View.OnClickListener() {
@@ -1922,10 +1922,11 @@ public class MainActivity extends Activity implements Agent.Listener {
         input.setText("");
         addUserBubble(text);
         turnViewStart = transcript.getChildCount();
-        turnOrdinal = 0;
+        turnOrdinal = -1;
         for (int i = 0; i < transcript.getChildCount(); i++) {
             if ("user".equals(transcript.getChildAt(i).getTag())) turnOrdinal++;
         }
+        // 第 0 轮 = 会话里的第一个用户消息；上面把本轮也算进去了，所以正好从 0 起
         turnStartMs = System.currentTimeMillis();
         scrollDown(true);
         assistantView = null;
