@@ -278,6 +278,97 @@ public class UiAgentService extends AccessibilityService {
         try { Thread.sleep(ms); } catch (InterruptedException ignored) {}
     }
 
+
+    /**
+     * 坐标手势脚本：一次 dispatchGesture 跑完整串步骤。
+     *
+     * 支持 tap / long / double / swipe / path / pinch。
+     * 多步靠 StrokeDescription 的 startTime 串起来（各步之间留 gap），所以步与步的间隔是精确的；
+     * 系统上限 10 个 stroke，超过就只执行前半段并如实说明。
+     */
+    public synchronized String gestureScript(org.json.JSONArray steps, int gapMs) {
+        if (steps == null || steps.length() == 0) return "错误：steps 为空";
+        java.util.List<GestureDescription.StrokeDescription> strokes = new java.util.ArrayList<>();
+        long t = 0;
+        int done = 0, skipped = 0;
+        for (int i = 0; i < steps.length(); i++) {
+            org.json.JSONObject st = steps.optJSONObject(i);
+            if (st == null) continue;
+            String kind = st.optString("kind", "tap").toLowerCase();
+            int x = st.optInt("x", 0), y = st.optInt("y", 0);
+            int dur = st.optInt("duration", kind.equals("long") ? 800 : 300);
+
+            if ("tap".equals(kind) || "long".equals(kind)) {
+                if (strokes.size() + 1 > 10) { skipped++; continue; }
+                int d = "tap".equals(kind) ? Math.max(20, st.optInt("duration", 60)) : Math.max(300, dur);
+                strokes.add(stroke(t, line(x, y, x, y), d));
+                t += d + gapMs;
+                done++;
+            } else if ("double".equals(kind)) {
+                if (strokes.size() + 2 > 10) { skipped++; continue; }
+                int g = st.optInt("gap", 120);
+                strokes.add(stroke(t, line(x, y, x, y), 50));
+                strokes.add(stroke(t + g, line(x, y, x, y), 50));
+                t += g + 50 + gapMs;
+                done++;
+            } else if ("swipe".equals(kind)) {
+                if (strokes.size() + 1 > 10) { skipped++; continue; }
+                strokes.add(stroke(t, line(x, y, st.optInt("x2", x), st.optInt("y2", y)), Math.max(50, dur)));
+                t += Math.max(50, dur) + gapMs;
+                done++;
+            } else if ("path".equals(kind)) {
+                org.json.JSONArray pts = st.optJSONArray("points");
+                if (pts == null || pts.length() < 2) { skipped++; continue; }
+                if (strokes.size() + 1 > 10) { skipped++; continue; }
+                Path pth = new Path();
+                for (int k = 0; k < Math.min(pts.length(), 32); k++) {
+                    org.json.JSONArray xy = pts.optJSONArray(k);
+                    if (xy == null) continue;
+                    float px = (float) xy.optDouble(0, 0), py = (float) xy.optDouble(1, 0);
+                    if (k == 0) pth.moveTo(px, py); else pth.lineTo(px, py);
+                }
+                strokes.add(stroke(t, pth, Math.max(50, dur)));
+                t += Math.max(50, dur) + gapMs;
+                done++;
+            } else if ("pinch".equals(kind)) {
+                if (strokes.size() + 2 > 10) { skipped++; continue; }
+                int sp = st.optInt("spread", 200);
+                int d = Math.max(80, dur);
+                Path a = line(x, y, x - sp / 2f, y);
+                Path b = line(x, y, x + sp / 2f, y);
+                strokes.add(stroke(t, a, d));
+                strokes.add(stroke(t, b, d));
+                t += d + gapMs;
+                done++;
+            } else {
+                skipped++;
+            }
+        }
+        if (strokes.isEmpty()) return "错误：没有可执行的手势步骤";
+        try {
+            GestureDescription.Builder b = new GestureDescription.Builder();
+            for (GestureDescription.StrokeDescription sd : strokes) b.addStroke(sd);
+            GestureDescription g = b.build();
+            boolean ok = dispatchGesture(g, null, null);
+            return (ok ? "已执行 " : "派发失败，") + done + " 步"
+                    + (skipped > 0 ? "（跳过 " + skipped + " 步）" : "")
+                    + "，共 " + strokes.size() + " 个触点序列";
+        } catch (Throwable e) {
+            return "错误：" + e;
+        }
+    }
+
+    private static GestureDescription.StrokeDescription stroke(long start, Path p, long dur) {
+        return new GestureDescription.StrokeDescription(p, start, Math.max(20, dur));
+    }
+
+    private static Path line(float x1, float y1, float x2, float y2) {
+        Path p = new Path();
+        p.moveTo(x1, y1);
+        p.lineTo(x2, y2);
+        return p;
+    }
+
     public synchronized boolean tapIndex(int index) {
         if (index < 0 || index >= lastBounds.size()) return false;
         int[] b = lastBounds.get(index);

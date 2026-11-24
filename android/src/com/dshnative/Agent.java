@@ -378,6 +378,15 @@ public final class Agent {
                 }
             }
 
+            add("ui.act", tool("ui_gesture",
+                    "坐标手势脚本，一次调用跑完整串：steps 里每步 {kind, x, y, ...}。"
+                            + "kind: tap / long（任意时长）/ double / swipe / path（points 折线）/ pinch（spread）。"
+                            + "步与步之间自动留 gap。适合列表长按拖动、双指缩放、沿路径滑动。",
+                    schema(props(new String[]{"steps", "gap"},
+                                 new String[]{"array", "integer"},
+                                 new String[]{"步骤数组", "步间隔毫秒，默认 120"}),
+                           new String[]{"steps"})));
+
             add("ui.act", tool("ui_input",
                     "点坐标并写字，一次完成：点 → 找焦点 → 写入 → 回读确认 → （可选）提交。"
                             + "比 ui_tap + ui_type 两次调用稳，写不进去会自动改用剪贴板粘贴。密码框只回报字数。",
@@ -1210,6 +1219,13 @@ public final class Agent {
             if ("clip_write".equals(name)) return clipWrite(a.optString("text", ""));
             if ("notify".equals(name)) return notifyUser(a.optString("title", "DSH Native"), a.optString("body", ""));
             if ("ui_dump".equals(name)) return uiDump(a.optInt("max_nodes", UI_MAX_NODES));
+            if ("ui_gesture".equals(name)) {
+                UiAgentService svc = UiAgentService.get();
+                if (svc == null) return "错误：无障碍服务没开";
+                org.json.JSONArray st = a.optJSONArray("steps");
+                if (st == null) return "错误：需要 steps 数组";
+                return svc.gestureScript(st, a.optInt("gap", 120));
+            }
             if ("ui_input".equals(name)) {
                 UiAgentService svc = UiAgentService.get();
                 if (svc == null) return "错误：无障碍服务没开";
