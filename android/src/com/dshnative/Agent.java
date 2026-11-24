@@ -244,6 +244,13 @@ public final class Agent {
         try {
             add("fs.read", tool("fs_list", "列目录：名字、类型、字节数。",
                     schema(obj("path", "string", "绝对路径或相对工作区的路径"), new String[]{"path"})));
+            add("fs.write", tool("office_restyle",
+                    "改现成 docx 的样式：styles=[{id:'Heading1', size:32, color:'#1F6FEB'}]，"
+                            + "只改 word/styles.xml 里的定义，其余部件字节原样拷贝（图片字体不受影响）。",
+                    schema(props(new String[]{"path", "out", "styles"},
+                                 new String[]{"string", "string", "array"},
+                                 new String[]{"源 docx", "输出 docx（默认覆盖源文件）", "样式补丁数组"}),
+                           new String[]{"path", "styles"})));
             add("fs.read", tool("office_read",
                     "读现成的 Office 文件：docx 段落与表格、xlsx 各工作表的行与公式、pptx 每页文字。"
                             + "改文档之前先用它看清楚里面有什么。",
@@ -1521,6 +1528,15 @@ public final class Agent {
             // 插件市场的工具：mkt_<插件id>_<工具名>
             if (name != null && name.startsWith(Market.PREFIX)) {
                 return Market.run(ctx, name, a, 60);
+            }
+            if ("office_restyle".equals(name)) {
+                String src = a.optString("path", "").trim();
+                if (src.isEmpty()) return "错误：path 为空";
+                String dst = a.optString("out", "").trim();
+                if (dst.isEmpty()) dst = src;
+                org.json.JSONObject sp = new org.json.JSONObject();
+                sp.put("styles", a.optJSONArray("styles") == null ? new org.json.JSONArray() : a.optJSONArray("styles"));
+                return OfficeRestyle.run(new java.io.File(src), new java.io.File(dst), sp);
             }
             if ("office_read".equals(name)) {
                 String p0 = a.optString("path", "").trim();
