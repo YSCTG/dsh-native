@@ -326,11 +326,51 @@ public final class Office {
             + "<xf numFmtId=\"14\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>"
             + "</cellXfs><cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles></styleSheet>";
 
+
+    /**
+     * 内嵌图表（可选）：sheet.charts = [{type:"bar|pie|line", title, values:[...], name}]
+     * 用 c:numLit 内联数据，不依赖单元格区域，便于一处生成；失败则整块跳过，不影响表格本身。
+     */
+    private static String chartXml(JSONObject ch) {
+        String type = ch.optString("type", "bar").toLowerCase();
+        String title = esc(ch.optString("title", ""));
+        JSONArray values = ch.optJSONArray("values");
+        if (values == null || values.length() == 0) return null;
+        StringBuilder nums = new StringBuilder();
+        for (int i = 0; i < values.length(); i++) {
+            nums.append("<c:pt idx=\"").append(i).append("\"><c:v>")
+                .append(values.optDouble(i, 0)).append("</c:v></c:pt>");
+        }
+        StringBuilder ser = new StringBuilder();
+        ser.append("<c:ser><c:idx val=\"0\"/><c:order val=\"0\"/>")
+           .append("<c:tx><c:strRef><c:f>Sheet1!$A$1</c:f><c:strCache><c:ptCount val=\"1\"/>")
+           .append("<c:pt idx=\"0\"><c:v>").append(esc(ch.optString("name", "数值"))).append("</c:v></c:pt>")
+           .append("</c:strCache></c:strRef></c:tx>")
+           .append("<c:val><c:numLit><c:formatCode>General</c:formatCode>")
+           .append("<c:ptCount val=\"").append(values.length()).append("\"/>").append(nums)
+           .append("</c:numLit></c:val></c:ser>");
+        String plot;
+        if ("pie".equals(type)) {
+            plot = "<c:pieChart><c:varyColors val=\"1\"/>" + ser + "<c:firstSliceAng val=\"0\"/></c:pieChart>";
+        } else if ("line".equals(type)) {
+            plot = "<c:lineChart><c:grouping val=\"standard\"/>" + ser + "<c:marker val=\"1\"/></c:lineChart>";
+        } else {
+            plot = "<c:barChart><c:barDir val=\"col\"/><c:grouping val=\"clustered\"/>" + ser + "</c:barChart>";
+        }
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                + "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\""
+                + " xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">"
+                + "<c:chart>" + (title.isEmpty() ? "" :
+                    "<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>" + title + "</a:t></a:r></a:p></c:rich></c:tx></c:title>")
+                + "<c:plotArea><c:layout/>" + plot + "</c:plotArea></c:chart></c:chartSpace>";
+    }
+
     private static String sheetXml(JSONObject sh) {
         JSONArray rows = sh.optJSONArray("rows");
         boolean header = sh.optBoolean("header", true);
         StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-                + "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
+                + "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\""
+                + " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">");
         JSONArray widths = sh.optJSONArray("widths");
         // 没指定列宽就按内容估算：中文按 2 个宽度算，夹在 8–60 之间。
         // 之前不填就全是默认列宽，长表格一律挤在一起。
@@ -406,7 +446,10 @@ public final class Office {
                 sb.append("</row>");
             }
         }
-        sb.append("</sheetData></worksheet>");
+        sb.append("</sheetData>");
+        // 图表部件（chart + drawing + rels）还没接上，这里**不能**写 <drawing r:id>：
+        // 引用了不存在的部件会让整个 xlsx 打不开，比没有图表更糟。
+        sb.append("</worksheet>");
         return sb.toString();
     }
 
