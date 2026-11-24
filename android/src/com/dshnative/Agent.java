@@ -341,8 +341,11 @@ public final class Agent {
             if (Plugin.isOn(ctx, "builtin.terminal")) add("shell", tool("sh",
                     "在手机上执行 shell 命令（app 身份；有 root 则以 root 执行）。不需要确认，直接跑；只有不可回滚的命令会问一次。"
                             + "慢任务（编译/解压/下载）用 timeout 指定秒数，默认 120、最大 600；不要跑会一直等输入的命令。",
-                    schema(props(new String[]{"command", "timeout"}, new String[]{"string", "integer"},
-                                 new String[]{"完整命令行，例如 ls -l /sdcard", "超时秒数，默认 120，最大 600"}),
+                    schema(props(new String[]{"command", "description", "timeout"},
+                                 new String[]{"string", "string", "integer"},
+                                 new String[]{"完整命令行，例如 ls -l /sdcard",
+                                         "这条命令要做什么（一句话自然语言，会显示在消息流里）",
+                                         "超时秒数，默认 120，最大 600"}),
                            new String[]{"command"})));
 
             add("net.fetch", tool("browser_open",
@@ -489,9 +492,11 @@ public final class Agent {
                 add("shell", tool("python",
                         "用内置 Python 3.14 跑一段代码（有标准库，没有第三方包）。"
                                 + "算数、解析文本、生成文件都该用它，不要心算。",
-                        schema(props(new String[]{"code", "timeout"},
-                                     new String[]{"string", "integer"},
-                                     new String[]{"Python 源码", "超时秒数，默认 30，最大 120"}),
+                        schema(props(new String[]{"code", "description", "timeout"},
+                                     new String[]{"string", "string", "integer"},
+                                     new String[]{"Python 源码",
+                                             "这段代码要做什么（一句话自然语言，会显示在消息流里）",
+                                             "超时秒数，默认 30，最大 120"}),
                                new String[]{"code"})));
             }
 
@@ -1189,7 +1194,8 @@ public final class Agent {
                 }
                 return res;
             }
-            if ("sh".equals(name)) return sh(a.optString("command", ""), a.optInt("timeout", 120));
+            if ("sh".equals(name)) return sh(a.optString("command", ""),
+                    a.optString("description", ""), a.optInt("timeout", 120));
             if ("web_search".equals(name)) return webSearch(a.optString("query", ""));
             if ("browser_open".equals(name)) {
                 String url = a.optString("url", "").trim();
@@ -1321,7 +1327,8 @@ public final class Agent {
                 int secs = a.optInt("timeout", 30);
                 if (secs <= 0) secs = 30;
                 if (secs > 600) secs = 600;
-                listener.onTool("python", code.split("\n")[0]);
+                String pyDesc = a.optString("description", "").trim();
+                listener.onTool("python", pyDesc.isEmpty() ? code.split("\n")[0] : pyDesc);
                 Python.Result r = Python.run(ctx, code, secs * 1000);
                 String out = r.out == null ? "" : r.out;
                 if (out.length() > 20000) out = out.substring(0, 20000) + "\n…已截断";
@@ -2240,7 +2247,7 @@ public final class Agent {
         return false;
     }
 
-    private String sh(String command, int timeoutSec) {
+    private String sh(String command, String description, int timeoutSec) {
         if (timeoutSec <= 0) timeoutSec = 120;
         if (timeoutSec > 600) timeoutSec = 600;
         if (command == null || command.trim().isEmpty()) return "错误：空命令";
@@ -2252,7 +2259,8 @@ public final class Agent {
                 return "用户拒绝了这条命令。不要换个写法重试。";
             }
         }
-        listener.onTool("sh", (root ? "root$ " : "$ ") + command);
+        String shDesc = description == null ? "" : description.trim();
+        listener.onTool("sh", shDesc.isEmpty() ? command : shDesc);
         Shell.Res r = root ? Shell.runRoot(command, timeoutSec * 1000L)
                 : Shell.runApp(command, timeoutSec * 1000L);
         String body = r.out == null ? "" : r.out;

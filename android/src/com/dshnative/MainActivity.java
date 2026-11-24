@@ -798,32 +798,37 @@ public class MainActivity extends Activity implements Agent.Listener {
     /** 工具调用：一行卡片，等宽名字 + 灰色细节。 */
     /** 桌面版把每一步说成人话（运行命令 / 读文件 …），这里照做。 */
     /** 动作名成对：进行时说"正在X"，完成后说"X了"（电脑版就是这样）。 */
+    /**
+     * 工具行的动词。桌面的写法是「名词性动作」，不带"了"：
+     * `运行命令`、`读取`、`编辑`——后面跟模型自己写的一句"要做什么"。
+     */
     private static String verbOf(String tool, boolean done) {
         String a, b;
-        if (tool == null) { a = "正在调用工具"; b = "调用了工具"; }
-        else if ("sh".equals(tool)) { a = "正在运行命令"; b = "运行了命令"; }
-        else if ("python".equals(tool)) { a = "正在跑 Python"; b = "跑了 Python"; }
-        // 文件类用桌面的措辞：读取 / 编辑 / 写入（不带"了"）
+        if (tool == null) { a = "正在调用工具"; b = "调用工具"; }
+        else if ("sh".equals(tool)) { a = "正在运行命令"; b = "运行命令"; }
+        else if ("python".equals(tool)) { a = "正在运行 Python"; b = "运行 Python"; }
         else if ("fs_read".equals(tool) || "fs_list".equals(tool)
                 || "fs_glob".equals(tool) || "fs_grep".equals(tool)) { a = "正在读取"; b = "读取"; }
         else if ("fs_edit".equals(tool)) { a = "正在编辑"; b = "编辑"; }
         else if ("fs_write".equals(tool)) { a = "正在写入"; b = "写入"; }
-        else if ("web_search".equals(tool)) { a = "正在搜索网页"; b = "搜索了网页"; }
-        else if ("net_fetch".equals(tool)) { a = "正在抓取网页"; b = "抓取了网页"; }
-        else if ("screenshot".equals(tool)) { a = "正在读取图片"; b = "已读取图片"; }
-        else if ("ui_dump".equals(tool)) { a = "正在看界面"; b = "查看了界面"; }
-        else if ("ui_tap".equals(tool)) { a = "正在点按"; b = "点击了"; }
-        else if ("subagent".equals(tool)) { a = "正在派子智能体"; b = "派出了子智能体"; }
-        else if ("loop".equals(tool)) { a = "正在循环"; b = "循环结束"; }
-        else if (tool.startsWith("team_")) { a = "正在调度团队"; b = "调度了团队"; }
-        else if ("skill".equals(tool)) { a = "正在读技能"; b = "读取了技能"; }
-        else if ("render".equals(tool)) { a = "正在渲染"; b = "渲染了"; }
-        else if ("mcp".equals(tool)) { a = "正在调用 MCP"; b = "调用了 MCP"; }
-        else if (tool.startsWith("app_")) { a = "正在操作应用"; b = "操作了应用"; }
-        else if (tool.startsWith("clip_")) { a = "正在读写剪贴板"; b = "读写了剪贴板"; }
-        else if ("notify".equals(tool)) { a = "正在发通知"; b = "发了通知"; }
-        else if (tool.startsWith("dev_")) { a = "正在诊断"; b = "做了诊断"; }
-        else { a = "正在调用工具"; b = "调用了工具"; }
+        else if ("web_search".equals(tool)) { a = "正在搜索网页"; b = "搜索网页"; }
+        else if ("net_fetch".equals(tool)) { a = "正在抓取网页"; b = "抓取网页"; }
+        else if ("screenshot".equals(tool)) { a = "正在读取图片"; b = "读取图片"; }
+        else if ("ui_dump".equals(tool)) { a = "正在看界面"; b = "查看界面"; }
+        else if ("ui_tap".equals(tool)) { a = "正在点按"; b = "点击"; }
+        else if ("ui_type".equals(tool)) { a = "正在输入"; b = "输入文字"; }
+        else if ("subagent".equals(tool)) { a = "正在派子智能体"; b = "派子智能体"; }
+        else if ("loop".equals(tool)) { a = "正在循环"; b = "循环"; }
+        else if (tool.startsWith("team_")) { a = "正在调度团队"; b = "调度团队"; }
+        else if ("skill".equals(tool)) { a = "正在读技能"; b = "读取技能"; }
+        else if ("render".equals(tool)) { a = "正在渲染"; b = "渲染"; }
+        else if ("mcp".equals(tool)) { a = "正在调用 MCP"; b = "调用 MCP"; }
+        else if (tool.startsWith("app_")) { a = "正在操作应用"; b = "操作应用"; }
+        else if (tool.startsWith("clip_")) { a = "正在读写剪贴板"; b = "读写剪贴板"; }
+        else if ("notify".equals(tool)) { a = "正在发通知"; b = "发通知"; }
+        else if (tool.startsWith("dev_")) { a = "正在诊断"; b = "诊断"; }
+        else if (tool.startsWith("office_")) { a = "正在处理文档"; b = "处理文档"; }
+        else { a = "正在调用工具"; b = "调用工具"; }
         return done ? b : a;
     }
     /** 还没收到完成回执的工具芯片。一次请求可能并行发多个工具，所以要按名字配对。 */
@@ -864,7 +869,9 @@ public class MainActivity extends Activity implements Agent.Listener {
         // 桌面版就是这样一行：chevron + 人话动作，浅灰小字，没有任何底色或竖线
         TextView nm = new TextView(this);
         String doneLabel = verbOf(name, true);
-        nm.setText((done ? "› " : "▾ ") + verbOf(name, done));
+        String verb = verbOf(name, done);
+        boolean hasDetail = detail != null && !detail.trim().isEmpty();
+        nm.setText((done ? "› " : "▾ ") + verb + (hasDetail ? " ·" : ""));
         nm.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         nm.setTextColor(getColor(done ? R.color.label_secondary : R.color.label_primary));
         card.addView(nm);
@@ -975,6 +982,26 @@ public class MainActivity extends Activity implements Agent.Listener {
         ui.postDelayed(thinkTick, 200);
     }
 
+    /** 取思考内容的第一句（桌面版工具行/思考行都只显示这一句）。 */
+    private static String firstLine(String text) {
+        if (text == null) return "";
+        String t = text.trim();
+        int nl = t.indexOf('\n');
+        if (nl > 0) {
+            // 第一行太短（比如只有一个标题词）就看第二行
+            String head = t.substring(0, nl).trim();
+            if (head.length() >= 8) t = head;
+        }
+        int end = -1;
+        for (char c : new char[]{'。', '！', '？', '.', '!', '?'}) {
+            int i = t.indexOf(c);
+            if (i > 0 && (end < 0 || i < end)) end = i;
+        }
+        if (end > 0) t = t.substring(0, end + 1);
+        t = t.replace('\n', ' ').trim();
+        return t.length() > 42 ? t.substring(0, 42) + "…" : t;
+    }
+
     private void finishThinking() {
         if (thinkingBlock == null) return;
         TextView head = (TextView) thinkingBlock.findViewWithTag("head");
@@ -991,8 +1018,13 @@ public class MainActivity extends Activity implements Agent.Listener {
             body.setText(show);
         }
         if (head != null) {
-            head.setText(String.format("已完成分析 · %d 字 · 用时 %.1fs%s",
-                    thinkingChars, secs, has ? (thinkingOpen ? " 收起 ▴" : " 展开 ▾") : ""));
+            // 桌面版就是「思考 · 首句」：一眼看出这轮在想什么，字数与秒数是次要信息
+            String first = firstLine(all);
+            StringBuilder sb = new StringBuilder("思考");
+            if (!first.isEmpty()) sb.append(" · ").append(first);
+            if (secs >= 0.1) sb.append("   ").append(String.format("%.1fs", secs));
+            if (has) sb.append(thinkingOpen ? "  ▴" : "  ▾");
+            head.setText(sb.toString());
         }
         thinkingBlock = null;
         thinkingOpen = false;
