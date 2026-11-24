@@ -369,6 +369,142 @@ public class UiAgentService extends AccessibilityService {
         return p;
     }
 
+
+    // ---------------- 截图观察（坐标绑定某一张截图） ----------------
+    // 为什么需要：坐标只在"那一屏"有意义。模型隔几步再点同一个坐标，界面可能早换了，
+    // 于是点错东西。这里把截图编号存下来，点击/输入/手势都带上 observation，
+    // 执行前用缩略图相似度确认"还是那一屏"，不是就拒绝。
+
+    private static final java.util.LinkedHashMap<String, Obs> observations =
+            new java.util.LinkedHashMap<String, Obs>() {
+                @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, Obs> e) {
+                    return size() > 6;   // 只留最近 6 张
+                }
+            };
+    private static int obsSeq = 0;
+
+    private static final class Obs {
+        int w, h;
+        long[] thumb;   // 4x4 灰度缩略
+    }
+
+    /** 截一张图并登记为 sN。返回 "sN WxH path"；系统太老则说明原因。 */
+    public synchronized String captureObservation(java.io.File dir) {
+        if (android.os.Build.VERSION.SDK_INT < 30) {
+            return "错误：当前系统不支持无障碍截图（需要 Android 11+）";
+        }
+        try {
+            final Object[] holder = new Object[2];
+            final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+            takeScreenshot(android.view.Display.DEFAULT_DISPLAY, java.util.concurrent.Executors.newSingleThreadExecutor(),
+                    new TakeScreenshotCallback() {
+                        @Override public void onSuccess(ScreenshotResult r) {
+                            holder[0] = r; latch.countDown();
+                        }
+                        @Override public void onFailure(int errorCode) {
+                            holder[1] = errorCode; latch.countDown();
+                        }
+                    });
+            if (!latch.await(3, java.util.concurrent.TimeUnit.SECONDS)) return "错误：截图超时";
+            if (holder[0] == null) return "错误：截图失败，错误码 " + holder[1];
+            ScreenshotResult res = (ScreenshotResult) holder[0];
+            android.graphics.Bitmap bmp = android.graphics.Bitmap.wrapHardwareBuffer(res.getHardwareBuffer(), res.getColorSpace());
+            if (bmp == null) return "错误：截图解码失败";
+            Obs o = new Obs();
+            o.w = bmp.getWidth();
+            o.h = bmp.getHeight();
+            o.thumb = thumb(bmp);
+            android.graphics.Bitmap soft = bmp.getConfig() == android.graphics.Bitmap.Config.HARDWARE
+                    ? bmp.copy(android.graphics.Bitmap.Config.ARGB_8888, false) : bmp;
+            obsSeq++;
+            String id = "s" + obsSeq;
+            observations.put(id, o);
+            try {
+                java.io.File f = new java.io.File(dir, "obs-" + id + ".png");
+                java.io.FileOutputStream fo = new java.io.FileOutputStream(f);
+                (soft == null ? bmp : soft).compress(android.graphics.Bitmap.CompressFormat.PNG, 92, fo);
+                fo.close();
+                return id + " " + o.w + "x" + o.h + " " + f.getAbsolutePath();
+            } finally {
+                bmp.recycle();
+            }
+        } catch (Throwable t) {
+            return "错误：" + t;
+        }
+    }
+
+    /** 4x4 灰度缩略图，用于"还是不是那一屏"的比较。 */
+    private long[] thumb(android.graphics.Bitmap src) {
+        // 无障碍截图给的是 Config#HARDWARE 位图，不能 getPixel；先拷一份软件位图
+        android.graphics.Bitmap soft = src;
+        if (src.getConfig() == android.graphics.Bitmap.Config.HARDWARE) {
+            soft = src.copy(android.graphics.Bitmap.Config.ARGB_8888, false);
+            if (soft == null) return null;
+        }
+        android.graphics.Bitmap small = android.graphics.Bitmap.createScaledBitmap(soft, 4, 4, true);
+        if (soft != soft) {}
+        if (soft != src) soft.recycle();
+        long[] out = new long[16];
+        for (int y = 0; y < 4; y++) {
+            for (int x = 0; x < 4; x++) {
+                int c = small.getPixel(x, y);
+                out[y * 4 + x] = (android.graphics.Color.red(c) * 299
+                        + android.graphics.Color.green(c) * 587
+                        + android.graphics.Color.blue(c) * 114) / 1000;
+            }
+        }
+        small.recycle();
+        return out;
+    }
+
+    /**
+     * 校验：observation 存在、坐标在它的范围内、当前屏与那张图足够像。
+     * @return null 表示通过，否则是给模型看的中文原因
+     */
+    public synchronized String checkObservation(String id, int x, int y) {
+        if (id == null || id.isEmpty()) return null;      // 不传就不校验（向后兼容）
+        Obs o = observations.get(id);
+        if (o == null) return "错误：没有这个截图编号 " + id + "（先 ui_dump image:true 拿一个）";
+        if (x < 0 || y < 0 || x >= o.w || y >= o.h) {
+            return "错误：坐标 (" + x + "," + y + ") 不在 " + id + " 的 " + o.w + "x" + o.h + " 里";
+        }
+        long[] cur = liveThumb();
+        if (cur == null) return null;   // 拿不到当前屏就不拦（老系统/截图失败）
+        long diff = 0;
+        for (int i = 0; i < 16; i++) diff += Math.abs(cur[i] - o.thumb[i]);
+        double avg = diff / 16.0;
+        if (avg > 28) {
+            return "错误：界面已经变了（与 " + id + " 差异 " + Math.round(avg)
+                    + "，阈值 28）。请重新 ui_dump image:true 再操作，避免点错。";
+        }
+        return null;
+    }
+
+    /** 现截一张拿缩略图，用于和存下来的那张比。 */
+    private long[] liveThumb() {
+        if (android.os.Build.VERSION.SDK_INT < 30) return null;
+        try {
+            final Object[] holder = new Object[2];
+            final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+            takeScreenshot(android.view.Display.DEFAULT_DISPLAY,
+                    java.util.concurrent.Executors.newSingleThreadExecutor(),
+                    new TakeScreenshotCallback() {
+                        @Override public void onSuccess(ScreenshotResult r) { holder[0] = r; latch.countDown(); }
+                        @Override public void onFailure(int errorCode) { latch.countDown(); }
+                    });
+            if (!latch.await(3, java.util.concurrent.TimeUnit.SECONDS) || holder[0] == null) return null;
+            ScreenshotResult res = (ScreenshotResult) holder[0];
+            android.graphics.Bitmap bmp =
+                    android.graphics.Bitmap.wrapHardwareBuffer(res.getHardwareBuffer(), res.getColorSpace());
+            if (bmp == null) return null;
+            long[] t = thumb(bmp);
+            bmp.recycle();
+            return t;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
     public synchronized boolean tapIndex(int index) {
         if (index < 0 || index >= lastBounds.size()) return false;
         int[] b = lastBounds.get(index);

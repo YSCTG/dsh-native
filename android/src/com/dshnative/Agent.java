@@ -352,13 +352,20 @@ public final class Agent {
                         schema(obj("url", "string", "完整 URL"), new String[]{"url"})));
 
             add("ui.read", tool("ui_dump",
-                    "读当前界面：每行 #序号 [类型] \"文字\" (x,y) 标记。已压缩，只含有内容的节点。",
-                    schema(obj("max_nodes", "integer", "最多返回多少节点，默认 " + UI_MAX_NODES), new String[]{})));
+                    "读当前界面：每行 #序号 [类型] \"文字\" (x,y) 标记。已压缩，只含有内容的节点。"
+                            + "image:true 会同时截一张图并返回编号 sN —— 后面点坐标时带上 observation:\"sN\"，"
+                            + "执行前会核对界面有没有变，防止点错。",
+                    schema(props(new String[]{"max_nodes", "image"},
+                                 new String[]{"integer", "boolean"},
+                                 new String[]{"最多返回多少节点，默认 " + UI_MAX_NODES, "是否截图并返回编号"}),
+                           new String[]{})));
             add("ui.act", tool("ui_tap",
-                    "点击界面元素。优先 text（匹配最近一次 ui_dump 里的文字），其次 index，最后才坐标。",
-                    schema(props(new String[]{"text", "index", "x", "y"},
-                                 new String[]{"string", "integer", "integer", "integer"},
-                                 new String[]{"节点文字（包含匹配）", "ui_dump 里的 #序号", "横坐标", "纵坐标"}),
+                    "点击界面元素。优先 text（匹配最近一次 ui_dump 里的文字），其次 index，最后才坐标。"
+                            + "用坐标时带上 observation:\"sN\" 更安全（会先核对界面没变）。",
+                    schema(props(new String[]{"text", "index", "x", "y", "observation"},
+                                 new String[]{"string", "integer", "integer", "integer", "string"},
+                                 new String[]{"节点文字（包含匹配）", "ui_dump 里的 #序号", "横坐标", "纵坐标",
+                                         "截图编号 sN（可选，校验界面未变）"}),
                            new String[]{})));
 
             // ---- 插件市场的工具：清单里声明的 Python 工具 ----
@@ -382,18 +389,18 @@ public final class Agent {
                     "坐标手势脚本，一次调用跑完整串：steps 里每步 {kind, x, y, ...}。"
                             + "kind: tap / long（任意时长）/ double / swipe / path（points 折线）/ pinch（spread）。"
                             + "步与步之间自动留 gap。适合列表长按拖动、双指缩放、沿路径滑动。",
-                    schema(props(new String[]{"steps", "gap"},
-                                 new String[]{"array", "integer"},
-                                 new String[]{"步骤数组", "步间隔毫秒，默认 120"}),
+                    schema(props(new String[]{"steps", "gap", "observation"},
+                                 new String[]{"array", "integer", "string"},
+                                 new String[]{"步骤数组", "步间隔毫秒，默认 120", "截图编号 sN（可选）"}),
                            new String[]{"steps"})));
 
             add("ui.act", tool("ui_input",
                     "点坐标并写字，一次完成：点 → 找焦点 → 写入 → 回读确认 → （可选）提交。"
                             + "比 ui_tap + ui_type 两次调用稳，写不进去会自动改用剪贴板粘贴。密码框只回报字数。",
-                    schema(props(new String[]{"x", "y", "text", "submit"},
-                                 new String[]{"integer", "integer", "string", "boolean"},
+                    schema(props(new String[]{"x", "y", "text", "submit", "observation"},
+                                 new String[]{"integer", "integer", "string", "boolean", "string"},
                                  new String[]{"横坐标", "纵坐标", "要写入的文字",
-                                         "写完是否按一次回车（默认 false）"}),
+                                         "写完是否按一次回车（默认 false）", "截图编号 sN（可选）"}),
                            new String[]{"x", "y", "text"})));
 
             add("ui.act", tool("ui_type",
@@ -1218,17 +1225,31 @@ public final class Agent {
             if ("clip_read".equals(name)) return clipRead();
             if ("clip_write".equals(name)) return clipWrite(a.optString("text", ""));
             if ("notify".equals(name)) return notifyUser(a.optString("title", "DSH Native"), a.optString("body", ""));
-            if ("ui_dump".equals(name)) return uiDump(a.optInt("max_nodes", UI_MAX_NODES));
+            if ("ui_dump".equals(name)) {
+                String dump = uiDump(a.optInt("max_nodes", UI_MAX_NODES));
+                if (a.optBoolean("image", false)) {
+                    UiAgentService svc0 = UiAgentService.get();
+                    if (svc0 == null) return dump + "\n（截图：无障碍服务没开，跳过）";
+                    String snap = svc0.captureObservation(ctx.getFilesDir());
+                    return dump + "\n截图：" + snap;
+                }
+                return dump;
+            }
             if ("ui_gesture".equals(name)) {
                 UiAgentService svc = UiAgentService.get();
                 if (svc == null) return "错误：无障碍服务没开";
                 org.json.JSONArray st = a.optJSONArray("steps");
                 if (st == null) return "错误：需要 steps 数组";
+                String cg = svc.checkObservation(a.optString("observation", ""), 0, 0);
+                if (cg != null && !cg.contains("不在")) return cg;
                 return svc.gestureScript(st, a.optInt("gap", 120));
             }
             if ("ui_input".equals(name)) {
                 UiAgentService svc = UiAgentService.get();
                 if (svc == null) return "错误：无障碍服务没开";
+                String chk = svc.checkObservation(a.optString("observation", ""),
+                        a.optInt("x", 0), a.optInt("y", 0));
+                if (chk != null) return chk;
                 return svc.input(a.optInt("x", 0), a.optInt("y", 0),
                         a.optString("text", ""), a.optBoolean("submit", false));
             }
@@ -2314,6 +2335,13 @@ public final class Agent {
         String target = !text.isEmpty() ? ("text=" + text)
                 : (index >= 0 ? ("index=" + index) : (hasXY ? ("(" + a.optInt("x") + "," + a.optInt("y") + ")") : "?"));
         if (!gate("ui.act", "tap " + target)) return denied("ui.act");
+
+        // 用坐标时，若带了 observation 就先核对界面没变
+        if (hasXY && a.has("observation")) {
+            String chk = svc.checkObservation(a.optString("observation", ""),
+                    a.optInt("x", 0), a.optInt("y", 0));
+            if (chk != null) return chk;
+        }
 
         listener.onTool("ui_tap", target);
         boolean done;
