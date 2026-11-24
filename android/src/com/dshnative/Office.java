@@ -1215,7 +1215,9 @@ public final class Office {
                 case "h1": {
                     ensure(50);
                     Paint pt = titlePaint(d.fH1);
-                    for (String s : wrap(b.optString("text"), pt, w - d.margin * 2)) {
+                    java.util.List<String> h1 = wrap(b.optString("text"), pt, w - d.margin * 2);
+                    for (String s : h1) {
+                        ensure(d.fH1 + 9);
                         cv.drawText(s, d.margin, y + 12, pt);
                         y += d.fH1 + 7;
                     }
@@ -1225,7 +1227,9 @@ public final class Office {
                 case "h2": {
                     ensure(40);
                     Paint pt = p(d.fH2, true, d.ink, false);
-                    for (String s : wrap(b.optString("text"), pt, w - d.margin * 2)) {
+                    java.util.List<String> h2 = wrap(b.optString("text"), pt, w - d.margin * 2);
+                    for (String s : h2) {
+                        ensure(d.fH2 + 8);
                         cv.drawText(s, d.margin, y + 10, pt);
                         y += d.fH2 + 6;
                     }
@@ -1310,6 +1314,20 @@ public final class Office {
             y += 6;
         }
 
+        /** 画一行单元格（表头行同样走这里，便于分页时重复表头）。 */
+        private void drawRow(JSONArray r, int cols, float cw, float tw, Paint pcell, boolean head) {
+            if (head) cv.drawRect(d.margin, y, d.margin + tw, y + 20, paintFill(d.tableHead));
+            cv.drawText(clip(r.optString(0, ""), pcell, cw - 10), d.margin + 5, y + 14, pcell);
+            for (int c = 1; c < cols; c++) {
+                cv.drawText(clip(r.optString(c, ""), pcell, cw - 10), d.margin + cw * c + 5, y + 14, pcell);
+            }
+            Paint line = new Paint();
+            line.setColor(0xFFE5E7EB);
+            line.setStrokeWidth(0.6f);
+            cv.drawLine(d.margin, y + 20, d.margin + tw, y + 20, line);
+            y += 20;
+        }
+
         void table(JSONArray rows) {
             if (rows == null || rows.length() == 0) return;
             int cols = 0;
@@ -1322,10 +1340,24 @@ public final class Office {
             float cw = tw / cols;
             Paint ph = p(d.fSmall, true, d.ink, false);
             Paint pc = p(d.fSmall, false, d.ink, false);
+
+            // 整张表放得下就先换页，避免被硬拆成两段
+            float rowH = 20, totalH = rows.length() * rowH + 10;
+            float usable = h - d.margin * 2 - 18;
+            boolean repeatHead = totalH > usable;
+            if (!repeatHead) ensure(totalH);
+
+            JSONArray head = rows.optJSONArray(0);
             for (int i = 0; i < rows.length(); i++) {
                 JSONArray r = rows.optJSONArray(i);
                 if (r == null) continue;
-                ensure(22);
+                if (y + rowH > h - d.margin - 18) {
+                    newPage();
+                    // 太长只能拆：新页把表头再画一遍，读者才知道每列是什么
+                    if (repeatHead && i > 0 && head != null && head.length() > 0) {
+                        drawRow(head, cols, cw, tw, ph, true);
+                    }
+                }
                 if (i == 0) {
                     cv.drawRect(d.margin, y, d.margin + tw, y + 20, paintFill(d.tableHead));
                 }
