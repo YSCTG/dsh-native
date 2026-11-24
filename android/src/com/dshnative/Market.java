@@ -162,6 +162,40 @@ public final class Market {
         return out;
     }
 
+
+    /** 当前目录来源：远程缓存还是内置示例。 */
+    public static String sourceLabel(Context c) {
+        File cache = new File(c.getFilesDir(), "market-cache.json");
+        if (cache.isFile()) {
+            String host = "远程";
+            try {
+                String url = Prefs.get(c).getString("market_url", "");
+                if (url != null && url.contains("://")) {
+                    host = url.substring(url.indexOf("://") + 3);
+                    int slash = host.indexOf('/');
+                    if (slash > 0) host = host.substring(0, slash);
+                }
+            } catch (Throwable ignored) {}
+            return host;
+        }
+        return "内置示例";
+    }
+
+    /** 来源详情：远程地址或内置说明，带缓存更新时间。 */
+    public static String sourceDetail(Context c) {
+        File cache = new File(c.getFilesDir(), "market-cache.json");
+        if (cache.isFile()) {
+            String stamp = new java.text.SimpleDateFormat("MM-dd HH:mm")
+                    .format(new java.util.Date(cache.lastModified()));
+            return "远程目录 · 更新于 " + stamp + "（点按修改地址或刷新）";
+        }
+        String url = "";
+        try { url = Prefs.get(c).getString("market_url", ""); } catch (Throwable ignored) {}
+        return url == null || url.isEmpty()
+                ? "内置示例目录 · 点按填入任意 market.json 地址即可换成社区目录"
+                : "未拉取 · 已配置 " + url;
+    }
+
     static String readAsset(Context c) {
         try {
             InputStream in = c.getAssets().open("market.json");

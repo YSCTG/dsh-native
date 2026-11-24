@@ -157,6 +157,28 @@ public class SettingsActivity extends Activity {
 
 
     /** 拉远程目录：URL 存在 prefs.market_url，拉回来写 files/market-cache.json。 */
+
+    /** 目录来源：填一个返回 market JSON 的地址；留空则回到内置示例目录。 */
+    private void editMarketSource() {
+        final android.widget.EditText input = new android.widget.EditText(this);
+        input.setText(prefs.getString("market_url", ""));
+        input.setHint("https://…/market.json（留空用内置目录）");
+        input.setTextSize(13);
+        input.setSingleLine(true);
+        new AlertDialog.Builder(this, R.style.DshDialog)
+                .setTitle("插件目录来源")
+                .setMessage("任何返回 Native 清单 JSON 的地址都能当目录。留空 = 用内置示例。")
+                .setView(input)
+                .setPositiveButton("保存并刷新", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        prefs.edit().putString("market_url", input.getText().toString().trim()).apply();
+                        refreshMarket();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
     private void refreshMarket() {
         final String url = prefs.getString("market_url", "");
         if (url == null || !url.startsWith("http")) {
@@ -398,11 +420,27 @@ public class SettingsActivity extends Activity {
         }
 
         // 插件（内置）
+        section("插件 · 内置能力");
+        LinearLayout plugCard = card();
+        for (int i = 0; i < Plugin.BUILTINS.length; i++) {
+            final String[] b = Plugin.BUILTINS[i];
+            String sub = "builtin.skills".equals(b[0])
+                    ? Skill.all(this).size() + " 个技能 · 一个开关" : b[2];
+            switchRow(plugCard, b[1], sub, Plugin.isOn(this, b[0]),
+                    new CompoundButton.OnCheckedChangeListener() {
+                        @Override public void onCheckedChanged(CompoundButton btn, boolean on) {
+                            Plugin.setOn(SettingsActivity.this, b[0], on);
+                        }
+                    });
+            if (i < Plugin.BUILTINS.length - 1) divider(plugCard);
+        }
+
         // 插件市场：独立板块（和「已装的插件」分开——这里只列可安装的）
         section("插件市场");
         LinearLayout marketCard = card();
+        String src = Market.sourceLabel(this);
         actionRow(marketCard, Market.plugins(this).size() + " 个可安装插件",
-                "点按安装，装完开新会话生效", null);
+                "点按安装，装完开新会话生效 · 目录来源：" + src, null);
         java.util.List<JSONObject> catalog = Market.plugins(this);
         for (final JSONObject mp : catalog) {
             final String pid = mp.optString("id", "");
@@ -427,27 +465,13 @@ public class SettingsActivity extends Activity {
                     });
         }
         divider(marketCard);
-        actionRow(marketCard, "从网络刷新目录",
-                prefs.getString("market_url", "未配置远程目录：当前用内置目录"),
+        actionRow(marketCard, "目录来源 / 刷新",
+                Market.sourceDetail(this),
                 new View.OnClickListener() {
-                    @Override public void onClick(View v) { refreshMarket(); }
+                    @Override public void onClick(View v) { editMarketSource(); }
                 });
 
 
-        section("插件 · 内置能力");
-        LinearLayout plugCard = card();
-        for (int i = 0; i < Plugin.BUILTINS.length; i++) {
-            final String[] b = Plugin.BUILTINS[i];
-            String sub = "builtin.skills".equals(b[0])
-                    ? Skill.all(this).size() + " 个技能 · 一个开关" : b[2];
-            switchRow(plugCard, b[1], sub, Plugin.isOn(this, b[0]),
-                    new CompoundButton.OnCheckedChangeListener() {
-                        @Override public void onCheckedChanged(CompoundButton btn, boolean on) {
-                            Plugin.setOn(SettingsActivity.this, b[0], on);
-                        }
-                    });
-            if (i < Plugin.BUILTINS.length - 1) divider(plugCard);
-        }
 
         // 插件（.dshp）
         List<Plugin> ds = Plugin.installed(this);
