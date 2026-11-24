@@ -1367,7 +1367,48 @@ public final class Office {
     }
 
     /** 按像素宽度折行，中文按字符、英文按空格优先。 */
+    /**
+     * 断行。
+     *
+     * 以前是逐字符 measureText 累加，中文标点会被切到行首、英文单词会被拆开——这正是"排版不如电脑版"的
+     * 主要来源。现在交给系统的 StaticLayout（Minikin/HarfBuzz），CJK 禁则、标点悬挂、英文按词断行都由
+     * 系统负责；签名不变，调用方无需改动。
+     */
     private static List<String> wrap(String line, Paint p, int maxWidth) {
+        List<String> sys = wrapWithStaticLayout(line, p, maxWidth);
+        if (sys != null) return sys;
+        return wrapNaive(line, p, maxWidth);
+    }
+
+    /** 系统排版；不可用时返回 null，调用方回退到朴素断行。 */
+    private static List<String> wrapWithStaticLayout(String text, Paint p, int maxWidth) {
+        if (text == null || maxWidth <= 0) return null;
+        if (android.os.Build.VERSION.SDK_INT < 23) return null;
+        try {
+            android.text.TextPaint tp = new android.text.TextPaint(p);
+            android.text.StaticLayout layout = android.text.StaticLayout.Builder
+                    .obtain(text, 0, text.length(), tp, maxWidth)
+                    .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
+                    .setIncludePad(false)
+                    .setLineSpacing(0f, 1f)
+                    .build();
+            int n = layout.getLineCount();
+            if (n <= 0) return null;
+            List<String> out = new ArrayList<>(n);
+            for (int i = 0; i < n; i++) {
+                int a = layout.getLineStart(i), b = layout.getLineEnd(i);
+                String s = text.substring(a, b);
+                // 行尾空白去掉，但保留行内的；空行保留
+                out.add(s.replaceAll("[ \t]+$", ""));
+            }
+            return out;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 朴素断行（旧实现），系统排版不可用时兜底。 */
+    private static List<String> wrapNaive(String line, Paint p, int maxWidth) {
         List<String> out = new ArrayList<>();
         if (line == null || line.isEmpty()) {
             out.add("");
