@@ -657,6 +657,65 @@ public class MainActivity extends Activity implements Agent.Listener {
         return gap <= dp(120);
     }
 
+    /**
+     * 用户消息可能是纯字符串，也可能是 [{type:text},{type:image_url,image_url:{url:data:...}}]。
+     * 以前直接 optString("content")，带图的消息会把整段 base64 当文本铺满屏幕。
+     */
+    private void addUserMessage(JSONObject m) {
+        Object raw = m.opt("content");
+        if (raw instanceof JSONArray) {
+            JSONArray parts = (JSONArray) raw;
+            for (int i = 0; i < parts.length(); i++) {
+                JSONObject part;
+                try { part = parts.getJSONObject(i); } catch (Exception e) { continue; }
+                String type = part.optString("type", "");
+                if (type.contains("image")) {
+                    JSONObject u = part.optJSONObject("image_url");
+                    String url = u == null ? part.optString("url", "") : u.optString("url", "");
+                    addUserImage(url);
+                } else {
+                    String t = part.optString("text", "");
+                    if (!t.isEmpty()) addUserBubble(t);
+                }
+            }
+            return;
+        }
+        String text = m.optString("content", "");
+        if (text.startsWith("data:image")) { addUserImage(text); return; }
+        addUserBubble(text);
+    }
+
+    /** data URL → Bitmap → 气泡里的图片（宽度不超过屏宽 62%）。 */
+    private void addUserImage(String dataUrl) {
+        try {
+            int comma = dataUrl.indexOf("base64,");
+            if (comma < 0) { addUserBubble("［图片］"); return; }
+            byte[] bin = android.util.Base64.decode(dataUrl.substring(comma + 7),
+                    android.util.Base64.DEFAULT);
+            android.graphics.Bitmap bm = android.graphics.BitmapFactory
+                    .decodeByteArray(bin, 0, bin.length);
+            if (bm == null) { addUserBubble("［图片］"); return; }
+
+            android.widget.ImageView iv = new android.widget.ImageView(this);
+            iv.setImageBitmap(bm);
+            iv.setAdjustViewBounds(true);
+            iv.setScaleType(android.widget.ImageView.ScaleType.FIT_START);
+
+            int maxW = (int) (getResources().getDisplayMetrics().widthPixels * 0.62f);
+            LinearLayout outer = new LinearLayout(this);
+            outer.setOrientation(LinearLayout.HORIZONTAL);
+            outer.setGravity(Gravity.END);
+            outer.setPadding(0, dp(6), dp(2), dp(2));
+            LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(
+                    Math.min(bm.getWidth(), maxW), LinearLayout.LayoutParams.WRAP_CONTENT);
+            outer.addView(iv, ilp);
+            transcript.addView(outer);
+            scrollDown();
+        } catch (Throwable t) {
+            addUserBubble("［图片］");
+        }
+    }
+
     /** 用户消息：右对齐气泡，和桌面版一致（浅蓝底，不是自己的头像）。 */
     private void addUserBubble(String text) {
         int screenW = getResources().getDisplayMetrics().widthPixels;
@@ -2974,7 +3033,7 @@ public class MainActivity extends Activity implements Agent.Listener {
             try { m = h.getJSONObject(i); } catch (Exception e) { continue; }
             String role = m.optString("role", "");
             if ("user".equals(role)) {
-                addUserBubble(m.optString("content", ""));
+                addUserMessage(m);
             } else if ("assistant".equals(role)) {
                 JSONArray calls = m.optJSONArray("tool_calls");
                 if (calls != null) {
