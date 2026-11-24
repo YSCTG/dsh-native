@@ -68,6 +68,7 @@ public final class SelfCheck {
         checkSession(out, c);
         checkJsonPairing(out);
         checkCompact(out);
+        checkPluginMarket(out, c);
 
         clean(dir);
         return out;
@@ -90,6 +91,53 @@ public final class SelfCheck {
     }
 
     // ---------------- 各项检查 ----------------
+
+
+    /** 插件市场：清单安装/卸载/工具名/技能合并，全程本地，不联网。 */
+    private static void checkPluginMarket(List<Item> out, Context c) {
+        String pid = "selfcheck_plugin";
+        boolean ok = true;
+        String detail = "";
+        try {
+            org.json.JSONObject m = new org.json.JSONObject();
+            m.put("id", pid);
+            m.put("name", "自检插件");
+            m.put("version", "1.0.0");
+            org.json.JSONArray tools = new org.json.JSONArray();
+            org.json.JSONObject t = new org.json.JSONObject();
+            t.put("name", "ping");
+            t.put("python", "print('pong')");
+            tools.put(t);
+            m.put("tools", tools);
+            org.json.JSONArray skills = new org.json.JSONArray();
+            org.json.JSONObject sk = new org.json.JSONObject();
+            sk.put("id", "selfcheck_skill");
+            sk.put("name", "自检技能");
+            sk.put("desc", "自检用");
+            sk.put("body", "自检正文");
+            skills.put(sk);
+            m.put("skills", skills);
+
+            DesktopImport.install(c, m);
+            boolean installed = Market.installed(c, pid);
+            String full = Market.toolName(pid, "ping");
+            boolean found = Market.findTool(c, full) != null;
+            boolean skillMerged = false;
+            for (org.json.JSONObject x : Market.installedSkills(c)) {
+                if ("selfcheck_skill".equals(x.optString("id"))) { skillMerged = true; break; }
+            }
+            Market.uninstall(c, pid);
+            boolean gone = !Market.installed(c, pid);
+
+            ok = installed && found && skillMerged && gone;
+            detail = ok ? "装/卸载 + 工具解析 + 技能合并" : "installed=" + installed
+                    + " tool=" + found + " skill=" + skillMerged + " uninstall=" + gone;
+        } catch (Throwable e) {
+            ok = false;
+            detail = "异常：" + e;
+        }
+        out.add(new Item("插件市场", ok, detail));
+    }
 
     private static void checkMimes(List<Item> out) {
         String[][] cases = {
