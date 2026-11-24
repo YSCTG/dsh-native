@@ -35,12 +35,14 @@ public final class Updater {
         public final String apkUrl;
         public final long size;
         public final String notes;
+        public final String source;   // 从哪个地址查到的，出错时也能说清"更新到哪查的"
 
-        Info(String tag, String apkUrl, long size, String notes) {
+        Info(String tag, String apkUrl, long size, String notes, String source) {
             this.tag = tag;
             this.apkUrl = apkUrl;
             this.size = size;
             this.notes = notes;
+            this.source = source;
         }
     }
 
@@ -54,8 +56,59 @@ public final class Updater {
         }
     }
 
-    /** 查最新版本；网络或解析失败返回 null。 */
+
+    /**
+     * 版本清单的多个取法。
+     *
+     * 以前只连 api.github.com 查版本——国内经常根本连不上，于是"检查更新"直接报查不到，
+     * 用户既不知道更新到哪查的，也没法更新。现在按顺序试这些地址，谁通用谁，
+     * 并把**实际用到的来源**回传给界面显示。
+     */
+    private static final String[] MANIFESTS = {
+            "https://cdn.jsdelivr.net/gh/YSCTG/dsh-native@master/update.json",
+            "https://raw.githubusercontent.com/YSCTG/dsh-native/master/update.json",
+            "https://ghproxy.net/https://raw.githubusercontent.com/YSCTG/dsh-native/master/update.json",
+            "https://gh-proxy.com/https://raw.githubusercontent.com/YSCTG/dsh-native/master/update.json",
+    };
+
+    /** 上次检查时每个源的结果，失败时给用户看，避免"不知道为什么不行"。 */
+    public static volatile String lastDiagnostic = "";
+
+    public static Info latestFromManifest() {
+        StringBuilder diag = new StringBuilder();
+        for (String u : MANIFESTS) {
+            HttpURLConnection conn = null;
+            try {
+                conn = (HttpURLConnection) new URL(u).openConnection();
+                conn.setConnectTimeout(6000);
+                conn.setReadTimeout(8000);
+                conn.setRequestProperty("User-Agent", "DSH-Native");
+                int code = conn.getResponseCode();
+                if (code != 200) { diag.append(host(u)).append(" → HTTP ").append(code).append("\n"); continue; }
+                JSONObject o = new JSONObject(read(conn.getInputStream()));
+                String ver = o.optString("version", "");
+                String apk = o.optString("apk", "");
+                if (ver.isEmpty() || apk.isEmpty()) { diag.append(host(u)).append(" → 字段缺失\n"); continue; }
+                return new Info("v" + ver.replace("v", ""), apk, o.optLong("size", 0),
+                        o.optString("notes", ""), host(u));
+            } catch (Throwable e) {
+                diag.append(host(u)).append(" → ").append(e.getClass().getSimpleName()).append("\n");
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        }
+        lastDiagnostic = diag.toString();
+        return null;
+    }
+
+    private static String host(String url) {
+        try { return new URL(url).getHost(); } catch (Throwable t) { return url; }
+    }
+
+    /** 查最新版本：先试清单源，再回退到 GitHub API。 */
     public static Info latest() {
+        Info m = latestFromManifest();
+        if (m != null) return m;
         HttpURLConnection conn = null;
         try {
             conn = (HttpURLConnection) new URL(API).openConnection();
@@ -80,7 +133,7 @@ public final class Updater {
                 break;
             }
             if (tag.isEmpty() || url == null || url.isEmpty()) return null;
-            return new Info(tag, url, size, notes);
+            return new Info(tag, url, size, notes, API);
         } catch (Throwable e) {
             return null;
         } finally {

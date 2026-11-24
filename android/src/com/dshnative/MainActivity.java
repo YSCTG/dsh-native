@@ -171,6 +171,15 @@ public class MainActivity extends Activity implements Agent.Listener {
         // 有些网络/模拟器只有 IPv6 出网会直接连不上；所有 HTTP 都走 Java 栈，这里统一压到 IPv4。
         try { System.setProperty("java.net.preferIPv4Stack", "true"); } catch (Exception ignored) {}
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        // 自动化/测试入口：am start … --es action update → 启动即检查更新
+        try {
+            if ("update".equals(getIntent() == null ? null : getIntent().getStringExtra("action"))) {
+                ui.postDelayed(new Runnable() {
+                    @Override public void run() { checkUpdate(); }
+                }, 1200);
+            }
+        } catch (Throwable ignored) {}
+
         // 插件目录默认指向官方示例源（用户可在设置里改成任何同格式地址）
         try {
             if (prefs.getString("market_url", "").isEmpty()) {
@@ -1944,7 +1953,16 @@ public class MainActivity extends Activity implements Agent.Listener {
                 final String cur = Updater.currentVersion(MainActivity.this);
                 ui.post(new Runnable() {
                     @Override public void run() {
-                        if (info == null) { toast("查不到更新（网络或 API 不可达）"); return; }
+                        if (info == null) {
+                            String diag = Updater.lastDiagnostic;
+                            showPanelDialog(buildConfirmPanel(
+                                    "查不到更新",
+                                    "试过这些来源都失败：\n" + (diag.isEmpty() ? "（无记录）" : diag)
+                                            + "\n常见原因：网络不通、被运营商或代理拦截。"
+                                            + "\n可以手动下载：github.com/YSCTG/dsh-native/releases",
+                                    "知道了", R.color.accent, null));
+                            return;
+                        }
                         if (!Updater.isNewer(info.tag, cur)) {
                             android.util.Log.i("DSHN", "更新 已是最新 " + cur);
                             toast("已是最新版本 " + cur);
@@ -1955,7 +1973,11 @@ public class MainActivity extends Activity implements Agent.Listener {
                         showPanelDialog(buildConfirmPanel(
                                 "发现新版本 " + info.tag,
                                 "当前 " + cur + " → " + info.tag + "（"
-                                        + (info.size / 1024 / 1024) + " MB）\n\n" + notes,
+                                        + (info.size / 1024 / 1024) + " MB）"
+                                        + "\n版本来源：" + info.source
+                                        + "\n下载到：" + new java.io.File(getCacheDir(),
+                                                "update-" + info.tag + ".apk").getAbsolutePath()
+                                        + "\n\n" + notes,
                                 "下载并安装", R.color.accent,
                                 new Runnable() {
                                     @Override public void run() { downloadAndInstall(info); }
