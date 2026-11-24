@@ -236,6 +236,14 @@ public final class Agent {
         try {
             add("fs.read", tool("fs_list", "列目录：名字、类型、字节数。",
                     schema(obj("path", "string", "绝对路径或相对工作区的路径"), new String[]{"path"})));
+            add("fs.read", tool("office_read",
+                    "读现成的 Office 文件：docx 段落与表格、xlsx 各工作表的行与公式、pptx 每页文字。"
+                            + "改文档之前先用它看清楚里面有什么。",
+                    schema(props(new String[]{"path", "max_chars"},
+                                 new String[]{"string", "integer"},
+                                 new String[]{"文件绝对路径", "最多返回多少字符，默认 6000"}),
+                           new String[]{"path"})));
+
             add("fs.read", tool("fs_read", "按行读文本（带行号）。大文件请分页。",
                     schema(props(new String[]{"path", "offset", "limit"},
                                  new String[]{"string", "integer", "integer"},
@@ -1505,6 +1513,14 @@ public final class Agent {
             // 插件市场的工具：mkt_<插件id>_<工具名>
             if (name != null && name.startsWith(Market.PREFIX)) {
                 return Market.run(ctx, name, a, 60);
+            }
+            if ("office_read".equals(name)) {
+                String p0 = a.optString("path", "").trim();
+                if (p0.isEmpty()) return "错误：path 为空";
+                int max = a.optInt("max_chars", 6000);
+                if (max < 500) max = 500;
+                if (max > 30000) max = 30000;
+                return OfficeRead.summary(new java.io.File(p0), max);
             }
             return "错误：没有这个工具：" + name;
         } catch (Exception e) {

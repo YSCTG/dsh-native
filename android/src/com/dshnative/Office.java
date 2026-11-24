@@ -151,9 +151,17 @@ public final class Office {
             JSONArray row = rows.optJSONArray(r);
             if (row == null) continue;
             sb.append("<w:tr>");
+            boolean headRow = r == 0;
+            boolean zebra = !headRow && (r % 2 == 0);
             for (int c = 0; c < row.length(); c++) {
-                boolean head = r == 0;
-                sb.append("<w:tc><w:tcPr><w:tcW w:w=\"0\" w:type=\"auto\"/></w:tcPr><w:p><w:r>")
+                boolean head = headRow;
+                // 表头 F2F3F5 浅灰底 + 粗体；偶数行 FAFBFC 极浅底，肉眼才分得清行
+                String shade = headRow ? "F2F3F5" : (zebra ? "FAFBFC" : null);
+                sb.append("<w:tc><w:tcPr><w:tcW w:w=\"0\" w:type=\"auto\"/>");
+                if (shade != null) {
+                    sb.append("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"").append(shade).append("\"/>");
+                }
+                sb.append("</w:tcPr><w:p><w:r>")
                         .append(head ? "<w:rPr><w:b/></w:rPr>" : "")
                         .append("<w:t xml:space=\"preserve\">").append(esc(row.optString(c, "")))
                         .append("</w:t></w:r></w:p></w:tc>");
