@@ -44,9 +44,14 @@ public final class Attach {
     public static boolean shouldCard(File f, String answerText) {
         if (!worth(f)) return false;
         String name = f.getName().toLowerCase();
-        if (answerText != null && answerText.toLowerCase().contains(name)) return true;
-        for (String e : DELIVERABLE_EXT) if (name.endsWith(e)) return true;
-        return false;
+        if (answerText == null) {
+            // 历史复原：正文拿不到，只认交付型扩展名
+            for (String e : DELIVERABLE_EXT) if (name.endsWith(e)) return true;
+            return false;
+        }
+        // 实时回合：**必须**在回答里点了名才挂。
+        // 以前"交付型扩展名"可以绕过这条，于是这轮随手写出的 mp4/图片也会粘在回答下面。
+        return answerText.toLowerCase().contains(name);
     }
 
     public static boolean worth(File f) {

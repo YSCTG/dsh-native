@@ -1774,6 +1774,24 @@ public class MainActivity extends Activity implements Agent.Listener {
                 return;
             }
             if (video) {
+                // 先把第一帧当封面显示：否则卡片里是一块空白，用户不知道这是个视频
+                try {
+                    android.media.MediaMetadataRetriever mr = new android.media.MediaMetadataRetriever();
+                    mr.setDataSource(f.getAbsolutePath());
+                    android.graphics.Bitmap frame = mr.getFrameAtTime(0);
+                    mr.release();
+                    if (frame != null) {
+                        android.widget.ImageView poster = new android.widget.ImageView(this);
+                        poster.setImageBitmap(frame);
+                        poster.setAdjustViewBounds(true);
+                        poster.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+                        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT, dp(180));
+                        plp.bottomMargin = dp(6);
+                        body.addView(poster, plp);
+                    }
+                } catch (Throwable ignored) {}
+
                 android.widget.VideoView vv = new android.widget.VideoView(this);
                 vv.setVideoPath(f.getAbsolutePath());
                 android.widget.MediaController mc = new android.widget.MediaController(this);
@@ -1781,7 +1799,12 @@ public class MainActivity extends Activity implements Agent.Listener {
                 vv.setMediaController(mc);
                 body.addView(vv, new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, dp(220)));
-                vv.seekTo(1);
+                // seekTo 必须等 prepared，提前调用会被丢掉（这也是"点开看不到画面"的原因之一）
+                vv.setOnPreparedListener(new android.media.MediaPlayer.OnPreparedListener() {
+                    @Override public void onPrepared(android.media.MediaPlayer mp) {
+                        try { mp.seekTo(1); } catch (Throwable ignored) {}
+                    }
+                });
                 TextView tip = new TextView(this);
                 tip.setText("（点播放开始；控件在画面下方）");
                 tip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
@@ -1795,7 +1818,8 @@ public class MainActivity extends Activity implements Agent.Listener {
                     android.os.ParcelFileDescriptor pfd = android.os.ParcelFileDescriptor
                             .open(f, android.os.ParcelFileDescriptor.MODE_READ_ONLY);
                     android.graphics.pdf.PdfRenderer pr = new android.graphics.pdf.PdfRenderer(pfd);
-                    if (pr.getPageCount() > 0) {
+                    final int pages = pr.getPageCount();
+                    if (pages > 0) {
                         android.graphics.pdf.PdfRenderer.Page pg = pr.openPage(0);
                         int w = Math.min(pg.getWidth() * 2, 900);
                         int h = (int) ((float) pg.getHeight() / pg.getWidth() * w);
@@ -1811,7 +1835,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                         iv.setAdjustViewBounds(true);
                         body.addView(iv);
                         TextView more = new TextView(this);
-                        more.setText("（第 1 页 / 共 " + pr.getPageCount() + " 页，点标题用系统应用打开全文）");
+                        more.setText("（第 1 页 / 共 " + pages + " 页，点标题用系统应用打开全文）");
                         more.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
                         more.setTextColor(getColor(R.color.label_tertiary));
                         body.addView(more);
