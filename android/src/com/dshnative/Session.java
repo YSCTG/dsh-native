@@ -26,6 +26,9 @@ public final class Session {
     public String title = "";
     public long updated;
     public long tokensIn, tokensOut;
+    /** 最近一次请求的统计：缓存命中/未命中、输出量、耗时。切会话后状态栏要能复原。 */
+    public long hitTokens, missTokens, lastOut, lastMs;
+    public long promptTokens;
     /** 置顶：抽屉里永远排最前。 */
     public boolean pinned;
     /** 属于哪个工作区（会话列表按它分组）。 */
@@ -96,6 +99,11 @@ public final class Session {
                 s.updated = o.optLong("updated", 0);
                 s.tokensIn = o.optLong("in", 0);
                 s.tokensOut = o.optLong("out", 0);
+                s.hitTokens = o.optLong("hit", 0);
+                s.missTokens = o.optLong("miss", 0);
+                s.lastOut = o.optLong("lout", 0);
+                s.lastMs = o.optLong("lms", 0);
+                s.promptTokens = o.optLong("ptok", 0);
                 s.cost = o.optDouble("cost", 0);
                 s.pinned = o.optBoolean("pinned", false);
             s.ws = o.optString("ws", Workspaces.FULL_ID);
@@ -121,6 +129,11 @@ public final class Session {
                 o.put("updated", s.updated);
                 o.put("in", s.tokensIn);
                 o.put("out", s.tokensOut);
+                o.put("hit", s.hitTokens);
+                o.put("miss", s.missTokens);
+                o.put("lout", s.lastOut);
+                o.put("lms", s.lastMs);
+                o.put("ptok", s.promptTokens);
                 o.put("cost", s.cost);
                 o.put("pinned", s.pinned);
         o.put("ws", s.ws == null ? Workspaces.FULL_ID : s.ws);

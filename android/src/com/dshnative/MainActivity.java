@@ -1872,6 +1872,15 @@ public class MainActivity extends Activity implements Agent.Listener {
                 .show();
     }
 
+    /** 把这一轮的统计记到会话上，切会话/重启后还能还原。传 -1 表示该项本轮没有数据。 */
+    private void rememberStats(long hit, long miss, long out, long ms) {
+        if (session == null) return;
+        if (hit >= 0) { session.hitTokens = hit; session.missTokens = miss; }
+        if (out >= 0) { session.lastOut = out; session.lastMs = ms; }
+        if (hit >= 0) session.promptTokens = hit + miss;
+        Session.touch(this, session);
+    }
+
     /** 本轮输出速度：out / 秒。没有数据就不显示，不编数字。 */
     @Override public void onTurnStats(final int outTokens, final long ms) {
         ui.post(new Runnable() {
@@ -1882,6 +1891,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                     return;
                 }
                 double tps = outTokens * 1000.0 / ms;
+                rememberStats(-1, -1, outTokens, ms);
                 chipSpeed.setText(String.format("%.0f tok/s", tps));
                 chipSpeed.setVisibility(View.VISIBLE);
             }
@@ -1982,6 +1992,13 @@ public class MainActivity extends Activity implements Agent.Listener {
         if (chipCtx != null) {
             if (agent == null) {
                 chipCtx.setText("上下文 —");
+            } else if (agent.contextUsed() <= 0 && session != null && session.promptTokens > 0) {
+                // 刚切过来，本轮还没发请求：用上次记下的输入量，而不是显示 0%
+                int lim = agent.contextLimit();
+                int pct = lim <= 0 ? 0 : (int) Math.round(session.promptTokens * 100.0 / lim);
+                chipCtx.setText("上下文 " + pct + "%");
+                chipCtx.setTextColor(getColor(pct >= 80 ? R.color.danger
+                        : pct >= 60 ? R.color.label_primary : R.color.label_tertiary));
             } else {
                 int used = agent.contextUsed();
                 int lim = agent.contextLimit();
@@ -1992,6 +2009,30 @@ public class MainActivity extends Activity implements Agent.Listener {
                         : pct >= 60 ? R.color.label_primary : R.color.label_tertiary));
             }
         }
+        // 缓存命中与速度：本会话记过的值先摆上，本轮请求回来后再覆盖
+        if (session != null) {
+            if (chipHit != null) {
+                long total = session.hitTokens + session.missTokens;
+                if (total > 0) {
+                    int pct = (int) Math.round(session.hitTokens * 100.0 / total);
+                    chipHit.setText("缓存命中 " + pct + "%");
+                    chipHit.setTextColor(getColor(pct >= 80 ? R.color.label_secondary
+                            : pct >= 40 ? R.color.label_tertiary : R.color.danger));
+                } else {
+                    chipHit.setText("缓存命中 —");
+                }
+            }
+            if (chipSpeed != null) {
+                if (session.lastMs >= 500 && session.lastOut > 0) {
+                    chipSpeed.setText(String.format("%.0f tok/s",
+                            session.lastOut * 1000.0 / session.lastMs));
+                    chipSpeed.setVisibility(View.VISIBLE);
+                } else {
+                    chipSpeed.setVisibility(View.GONE);
+                }
+            }
+        }
+
         if (ledger != null) {
             if (!Secret.hasKey(prefs)) {
                 ledger.setText("未设置 key");
@@ -3013,6 +3054,9 @@ public class MainActivity extends Activity implements Agent.Listener {
         }
         if (session == null) session = new Session(id);
         prefs.edit().putString("session_id", id).apply();
+        // 待办清单也是按会话存的：切过来要先读回，否则底部还挂着上一个会话的进度
+        todoSummary = Todo.summary(this, id);
+        refreshTodoLine();
         new Thread(new Runnable() {
             @Override public void run() {
                 ensureAgent();
@@ -3449,6 +3493,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                 int total = hit + miss;
                 if (total <= 0) { chipHit.setText("缓存命中 —"); return; }
                 int pct = (int) Math.round(hit * 100.0 / total);
+                rememberStats(hit, miss, -1, -1);
                 chipHit.setText("缓存命中 " + pct + "%");
                 chipHit.setTextColor(getColor(pct >= 80 ? R.color.label_secondary
                         : pct >= 40 ? R.color.label_tertiary : R.color.danger));
