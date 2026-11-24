@@ -290,7 +290,29 @@ public final class Office {
             rels.append("<Relationship Id=\"rId").append(n)
                 .append("\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet")
                 .append(n).append(".xml\"/>");
-            files.add(new String[]{"xl/worksheets/sheet" + n + ".xml", sheetXml(sh)});
+            boolean hasChart = false;
+            try {
+                JSONArray charts = sh.optJSONArray("charts");
+                if (charts != null && charts.length() > 0) {
+                    String cx = chartXml(charts.optJSONObject(0));
+                    if (cx != null) {
+                        files.add(new String[]{"xl/charts/chart" + n + ".xml", cx});
+                        files.add(new String[]{"xl/drawings/drawing" + n + ".xml", drawingXml()});
+                        files.add(new String[]{"xl/drawings/_rels/drawing" + n + ".xml.rels", drawingRels(n)});
+                        files.add(new String[]{"xl/worksheets/_rels/sheet" + n + ".xml.rels", sheetRels(n)});
+                        types.append("<Override PartName=\"/xl/charts/chart").append(n)
+                             .append(".xml\" ContentType=\"application/vnd.openxmlformats-officedocument.drawingml.chart+xml\"/>")
+                             .append("<Override PartName=\"/xl/drawings/drawing").append(n)
+                             .append(".xml\" ContentType=\"application/vnd.openxmlformats-officedocument.drawing+xml\"/>");
+                        hasChart = true;
+                    }
+                }
+            } catch (Throwable t) {
+                // 图表出问题就整体放弃，主文件必须能打开
+                sh.remove("charts");
+                hasChart = false;
+            }
+            files.add(new String[]{"xl/worksheets/sheet" + n + ".xml", sheetXml(sh, hasChart)});
         }
         types.append("</Types>");
         wb.append("</sheets></workbook>");
@@ -326,6 +348,43 @@ public final class Office {
             + "<xf numFmtId=\"14\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>"
             + "</cellXfs><cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles></styleSheet>";
 
+
+
+    /** 画布：把图表放在 (1 行 0 列) 起、约 12x18 格的位置。 */
+    private static String drawingXml() {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                + "<xdr:wsDr xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\""
+                + " xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">"
+                + "<xdr:oneCellAnchor><xdr:from><xdr:col>2</xdr:col><xdr:colOff>0</xdr:colOff>"
+                + "<xdr:row>1</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>"
+                + "<xdr:ext cx=\"5486400\" cy=\"3200400\"/>"
+                + "<xdr:graphicFrame macro=\"\"><xdr:nvGraphicFramePr>"
+                + "<xdr:cNvPr id=\"2\" name=\"Chart\"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>"
+                + "<xdr:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/></xdr:xfrm>"
+                + "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\">"
+                + "<c:chart xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\""
+                + " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\""
+                + " r:id=\"rId1\"/></a:graphicData></a:graphic></xdr:graphicFrame>"
+                + "<xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>";
+    }
+
+    /** 画布 → 图表的关联。 */
+    private static String drawingRels(int n) {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                + "<Relationship Id=\"rId1\""
+                + " Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart\""
+                + " Target=\"../charts/chart" + n + ".xml\"/></Relationships>";
+    }
+
+    /** 工作表 → 画布的关联。 */
+    private static String sheetRels(int n) {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                + "<Relationship Id=\"rId1\""
+                + " Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing\""
+                + " Target=\"../drawings/drawing" + n + ".xml\"/></Relationships>";
+    }
 
     /**
      * 内嵌图表（可选）：sheet.charts = [{type:"bar|pie|line", title, values:[...], name}]
@@ -365,7 +424,7 @@ public final class Office {
                 + "<c:plotArea><c:layout/>" + plot + "</c:plotArea></c:chart></c:chartSpace>";
     }
 
-    private static String sheetXml(JSONObject sh) {
+    private static String sheetXml(JSONObject sh, boolean hasChart) {
         JSONArray rows = sh.optJSONArray("rows");
         boolean header = sh.optBoolean("header", true);
         StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
@@ -447,8 +506,8 @@ public final class Office {
             }
         }
         sb.append("</sheetData>");
-        // 图表部件（chart + drawing + rels）还没接上，这里**不能**写 <drawing r:id>：
-        // 引用了不存在的部件会让整个 xlsx 打不开，比没有图表更糟。
+        // 只有四个部件都写成功（hasChart=true）才引用 drawing，否则宁可不画
+        if (hasChart) sb.append("<drawing r:id=\"rId1\"/>");
         sb.append("</worksheet>");
         return sb.toString();
     }
