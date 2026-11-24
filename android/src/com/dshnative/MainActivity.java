@@ -2323,8 +2323,16 @@ public class MainActivity extends Activity implements Agent.Listener {
 
     private void onAbort() {
         abortRequested = true;
-        if (agent != null) {
-            agent.cancel();
+        // 多会话之后 agent 字段可能已经是 null（切过会话），真正在跑的实例在 agentPool 里。
+        // 只取消字段会导致"按了停止没反应"。
+        Agent runningAgent = agent;
+        if (runningAgent == null && session != null) runningAgent = agentPool.get(session.id);
+        if (runningAgent == null && session == null) {
+            for (Agent a : agentPool.values()) if (a != null) { runningAgent = a; break; }
+        }
+        if (runningAgent != null) {
+            runningAgent.cancel();
+            toast("正在停止…");
         } else {
             // Agent 还没构造完（还在联网/解压），没有可取消的对象：
             // 先把界面恢复，后台线程看到标志后不会再发请求。
