@@ -29,8 +29,12 @@ public final class OfficeRestyle {
     public static String run(File in, File out, JSONObject spec) {
         if (in == null || !in.isFile()) return "错误：源文件不存在";
         JSONArray styles = spec.optJSONArray("styles");
-        if (styles == null || styles.length() == 0) {
-            return "错误：需要 styles 数组，如 [{id:'Heading1', size:32, color:'#1F6FEB'}]";
+        boolean hasDocx = styles != null && styles.length() > 0;
+        boolean hasXlsx = spec.optJSONObject("xlsx") != null;
+        boolean hasPptx = spec.optJSONObject("pptx") != null;
+        if (!hasDocx && !hasXlsx && !hasPptx) {
+            return "错误：至少要给一种目标——styles（docx 样式）、xlsx（字体/字号/字色）、"
+                    + "或 pptx（ink/page/accent 主题色）";
         }
         try {
             String patched = null;
@@ -44,8 +48,16 @@ public final class OfficeRestyle {
                 ZipEntry e = en.nextElement();
                 ZipEntry ne = new ZipEntry(e.getName());
                 zos.putNextEntry(ne);
-                if ("word/styles.xml".equals(e.getName())) {
-                    patched = patch(read(zf.getInputStream(e)), styles);
+                String nm = e.getName();
+                if ("word/styles.xml".equals(nm)) {
+                    patched = hasDocx ? patch(read(zf.getInputStream(e)), styles)
+                            : read(zf.getInputStream(e));
+                    zos.write(patched.getBytes("UTF-8"));
+                } else if ("xl/styles.xml".equals(nm) && spec.has("xlsx")) {
+                    patched = patchXlsx(read(zf.getInputStream(e)), spec.optJSONObject("xlsx"));
+                    zos.write(patched.getBytes("UTF-8"));
+                } else if ("ppt/theme/theme1.xml".equals(nm) && spec.has("pptx")) {
+                    patched = patchTheme(read(zf.getInputStream(e)), spec.optJSONObject("pptx"));
                     zos.write(patched.getBytes("UTF-8"));
                 } else {
                     copy(zf.getInputStream(e), zos);
@@ -54,7 +66,7 @@ public final class OfficeRestyle {
             }
             zos.close();
             zf.close();
-            if (patched == null) {
+            if (patched == null && (hasDocx || hasXlsx || hasPptx)) {
                 tmp.delete();
                 return "错误：这份 docx 没有 word/styles.xml，无法按样式改（可能是别的工具生成的）";
             }
@@ -114,6 +126,50 @@ public final class OfficeRestyle {
             out = out.substring(0, m.start()) + head + newBody + tail + out.substring(m.end());
         }
         return out;
+    }
+
+    /** xlsx：改默认字体名、字号(pt)与字色。 */
+    private static String patchXlsx(String xml, org.json.JSONObject s) {
+        String out = xml;
+        String font = s.optString("font", "");
+        int pt = s.optInt("size", 0);
+        String color = s.optString("color", "");
+        if (!font.isEmpty()) out = out.replaceAll("<name val=\"[^\"]*\"/>", "<name val=\"" + font + "\"/>");
+        if (pt > 0) out = out.replaceAll("<sz val=\"[0-9.]+\"/>", "<sz val=\"" + pt + "\"/>");
+        if (!color.isEmpty()) {
+            String hex = "FF" + (color.startsWith("#") ? color.substring(1) : color).toUpperCase();
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("<font>(.*?)</font>", java.util.regex.Pattern.DOTALL).matcher(out);
+            StringBuffer sbx = new StringBuffer();
+            while (m.find()) {
+                String inner = m.group(1);
+                if (inner.matches("(?s).*<color[^>]*/>.*")) {
+                    inner = inner.replaceAll("<color[^>]*/>", "<color rgb=\"" + hex + "\"/>");
+                } else {
+                    inner = inner + "<color rgb=\"" + hex + "\"/>";
+                }
+                m.appendReplacement(sbx, java.util.regex.Matcher.quoteReplacement("<font>" + inner + "</font>"));
+            }
+            m.appendTail(sbx);
+            out = sbx.toString();
+        }
+        return out;
+    }
+
+    /** pptx：改主题配色（dk1=正文/lt1=背景/accent1=强调）。 */
+    private static String patchTheme(String xml, org.json.JSONObject s) {
+        String out = xml;
+        out = setSchemeColor(out, "dk1", s.optString("ink", ""));
+        out = setSchemeColor(out, "lt1", s.optString("page", ""));
+        out = setSchemeColor(out, "accent1", s.optString("accent", ""));
+        return out;
+    }
+
+    private static String setSchemeColor(String xml, String slot, String color) {
+        if (color == null || color.isEmpty()) return xml;
+        String hex = (color.startsWith("#") ? color.substring(1) : color).toUpperCase();
+        return xml.replaceAll("(<a:" + slot + ">\\s*<a:srgbClr val=\")[0-9A-Fa-f]{6}(\")",
+                "$1" + hex + "$2");
     }
 
     private static String read(InputStream in) throws Exception {

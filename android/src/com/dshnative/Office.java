@@ -390,6 +390,16 @@ public final class Office {
      * 内嵌图表（可选）：sheet.charts = [{type:"bar|pie|line", title, values:[...], name}]
      * 用 c:numLit 内联数据，不依赖单元格区域，便于一处生成；失败则整块跳过，不影响表格本身。
      */
+    /** 统一包一层 chartSpace。 */
+    private static String wrapChart(String title, String plot) {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                + "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\""
+                + " xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">"
+                + "<c:chart>" + (title == null || title.isEmpty() ? "" :
+                    "<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>" + title + "</a:t></a:r></a:p></c:rich></c:tx></c:title>")
+                + "<c:plotArea><c:layout/>" + plot + "</c:plotArea></c:chart></c:chartSpace>";
+    }
+
     private static String chartXml(JSONObject ch) {
         String type = ch.optString("type", "bar").toLowerCase();
         String title = esc(ch.optString("title", ""));
@@ -409,6 +419,17 @@ public final class Office {
            .append("<c:ptCount val=\"").append(values.length()).append("\"/>").append(nums)
            .append("</c:numLit></c:val></c:ser>");
         String plot;
+        if ("scatter".equals(type)) {
+            plot = "<c:scatterChart><c:scatterStyle val=\"lineMarker\"/>" + ser + "</c:scatterChart>";
+            return wrapChart(title, plot);
+        } else if ("area".equals(type)) {
+            plot = "<c:areaChart><c:grouping val=\"standard\"/>" + ser + "</c:areaChart>";
+            return wrapChart(title, plot);
+        } else if ("stacked".equals(type)) {
+            plot = "<c:barChart><c:barDir val=\"col\"/><c:grouping val=\"stacked\"/>" + ser
+                    + "<c:overlap val=\"100\"/></c:barChart>";
+            return wrapChart(title, plot);
+        }
         if ("pie".equals(type)) {
             plot = "<c:pieChart><c:varyColors val=\"1\"/>" + ser + "<c:firstSliceAng val=\"0\"/></c:pieChart>";
         } else if ("line".equals(type)) {
@@ -732,8 +753,27 @@ public final class Office {
         int cw = Math.max(3000000, 9144000 - m * 2);
         StringBuilder body = new StringBuilder();
 
+        // 章节过渡页：满幅强调色底 + 白色居中大标题 + 右下序号
+        if (s.optBoolean("section", false)) {
+            String ac = String.format("%06X", d.accent & 0xFFFFFF);
+            String wOnAccent = "FFFFFF";
+            body.append("<p:sp><p:nvSpPr><p:cNvPr id=\"9\" name=\"secbg\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
+                    + "<p:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"9144000\" cy=\"6858000\"/></a:xfrm>"
+                    + "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>"
+                    + "<a:solidFill><a:srgbClr val=\"" + ac + "\"/></a:solidFill>"
+                    + "<a:ln><a:noFill/></a:ln></p:spPr></p:sp>");
+            body.append(shapeColored(10, m, 2850000, cw, 1200000, title, 3200, true, "FFFFFF"));
+            String sub = s.optString("subtitle", "");
+            if (!sub.isEmpty()) {
+                body.append(shapeColored(11, m, 3900000, cw, 500000, sub, 1500, false, "FFFFFF"));
+            }
+            body.append(shapeColored(12, m + cw - 900000, 6100000, 900000, 300000,
+                    index + " / " + total, 1100, false, "FFFFFF"));
+            return body.toString();
+        }
+
         // 封面页：满幅色带 + 大标题 + 副标题 + 日期，不画页码、不画要点
-        if (s.optBoolean("cover", false) || index == 1 && s.optBoolean("cover", false)) {
+        if (s.optBoolean("cover", false)) {
             String pg = String.format("%06X", d.page & 0xFFFFFF);
             body.append("<p:sp><p:nvSpPr><p:cNvPr id=\"9\" name=\"bg\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
                     + "<p:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"9144000\" cy=\"6858000\"/></a:xfrm>"

@@ -247,12 +247,15 @@ public final class Agent {
             add("fs.read", tool("fs_list", "列目录：名字、类型、字节数。",
                     schema(obj("path", "string", "绝对路径或相对工作区的路径"), new String[]{"path"})));
             add("fs.write", tool("office_restyle",
-                    "改现成 docx 的样式：styles=[{id:'Heading1', size:32, color:'#1F6FEB'}]，"
-                            + "只改 word/styles.xml 里的定义，其余部件字节原样拷贝（图片字体不受影响）。",
-                    schema(props(new String[]{"path", "out", "styles"},
-                                 new String[]{"string", "string", "array"},
-                                 new String[]{"源 docx", "输出 docx（默认覆盖源文件）", "样式补丁数组"}),
-                           new String[]{"path", "styles"})));
+                    "改现成 Office 文件的样式（只改样式部件，其余字节原样拷贝）：\n"
+                            + "docx → styles=[{id:'Heading1', size:32, color:'#1F6FEB', font:'思源宋体'}]\n"
+                            + "xlsx → xlsx={size:14, color:'#B4531F', font:'Calibri'}\n"
+                            + "pptx → pptx={ink:'#111111', page:'#FFFFFF', accent:'#1F6FEB'}",
+                    schema(props(new String[]{"path", "out", "styles", "xlsx", "pptx"},
+                                 new String[]{"string", "string", "array", "object", "object"},
+                                 new String[]{"源文件", "输出（默认覆盖源文件）", "docx 样式补丁",
+                                         "xlsx 字体/字号/字色", "pptx 主题色"}),
+                           new String[]{"path"})));
             add("fs.read", tool("office_read",
                     "读现成的 Office 文件：docx 段落与表格、xlsx 各工作表的行与公式、pptx 每页文字。"
                             + "改文档之前先用它看清楚里面有什么。",
@@ -1538,6 +1541,8 @@ public final class Agent {
                 if (dst.isEmpty()) dst = src;
                 org.json.JSONObject sp = new org.json.JSONObject();
                 sp.put("styles", a.optJSONArray("styles") == null ? new org.json.JSONArray() : a.optJSONArray("styles"));
+                if (a.optJSONObject("xlsx") != null) sp.put("xlsx", a.optJSONObject("xlsx"));
+                if (a.optJSONObject("pptx") != null) sp.put("pptx", a.optJSONObject("pptx"));
                 return OfficeRestyle.run(new java.io.File(src), new java.io.File(dst), sp);
             }
             if ("office_read".equals(name)) {
