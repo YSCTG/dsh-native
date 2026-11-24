@@ -443,22 +443,8 @@ public class MainActivity extends Activity implements Agent.Listener {
         chipTier = chip(tierLabel() + " ▾", new View.OnClickListener() {
             @Override public void onClick(View v) { showTierSheet(); }
         });
-        // 桌面版把权限选择放在输入区里，这里照做
-        chipWs = new TextView(this);
-        chipWs.setText(tierLabel() + " ▾");
-        chipWs.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        chipWs.setTextColor(getColor(R.color.label_secondary));
-        chipWs.setPadding(dp(8), dp(4), dp(8), dp(4));
-        chipWs.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { showTierSheet(); }
-        });
-        TextView modePill = chipWs;
-        LinearLayout.LayoutParams mpLp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT);
-        mpLp.leftMargin = dp(4);
-        tools.addView(modePill, mpLp);
-
+        // 这颗胶囊原本显示的是**工作区名**（内置工作区就叫“完全权限”），
+        // 放在输入区很容易被当成权限开关，去掉。工作区切换在抽屉里。
         View gap = new View(this);
         tools.addView(gap, new LinearLayout.LayoutParams(0, dp(1), 1f));
 
@@ -529,11 +515,8 @@ public class MainActivity extends Activity implements Agent.Listener {
         barOuter.addView(barScroll, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        // 工作区选择器在桌面版属于输入区，这里挂到输入卡片那一排（见上）
-        chipWs = new TextView(this);
-        chipWs.setText(Workspaces.current(this).name + " ▾");
-        chipWs.setTag("ws");
-        chipWs.setVisibility(View.GONE);   // 由输入卡片里那枚胶囊承担，避免重复
+        // 工作区胶囊已去掉：内置工作区就叫「完全权限」，摆在输入区会被误认成权限开关。
+        // 切换入口在抽屉的「切换 / 新建工作区」。
 
         // 桌面版右下角没有齿轮；设置入口在抽屉里（见 openDrawer）
 
