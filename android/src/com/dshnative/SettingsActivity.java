@@ -39,6 +39,11 @@ public class SettingsActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences("dshnative", MODE_PRIVATE);
+        // 支持从外部直接导入：am start … --es import_src "lodash" 或一个清单 URL
+        String direct = getIntent() == null ? null : getIntent().getStringExtra("import_src");
+        if (direct != null && !direct.trim().isEmpty()) {
+            prefs.edit().putString("market_pending", direct.trim()).apply();
+        }
         int bg = getColor(R.color.bg_base);
         Window w = getWindow();
         w.setStatusBarColor(bg);
@@ -287,6 +292,41 @@ public class SettingsActivity extends Activity {
         }).start();
     }
 
+
+    /** 有 --es import_src 时，进来就开始导入并把结果写进"最近一次导入"。 */
+    private void runPendingImport() {
+        final String src = prefs.getString("market_pending", "");
+        if (src == null || src.isEmpty()) return;
+        prefs.edit().remove("market_pending").apply();
+        toast("正在导入 " + src + " …");
+        new Thread(new Runnable() {
+            @Override public void run() {
+                int ok = 0;
+                String err = "";
+                if (src.startsWith("http://") || src.startsWith("https://")) {
+                    java.util.List<JSONObject> list = DesktopImport.fromUrl(SettingsActivity.this, src);
+                    for (JSONObject m : list) { DesktopImport.install(SettingsActivity.this, m); ok++; }
+                    if (ok == 0) err = "地址里没有可用的插件清单";
+                } else {
+                    DesktopImport.Result r = DesktopImport.fromNpm(SettingsActivity.this, src);
+                    if (r.manifest != null) { DesktopImport.install(SettingsActivity.this, r.manifest); ok = 1; }
+                    else err = r.error == null ? "转换失败" : r.error;
+                }
+                String stamp = new java.text.SimpleDateFormat("MM-dd HH:mm")
+                        .format(new java.util.Date());
+                prefs.edit().putString("market_last", stamp + " · " + src
+                        + (ok > 0 ? " · 已导入 " + ok + " 个" : " · 失败：" + err)).apply();
+                final int done = ok;
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        toast(done > 0 ? "已导入 " + done + " 个（新会话生效）" : "导入失败，见市场里的记录");
+                        recreate();
+                    }
+                });
+            }
+        }).start();
+    }
+
     private void section(String title) {
         TextView t = new TextView(this);
         t.setText(title);
@@ -466,6 +506,7 @@ public class SettingsActivity extends Activity {
     }
 
     private void build() {
+        runPendingImport();
         final int keepY = scrollView == null ? 0 : scrollView.getScrollY();
         content.removeAllViews();
 
@@ -531,13 +572,18 @@ public class SettingsActivity extends Activity {
         }
         divider(marketCard);
         divider(marketCard);
-        actionRow(marketCard, "从电脑版导入",
+        actionRow(marketCard, "添加来源",
                 "填 npm 包名（如 @deepseek-ai/dsh-skill）。电脑版插件是 Node 模块，代码跑不了，"
                         + "能迁过来的是它的用法→变成技能提示词",
                 new View.OnClickListener() {
                     @Override public void onClick(View v) { importFromDesktop(); }
                 });
         divider(marketCard);
+        String last = prefs.getString("market_last", "");
+        if (!last.isEmpty()) {
+            divider(marketCard);
+            actionRow(marketCard, "最近一次导入", last, null);
+        }
         actionRow(marketCard, "目录来源 / 刷新",
                 Market.sourceDetail(this),
                 new View.OnClickListener() {

@@ -167,6 +167,16 @@ public class MainActivity extends Activity implements Agent.Listener {
         // 有些网络/模拟器只有 IPv6 出网会直接连不上；所有 HTTP 都走 Java 栈，这里统一压到 IPv4。
         try { System.setProperty("java.net.preferIPv4Stack", "true"); } catch (Exception ignored) {}
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        // 外部导入入口：am start … --es import_src "pnpm包名/清单URL"
+        // 转到设置页去执行（SettingsActivity 不导出，只能由本应用内部拉起）。
+        try {
+            String imp = getIntent() == null ? null : getIntent().getStringExtra("import_src");
+            if (imp != null && !imp.trim().isEmpty()) {
+                prefs.edit().putString("market_pending", imp.trim()).apply();
+                getIntent().removeExtra("import_src");
+                startActivity(new android.content.Intent(this, SettingsActivity.class));
+            }
+        } catch (Throwable ignored) {}
         // 老版本的默认推理等级是 max（"分析请求"能跑几分钟）。迁移一次到 high，
         // 之后用户自己改的值不再覆盖。
         if (!prefs.getBoolean("effort_migrated", false)) {
