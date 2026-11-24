@@ -233,8 +233,13 @@ public class MainActivity extends Activity implements Agent.Listener {
         if (getIntent() != null && getIntent().getBooleanExtra("edit_key", false)) {
             askKey();
         }
+        // adb/外部投递的 prompt 只能消费一次：
+        // 之前没清掉 extra，进程被重装/重建后同一个 intent 会再次触发，
+        // 于是"刚开的新会话"莫名其妙自己开始跑任务。
         String p = getIntent() == null ? null : getIntent().getStringExtra("prompt");
-        if (p != null && !p.trim().isEmpty()) {
+        if (p != null) getIntent().removeExtra("prompt");
+        // 配置变更/进程重建（savedInstanceState != null）时不再重放
+        if (p != null && !p.trim().isEmpty() && savedInstanceState == null) {
             input.setText(p.trim());
             if (!apiKey().isEmpty()) onSend();
         }
@@ -2255,10 +2260,21 @@ public class MainActivity extends Activity implements Agent.Listener {
         }
         prefs.edit().putInt(key, count).apply();
 
-        note("（进程重启过，已自动接上被打断的那一轮）");
-        ui.postDelayed(new Runnable() {
-            @Override public void run() { onResumeTurn(); }
-        }, 800);
+        // 不再自动续跑：上一轮被中断后自己动起来，用户会以为"新会话自己开始干活"。
+        // 改成一行可点的提示，点一下才继续。
+        final TextView bar = new TextView(this);
+        bar.setText("⚠ 上一轮被中断了 · 点此继续（不会自动开始）");
+        bar.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        bar.setTextColor(getColor(R.color.label_secondary));
+        bar.setPadding(0, dp(6), 0, dp(6));
+        bar.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                bar.setVisibility(View.GONE);
+                note("（继续上一轮）");
+                onResumeTurn();
+            }
+        });
+        addView(bar);
     }
 
     /** 一行浅色提示，不占按钮。 */
