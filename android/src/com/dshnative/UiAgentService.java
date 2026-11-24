@@ -107,6 +107,86 @@ public class UiAgentService extends AccessibilityService {
         return dot >= 0 ? s.substring(dot + 1) : s;
     }
 
+
+    /**
+     * 往输入框写字。
+     *
+     * 不能用 InputManager.injectInputEvent —— 那是 INJECT_EVENTS 签名权限，
+     * 普通应用调用直接 SecurityException。无障碍的 ACTION_SET_TEXT 只需要本服务，
+     * 而且是"整段替换"，比逐字符敲键盘更稳。
+     */
+    public synchronized String setTextAt(int index, String text) {
+        if (text == null) text = "";
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return "没有活动窗口：目标 App 可能已退到后台";
+
+        AccessibilityNodeInfo target = null;
+        if (index >= 0 && index < lastBounds.size()) {
+            int[] b = lastBounds.get(index);
+            int cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2;
+            target = findEditableAt(root, cx, cy, 0);
+        }
+        if (target == null) target = findFocusedEditable(root);
+        if (target == null) return "没找到可输入的框：先 tap 一下输入框，或先调用 ui_dump 看 #序号";
+
+        boolean ok = applyText(target, text);
+        if (!ok) {
+            // 有的输入框不认 SET_TEXT，退回复制粘贴
+            try {
+                android.content.ClipboardManager cm = (android.content.ClipboardManager)
+                        getSystemService(CLIPBOARD_SERVICE);
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("dsh", text));
+                target.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+                ok = target.performAction(AccessibilityNodeInfo.ACTION_PASTE);
+            } catch (Throwable ignored) {}
+        }
+        if (!ok) return "写入失败：这个输入框不接受无障碍写入，可以试试 tap 后用系统输入法";
+        return "已写入 " + text.length() + " 个字符";
+    }
+
+    private boolean applyText(AccessibilityNodeInfo n, String text) {
+        try {
+            android.os.Bundle args = new android.os.Bundle();
+            args.putCharSequence(
+                    AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
+            if (n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return true;
+            n.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+            return n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 找"落在某个坐标上的可编辑节点"（点过输入框后按 #序号 写最可靠）。 */
+    private AccessibilityNodeInfo findEditableAt(AccessibilityNodeInfo n, int x, int y, int depth) {
+        if (n == null || depth > 16) return null;
+        Rect r = new Rect();
+        n.getBoundsInScreen(r);
+        if (r.contains(x, y) && (n.isEditable() || isTextField(n))) return n;
+        for (int i = 0; i < n.getChildCount(); i++) {
+            AccessibilityNodeInfo hit = findEditableAt(n.getChild(i), x, y, depth + 1);
+            if (hit != null) return hit;
+        }
+        return null;
+    }
+
+    private AccessibilityNodeInfo findFocusedEditable(AccessibilityNodeInfo n) {
+        if (n == null) return null;
+        if (n.isFocused() && (n.isEditable() || isTextField(n))) return n;
+        for (int i = 0; i < n.getChildCount(); i++) {
+            AccessibilityNodeInfo hit = findFocusedEditable(n.getChild(i));
+            if (hit != null) return hit;
+        }
+        return null;
+    }
+
+    private boolean isTextField(AccessibilityNodeInfo n) {
+        CharSequence cn = n.getClassName();
+        if (cn == null) return false;
+        String s = cn.toString();
+        return s.contains("EditText") || s.contains("TextInput");
+    }
+
     public synchronized boolean tapIndex(int index) {
         if (index < 0 || index >= lastBounds.size()) return false;
         int[] b = lastBounds.get(index);

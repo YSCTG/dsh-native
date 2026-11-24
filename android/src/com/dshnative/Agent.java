@@ -174,7 +174,8 @@ public final class Agent {
                 "- 相对路径落到 WORKSPACE_ROOT，那里是你的默认产出目录；绝对路径原样访问。\n" +
                 "- 你能读写 /sdcard 下的任何位置（相册、下载、文档…），不需要征求同意；\n" +
                 "  系统目录（/system、/data 等）没有 root 时不可写，别在里面折腾。\n" +
-                "- 你能读手机界面（ui_dump）并点击（ui_tap）——这是操作其他应用的正式手段，不要去猜坐标。\n" +
+                "- 你能读手机界面（ui_dump）并点击（ui_tap）——这是操作其他应用的正式手段，不要去猜坐标。\n"
+            + "- 打字用 ui_type（无障碍写入，不需要 root）；`input text` 会因 INJECT_EVENTS 权限失败，不要用它。\n" +
                 "\n" +
                 "规矩：\n" +
                 "1. 需要事实就去读，不要猜。读文件用 fs_read，不要整文件倾倒；看界面先 ui_dump。\n" +
@@ -327,6 +328,15 @@ public final class Agent {
                                  new String[]{"string", "integer", "integer", "integer"},
                                  new String[]{"节点文字（包含匹配）", "ui_dump 里的 #序号", "横坐标", "纵坐标"}),
                            new String[]{})));
+
+            add("ui.act", tool("ui_type",
+                    "往输入框写字（无障碍 ACTION_SET_TEXT，不需要 root）。"
+                            + "先 ui_dump 找到输入框的 #序号，再用 index 指定；"
+                            + "不传 index 就写进当前聚焦的输入框。整段替换，不是逐字敲。",
+                    schema(props(new String[]{"text", "index"},
+                                 new String[]{"string", "integer"},
+                                 new String[]{"要写入的文字", "ui_dump 里的 #序号（输入框那一行）"}),
+                           new String[]{"text"})));
 
             if (Plugin.isOn(ctx, "builtin.terminal")) add("shell", tool("sh",
                     "在手机上执行 shell 命令（app 身份；有 root 则以 root 执行）。不需要确认，直接跑；只有不可回滚的命令会问一次。"
