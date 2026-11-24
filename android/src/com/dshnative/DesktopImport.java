@@ -112,6 +112,68 @@ public final class DesktopImport {
         }
     }
 
+
+    /** 从 URL 导入：可以是单个 Native 清单，也可以是 {"plugins":[...]} 目录；逐个转译后返回。 */
+    public static java.util.List<JSONObject> fromUrl(Context c, String url) {
+        java.util.List<JSONObject> out = new java.util.ArrayList<>();
+        try {
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(15000);
+            InputStream in = conn.getInputStream();
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            in.close();
+            String body = bo.toString("UTF-8");
+            JSONObject root = new JSONObject(body);
+            JSONArray list = root.optJSONArray("plugins");
+            if (list != null) {
+                for (int i = 0; i < list.length(); i++) {
+                    JSONObject m = normalize(list.optJSONObject(i), url);
+                    if (m != null) out.add(m);
+                }
+            } else {
+                JSONObject m = normalize(root, url);
+                if (m != null) out.add(m);
+            }
+        } catch (Throwable t) {
+            // 网络/格式问题由调用方提示
+        }
+        return out;
+    }
+
+    /**
+     * 归一化：补 id、保证 tools/skills 存在；声明了 JS 实现却没法在手机上跑的，标 needsNode。
+     * 这就是"自动转译为可用状态"的具体含义——缺什么补什么，做不到的如实标注。
+     */
+    private static JSONObject normalize(JSONObject m, String src) {
+        if (m == null) return null;
+        try {
+            if (m.optString("id").isEmpty()) {
+                String name = m.optString("name", "plugin");
+                m.put("id", "imp_" + name.replaceAll("[^A-Za-z0-9]+", "_").toLowerCase());
+            }
+            if (m.optJSONArray("tools") == null) m.put("tools", new JSONArray());
+            if (m.optJSONArray("skills") == null) m.put("skills", new JSONArray());
+            if (m.optString("source").isEmpty()) m.put("source", src);
+            boolean hasJs = false;
+            JSONArray tools = m.optJSONArray("tools");
+            for (int i = 0; i < tools.length(); i++) {
+                JSONObject t = tools.optJSONObject(i);
+                if (t == null) continue;
+                if (t.optString("python").isEmpty()) {
+                    hasJs = true;   // 没有 python 实现 = 只能靠原运行时
+                }
+            }
+            m.put("needsNode", hasJs);
+            return m;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
     /** 写入插件清单 + 追加到附加技能表（Skill.all 会合并它）。 */
     public static void install(Context c, JSONObject manifest) {
         try {

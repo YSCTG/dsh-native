@@ -161,32 +161,56 @@ public class SettingsActivity extends Activity {
     /** 目录来源：填一个返回 market JSON 的地址；留空则回到内置示例目录。 */
 
     /** 从电脑版插件导入：走 npm 元数据 → Native 技能包。 */
+    /**
+     * 添加来源：一个 npm 包名，或一个返回 Native 清单/目录的 URL。
+     * 导入后自动转译（补全字段、把用法变成技能、标注不可执行部分），并进入「已安装」。
+     */
     private void importFromDesktop() {
         final android.widget.EditText input = new android.widget.EditText(this);
-        input.setHint("npm 包名，例如 @deepseek-ai/dsh-skill");
+        input.setHint("npm 包名 或 https://…/market.json");
         input.setTextSize(13);
         input.setSingleLine(true);
         new AlertDialog.Builder(this, R.style.DshDialog)
-                .setTitle("从电脑版导入")
-                .setMessage("会读取 npm 上的包元数据与 README，转成一个 Native 技能包。\n"
-                        + "它的 JavaScript 实现在手机上没有运行时，转换后的产物是\"怎么用\"而不是\"能跑\"。")
+                .setTitle("添加来源")
+                .setMessage("两种都行：\n"
+                        + "· npm 包名（如 @deepseek-ai/dsh-skill）：读取它的元数据与 README，\n"
+                        + "  转成技能——JS 实现在手机上没有运行时，只能迁移\"怎么用\"。\n"
+                        + "· Native 清单/目录 URL：按其声明的技能与 Python 工具安装，工具可直接用。")
                 .setView(input)
-                .setPositiveButton("转换并安装", new DialogInterface.OnClickListener() {
+                .setPositiveButton("导入", new DialogInterface.OnClickListener() {
                     @Override public void onClick(DialogInterface d, int w) {
-                        final String pkg = input.getText().toString().trim();
-                        if (pkg.isEmpty()) return;
-                        toast("正在读取 npm…");
+                        final String src = input.getText().toString().trim();
+                        if (src.isEmpty()) return;
+                        toast("正在导入…");
                         new Thread(new Runnable() {
                             @Override public void run() {
-                                final DesktopImport.Result r = DesktopImport.fromNpm(SettingsActivity.this, pkg);
-                                if (r.manifest != null) DesktopImport.install(SettingsActivity.this, r.manifest);
+                                final StringBuilder log = new StringBuilder();
+                                int ok = 0;
+                                if (src.startsWith("http://") || src.startsWith("https://")) {
+                                    java.util.List<JSONObject> list = DesktopImport.fromUrl(SettingsActivity.this, src);
+                                    for (JSONObject m : list) {
+                                        DesktopImport.install(SettingsActivity.this, m);
+                                        ok++;
+                                    }
+                                    if (ok == 0) log.append("这个地址没有可用的插件清单");
+                                } else {
+                                    DesktopImport.Result r = DesktopImport.fromNpm(SettingsActivity.this, src);
+                                    if (r.manifest != null) {
+                                        DesktopImport.install(SettingsActivity.this, r.manifest);
+                                        ok = 1;
+                                    } else {
+                                        log.append(r.error == null ? "转换失败" : r.error);
+                                    }
+                                }
+                                final int done = ok;
+                                final String msg = log.toString();
                                 runOnUiThread(new Runnable() {
                                     @Override public void run() {
-                                        if (r.manifest == null) {
-                                            toast(r.error == null ? "转换失败" : r.error);
-                                        } else {
-                                            toast("已转换并安装，新会话生效（技能里能看到）");
+                                        if (done > 0) {
+                                            toast("已导入 " + done + " 个，去「已安装」看看（新会话生效）");
                                             recreate();
+                                        } else {
+                                            toast(msg.isEmpty() ? "导入失败" : msg);
                                         }
                                     }
                                 });
@@ -478,8 +502,10 @@ public class SettingsActivity extends Activity {
         section("插件市场");
         LinearLayout marketCard = card();
         String src = Market.sourceLabel(this);
-        actionRow(marketCard, Market.plugins(this).size() + " 个可安装插件",
-                "点按安装，装完开新会话生效 · 目录来源：" + src, null);
+        int n = Market.plugins(this).size();
+        actionRow(marketCard, n == 0 ? "还没有插件" : (n + " 个可安装插件"),
+                (n == 0 ? "用下面的「添加来源」导入你需要的插件；导入即转译，装完开新会话生效"
+                        : "点按安装，装完开新会话生效 · 目录来源：" + src), null);
         java.util.List<JSONObject> catalog = Market.plugins(this);
         for (final JSONObject mp : catalog) {
             final String pid = mp.optString("id", "");
