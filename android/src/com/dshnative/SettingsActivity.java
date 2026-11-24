@@ -398,33 +398,19 @@ public class SettingsActivity extends Activity {
         }
 
         // 插件（内置）
-        section("插件 · 内置能力");
-        LinearLayout plugCard = card();
-        for (int i = 0; i < Plugin.BUILTINS.length; i++) {
-            final String[] b = Plugin.BUILTINS[i];
-            String sub = "builtin.skills".equals(b[0])
-                    ? Skill.all(this).size() + " 个技能 · 一个开关" : b[2];
-            switchRow(plugCard, b[1], sub, Plugin.isOn(this, b[0]),
-                    new CompoundButton.OnCheckedChangeListener() {
-                        @Override public void onCheckedChanged(CompoundButton btn, boolean on) {
-                            Plugin.setOn(SettingsActivity.this, b[0], on);
-                        }
-                    });
-            if (i < Plugin.BUILTINS.length - 1) divider(plugCard);
-        }
-
-        // ---- 插件市场：和内置能力同属"插件"，放在同一张卡里，不再另起一节 ----
-        divider(plugCard);
-        actionRow(plugCard, "插件市场 · 内置目录",
-                Market.plugins(this).size() + " 个可安装插件（装完开新会话生效）", null);
+        // 插件市场：独立板块（和「已装的插件」分开——这里只列可安装的）
+        section("插件市场");
+        LinearLayout marketCard = card();
+        actionRow(marketCard, Market.plugins(this).size() + " 个可安装插件",
+                "点按安装，装完开新会话生效", null);
         java.util.List<JSONObject> catalog = Market.plugins(this);
         for (final JSONObject mp : catalog) {
             final String pid = mp.optString("id", "");
             boolean on = Market.installed(this, pid);
             String sub = mp.optString("version", "") + " · " + mp.optString("category", "")
                     + " · " + mp.optString("description", "");
-            divider(plugCard);
-            actionRow(plugCard, (on ? "✓ " : "") + mp.optString("name", pid)
+            divider(marketCard);
+            actionRow(marketCard, (on ? "✓ " : "") + mp.optString("name", pid)
                             + (on ? "（已安装，点按移除）" : "（点按安装）"),
                     sub,
                     new View.OnClickListener() {
@@ -440,17 +426,49 @@ public class SettingsActivity extends Activity {
                         }
                     });
         }
-        divider(plugCard);
-        actionRow(plugCard, "从网络刷新目录",
+        divider(marketCard);
+        actionRow(marketCard, "从网络刷新目录",
                 prefs.getString("market_url", "未配置远程目录：当前用内置目录"),
                 new View.OnClickListener() {
                     @Override public void onClick(View v) { refreshMarket(); }
                 });
 
+
+        section("插件 · 内置能力");
+        LinearLayout plugCard = card();
+        for (int i = 0; i < Plugin.BUILTINS.length; i++) {
+            final String[] b = Plugin.BUILTINS[i];
+            String sub = "builtin.skills".equals(b[0])
+                    ? Skill.all(this).size() + " 个技能 · 一个开关" : b[2];
+            switchRow(plugCard, b[1], sub, Plugin.isOn(this, b[0]),
+                    new CompoundButton.OnCheckedChangeListener() {
+                        @Override public void onCheckedChanged(CompoundButton btn, boolean on) {
+                            Plugin.setOn(SettingsActivity.this, b[0], on);
+                        }
+                    });
+            if (i < Plugin.BUILTINS.length - 1) divider(plugCard);
+        }
+
         // 插件（.dshp）
         List<Plugin> ds = Plugin.installed(this);
-        section("插件 · .dshp");
+        section("插件 · 已安装");
         LinearLayout dshpCard = card();
+
+        // 市场里装的原生插件也列在这里：和 .dshp 一样都是"已安装"，放一起才说得通
+        List<JSONObject> nativeOn = Market.installedPlugins(this);
+        for (final JSONObject np : nativeOn) {
+            final String nid = np.optString("id", "");
+            actionRow(dshpCard, "✓ " + np.optString("name", nid) + "（原生）",
+                    "v" + np.optString("version", "") + " · 市场插件 · 点按卸载",
+                    new View.OnClickListener() {
+                        @Override public void onClick(View v) {
+                            Market.uninstall(SettingsActivity.this, nid);
+                            toast("已移除，新会话生效");
+                            recreate();
+                        }
+                    });
+            divider(dshpCard);
+        }
         if (ds.isEmpty()) {
             actionRow(dshpCard, "还没有 .dshp 插件", "插件 = manifest.json + tools/*.json；长按可卸载", null);
         } else {
