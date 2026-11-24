@@ -281,9 +281,14 @@ public final class Office {
             + "<fills count=\"1\"><fill><patternFill patternType=\"none\"/></fill></fills>"
             + "<borders count=\"1\"><border/></borders>"
             + "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>"
-            + "<cellXfs count=\"2\">"
+            + "<cellXfs count=\"6\">"
             + "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>"
             + "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFont=\"1\"/>"
+            // 2 = 0.00  3 = #,##0.00  4 = 0%  5 = yyyy-mm-dd（都用内置 numFmtId，不引入自定义格式）
+            + "<xf numFmtId=\"2\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>"
+            + "<xf numFmtId=\"4\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>"
+            + "<xf numFmtId=\"9\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>"
+            + "<xf numFmtId=\"14\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>"
             + "</cellXfs><cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles></styleSheet>";
 
     private static String sheetXml(JSONObject sh) {
@@ -326,6 +331,8 @@ public final class Office {
             }
             sb.append("</cols>");
         }
+        // 每列可指定数字格式：general/number/money/percent/date → cellXfs 索引
+        JSONArray formats = sh.optJSONArray("formats");
         sb.append("<sheetData>");
         if (rows != null) {
             for (int r = 0; r < rows.length(); r++) {
@@ -338,6 +345,14 @@ public final class Office {
                     if (v == null || v == JSONObject.NULL) continue;
                     String ref = col(c) + (r + 1);
                     String style = bold ? " s=\"1\"" : "";
+                    if (!bold && formats != null && c < formats.length()) {
+                        String fmt = formats.optString(c, "").toLowerCase();
+                        int xf = fmt.equals("number") ? 2
+                                : ("money".equals(fmt) || "currency".equals(fmt)) ? 3
+                                : "percent".equals(fmt) ? 4
+                                : "date".equals(fmt) ? 5 : -1;
+                        if (xf > 0) style = " s=\"" + xf + "\"";
+                    }
                     if (v instanceof Number) {
                         sb.append("<c r=\"").append(ref).append("\"").append(style).append("><v>")
                           .append(v).append("</v></c>");
