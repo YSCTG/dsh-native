@@ -106,6 +106,10 @@ public class MainActivity extends Activity implements Agent.Listener {
     private final StringBuilder assistantBuf = new StringBuilder();
     private Runnable pendingRender;
     private LinearLayout thinkingBlock;
+    /** shell/python 这类"执行命令"是外层归类，具体命令收在它下面（桌面版就是两层）。 */
+    private LinearLayout execGroupBody;
+    private TextView execGroupHeader;
+    private TextView execGroupMeta;
     /** 思考计时：每 200ms 刷一次，桌面版也是跳着涨的。 */
     private final Runnable thinkTick = new Runnable() {
         @Override public void run() {
@@ -113,8 +117,7 @@ public class MainActivity extends Activity implements Agent.Listener {
             View h = thinkingBlock.findViewWithTag("head");
             if (h instanceof TextView) {
                 double s = (System.currentTimeMillis() - thinkingStart) / 1000.0;
-                ((TextView) h).setText("正在分析… " + thinkingChars + " 字 · "
-                        + String.format("%.1fs", s));
+                ((TextView) h).setText("正在分析请求   " + String.format("%.1fs", s));
             }
             ui.postDelayed(this, 200);
         }
@@ -804,20 +807,20 @@ public class MainActivity extends Activity implements Agent.Listener {
      */
     private static String verbOf(String tool, boolean done) {
         String a, b;
-        if (tool == null) { a = "正在调用工具"; b = "调用工具"; }
+        if (tool == null) { a = "正在调用工具"; b = "调用了工具"; }
         else if ("sh".equals(tool)) { a = "正在运行命令"; b = "运行命令"; }
         else if ("python".equals(tool)) { a = "正在运行 Python"; b = "运行 Python"; }
         else if ("fs_read".equals(tool) || "fs_list".equals(tool)
                 || "fs_glob".equals(tool) || "fs_grep".equals(tool)) { a = "正在读取"; b = "读取"; }
         else if ("fs_edit".equals(tool)) { a = "正在编辑"; b = "编辑"; }
         else if ("fs_write".equals(tool)) { a = "正在写入"; b = "写入"; }
-        else if ("web_search".equals(tool)) { a = "正在搜索网页"; b = "搜索网页"; }
-        else if ("net_fetch".equals(tool)) { a = "正在抓取网页"; b = "抓取网页"; }
-        else if ("screenshot".equals(tool)) { a = "正在读取图片"; b = "读取图片"; }
-        else if ("ui_dump".equals(tool)) { a = "正在看界面"; b = "查看界面"; }
-        else if ("ui_tap".equals(tool)) { a = "正在点按"; b = "点击"; }
-        else if ("ui_type".equals(tool)) { a = "正在输入"; b = "输入文字"; }
-        else if ("subagent".equals(tool)) { a = "正在派子智能体"; b = "派子智能体"; }
+        else if ("web_search".equals(tool)) { a = "正在搜索网页"; b = "搜索了网页"; }
+        else if ("net_fetch".equals(tool)) { a = "正在抓取网页"; b = "抓取了网页"; }
+        else if ("screenshot".equals(tool)) { a = "正在读取图片"; b = "已读取图片"; }
+        else if ("ui_dump".equals(tool)) { a = "正在查看界面"; b = "查看了界面"; }
+        else if ("ui_tap".equals(tool)) { a = "正在点击"; b = "点击了"; }
+        else if ("ui_type".equals(tool)) { a = "正在输入文字"; b = "已输入文字"; }
+        else if ("subagent".equals(tool)) { a = "正在派子智能体"; b = "派出了子智能体"; }
         else if ("loop".equals(tool)) { a = "正在循环"; b = "循环"; }
         else if (tool.startsWith("team_")) { a = "正在调度团队"; b = "调度团队"; }
         else if ("skill".equals(tool)) { a = "正在读技能"; b = "读取技能"; }
@@ -828,7 +831,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         else if ("notify".equals(tool)) { a = "正在发通知"; b = "发通知"; }
         else if (tool.startsWith("dev_")) { a = "正在诊断"; b = "诊断"; }
         else if (tool.startsWith("office_")) { a = "正在处理文档"; b = "处理文档"; }
-        else { a = "正在调用工具"; b = "调用工具"; }
+        else { a = "正在调用工具"; b = "调用了工具"; }
         return done ? b : a;
     }
     /** 还没收到完成回执的工具芯片。一次请求可能并行发多个工具，所以要按名字配对。 */
@@ -861,6 +864,10 @@ public class MainActivity extends Activity implements Agent.Listener {
      * 之前重放一律画成进行时，所以老会话里满屏"正在运行命令"。
      */
     private void addToolChip(String name, String detail, boolean done) {
+        boolean shellish = "sh".equals(name) || "python".equals(name);
+        if (shellish) { addShellRow(name, detail, done); return; }
+        execGroupBody = null;   // 非命令类工具：下次命令重新开一组
+
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
@@ -896,6 +903,84 @@ public class MainActivity extends Activity implements Agent.Listener {
         }
 
         addView(card);
+    }
+
+    /**
+     * 命令类工具画成两层，和桌面版一致：
+     *   外层  ▸ 正在执行命令 / › 执行了命令
+     *   内层      正在运行命令 · <一句话>  →  运行命令 · <一句话>
+     */
+    private void addShellRow(String name, String detail, boolean done) {
+        if (execGroupBody == null) {
+            LinearLayout group = new LinearLayout(this);
+            group.setOrientation(LinearLayout.VERTICAL);
+            group.setPadding(0, dp(4), 0, dp(2));
+
+            LinearLayout head = new LinearLayout(this);
+            head.setOrientation(LinearLayout.HORIZONTAL);
+            head.setGravity(Gravity.CENTER_VERTICAL);
+
+            execGroupHeader = new TextView(this);
+            execGroupHeader.setText(done ? "› 执行了命令" : "▾ 正在执行命令");
+            execGroupHeader.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            execGroupHeader.setTextColor(getColor(done ? R.color.label_secondary
+                    : R.color.label_primary));
+            head.addView(execGroupHeader);
+
+            execGroupMeta = new TextView(this);
+            execGroupMeta.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            execGroupMeta.setTextColor(getColor(R.color.label_caption));
+            LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            mlp.leftMargin = dp(10);
+            head.addView(execGroupMeta, mlp);
+
+            group.addView(head);
+
+            execGroupBody = new LinearLayout(this);
+            execGroupBody.setOrientation(LinearLayout.VERTICAL);
+            execGroupBody.setPadding(dp(16), dp(2), 0, 0);   // 缩进：它是外层的子项
+            group.addView(execGroupBody);
+
+            transcript.addView(group);
+            scrollDown();
+        }
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(0, dp(3), dp(6), dp(3));
+
+        TextView nm = new TextView(this);
+        String doneLabel = "运行命令";
+        boolean hasDetail = detail != null && !detail.trim().isEmpty();
+        nm.setText((done ? "› " : "▾ ") + (done ? doneLabel : "正在运行命令")
+                + (hasDetail ? " ·" : ""));
+        nm.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        nm.setTextColor(getColor(done ? R.color.label_tertiary : R.color.label_secondary));
+        card.addView(nm);
+
+        TextView dt = new TextView(this);
+        dt.setText(detail == null ? "" : detail);
+        dt.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        dt.setTextColor(getColor(R.color.label_caption));
+        dt.setSingleLine(true);
+        dt.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        dlp.leftMargin = dp(8);
+        card.addView(dt, dlp);
+
+        execGroupBody.addView(card);
+
+        if (!done) {
+            lastToolName = nm;
+            lastToolMeta = dt;
+            lastToolBase = detail == null ? "" : detail;
+            lastToolLabel = doneLabel;
+            pendingTools.add(new PendingTool(name, nm, dt, lastToolBase, doneLabel));
+        }
+        scrollDown();
     }
 
     private void addError(String msg) {
@@ -1020,7 +1105,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         if (head != null) {
             // 桌面版就是「思考 · 首句」：一眼看出这轮在想什么，字数与秒数是次要信息
             String first = firstLine(all);
-            StringBuilder sb = new StringBuilder("思考");
+            StringBuilder sb = new StringBuilder("已完成分析");
             if (!first.isEmpty()) sb.append(" · ").append(first);
             if (secs >= 0.1) sb.append("   ").append(String.format("%.1fs", secs));
             if (has) sb.append(thinkingOpen ? "  ▴" : "  ▾");
@@ -3491,6 +3576,11 @@ public class MainActivity extends Activity implements Agent.Listener {
                     hit.view.setTextColor(getColor(R.color.label_secondary));
                     hit.meta.setText(hit.base + "   " + dur);
                     pendingTools.remove(hit);
+                    if (execGroupHeader != null && ("sh".equals(name) || "python".equals(name))) {
+                        execGroupHeader.setText("› 执行了命令");
+                        execGroupHeader.setTextColor(getColor(R.color.label_secondary));
+                        if (execGroupMeta != null) execGroupMeta.setText(dur);
+                    }
                 refreshAgentCounts();
                 } else if (lastToolName != null && lastToolLabel != null) {
                     lastToolName.setText("› " + lastToolLabel);
