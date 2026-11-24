@@ -196,6 +196,9 @@ public final class Agent {
                 "- 想看一个 HTML 的渲染效果，用 browser_open 传 `file:///sdcard/.../x.html`（内置 WebView 支持 file://），\n"                +
                 "- office_write 支持 `preview:true`：生成完立刻渲染一页/一张图给你看，用来检查排版，\n" +
                 "  比自己再调一次 office_preview 省一个来回。\n" +
+                "- office_write 的 style 决定整套配色与字号层级：report（默认）、editorial、swiss、"
+                + "magazine、minimal、warm、tech、ink、bold。同一份内容换个 style 观感完全不同，"
+                + "做多种方案时可以并存几版给用户挑。\n" +
                 "- **生成文档和媒体一律用 office_write**（docx/xlsx/pptx/pdf/wav/m4a/mp4）。\n" +
                 "  不要自己写 Python 去拼 OOXML、PDF、AAC —— 那是重复实现，慢、贵，还容易出错。\n" +
                 "  想看排版效果就用 office_preview 渲染成图，再据此调整一次。\n" +

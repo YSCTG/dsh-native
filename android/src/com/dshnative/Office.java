@@ -846,6 +846,58 @@ public final class Office {
                     d.fBody = 10.5f;
                     d.lead = 17;
                     break;
+                case "warm":        // 暖调：奶油底、赤陶强调，适合汇报与提案
+                    d.page = 0xFFFFFCF7;
+                    d.ink = 0xFF20180F;
+                    d.muted = 0xFF8A7A66;
+                    d.accent = 0xFFC05621;
+                    d.tableHead = 0xFFF7EBDD;
+                    d.margin = 58;
+                    d.fTitle = 30;
+                    d.fH1 = 15.5f;
+                    d.fBody = 10.5f;
+                    d.lead = 17;
+                    d.serifTitle = true;
+                    break;
+                case "tech":        // 技术：冷灰底、电蓝、小字号高密度
+                    d.page = 0xFFF7F9FB;
+                    d.ink = 0xFF0E1620;
+                    d.muted = 0xFF5C6B7A;
+                    d.accent = 0xFF1F6FEB;
+                    d.tableHead = 0xFFE8EFF7;
+                    d.margin = 50;
+                    d.fTitle = 27;
+                    d.fH1 = 14;
+                    d.fH2 = 12;
+                    d.fBody = 9.5f;
+                    d.lead = 15.5f;
+                    break;
+                case "ink":         // 水墨：宣纸底、墨黑、朱红点缀
+                    d.page = 0xFFFAF8F2;
+                    d.ink = 0xFF1B1B1B;
+                    d.muted = 0xFF6F6A60;
+                    d.accent = 0xFF9E2B25;
+                    d.tableHead = 0xFFF0EDE4;
+                    d.margin = 66;
+                    d.fTitle = 32;
+                    d.fH1 = 16;
+                    d.fBody = 11;
+                    d.lead = 19;
+                    d.serifTitle = true;
+                    break;
+                case "bold":        // 高对比：白底黑字，标题极重，页面收窄
+                    d.page = 0xFFFFFFFF;
+                    d.ink = 0xFF0B0B0B;
+                    d.muted = 0xFF5F5F5F;
+                    d.accent = 0xFF0B0B0B;
+                    d.tableHead = 0xFFEDEDED;
+                    d.margin = 56;
+                    d.fTitle = 36;
+                    d.fH1 = 18;
+                    d.fH2 = 14;
+                    d.fBody = 10.5f;
+                    d.lead = 16;
+                    break;
                 default:            // report：白底、深蓝、浅灰表头（默认）
                     break;
             }
