@@ -597,19 +597,36 @@ public class SettingsActivity extends Activity {
         section("插件 · 已安装");
         LinearLayout dshpCard = card();
 
-        // 市场里装的原生插件也列在这里：和 .dshp 一样都是"已安装"，放一起才说得通
-        List<JSONObject> nativeOn = Market.installedPlugins(this);
-        for (final JSONObject np : nativeOn) {
+        // 市场装的原生插件：和内置插件一样用开关控制启停；卸载放到长按
+        for (final JSONObject np : Market.installedPlugins(this)) {
             final String nid = np.optString("id", "");
-            actionRow(dshpCard, "✓ " + np.optString("name", nid) + "（原生）",
-                    "v" + np.optString("version", "") + " · 市场插件 · 点按卸载",
-                    new View.OnClickListener() {
-                        @Override public void onClick(View v) {
-                            Market.uninstall(SettingsActivity.this, nid);
-                            toast("已移除，新会话生效");
-                            recreate();
+            switchRow(dshpCard, np.optString("name", nid),
+                    "v" + np.optString("version", "") + " · 市场插件 · 长按卸载",
+                    Market.isOn(this, nid),
+                    new CompoundButton.OnCheckedChangeListener() {
+                        @Override public void onCheckedChanged(CompoundButton btn, boolean on) {
+                            Market.setOn(SettingsActivity.this, nid, on);
+                            toast(on ? "已启用，新会话生效" : "已停用，新会话生效");
                         }
                     });
+            final View nativeRow = dshpCard.getChildAt(dshpCard.getChildCount() - 1);
+            nativeRow.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override public boolean onLongClick(View v) {
+                    new AlertDialog.Builder(SettingsActivity.this, R.style.DshDialog)
+                            .setTitle("卸载 " + np.optString("name", nid))
+                            .setMessage("会删除这个插件的清单与技能，不可恢复。")
+                            .setPositiveButton("卸载", new DialogInterface.OnClickListener() {
+                                @Override public void onClick(DialogInterface d, int w) {
+                                    Market.uninstall(SettingsActivity.this, nid);
+                                    toast("已卸载");
+                                    recreate();
+                                }
+                            })
+                            .setNegativeButton("取消", null)
+                            .show();
+                    return true;
+                }
+            });
             divider(dshpCard);
         }
         if (ds.isEmpty()) {

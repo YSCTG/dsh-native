@@ -334,7 +334,7 @@ public final class Agent {
                            new String[]{})));
 
             // ---- 插件市场的工具：清单里声明的 Python 工具 ----
-            for (JSONObject mp : Market.installedPlugins(ctx)) {
+            for (JSONObject mp : Market.enabledPlugins(ctx)) {
                 String pid = mp.optString("id", "");
                 JSONArray mtools = mp.optJSONArray("tools");
                 if (mtools == null) continue;

@@ -104,6 +104,30 @@ public final class Market {
         return out;
     }
 
+
+    /** 开关存在 prefs 里：plugin_on_<id>，默认开。 */
+    private static String enableKey(String id) { return "plugin_on_" + id; }
+
+    public static boolean isOn(Context c, String id) {
+        try { return Prefs.get(c).getBoolean(enableKey(id), true); }
+        catch (Throwable t) { return true; }
+    }
+
+    public static void setOn(Context c, String id, boolean on) {
+        try { Prefs.get(c).edit().putBoolean(enableKey(id), on).apply(); }
+        catch (Throwable ignored) {}
+        Skill.invalidate();
+    }
+
+    /** 已安装且**启用**的插件（工具注册与技能合并都只认这一份）。 */
+    public static List<JSONObject> enabledPlugins(Context c) {
+        List<JSONObject> out = new ArrayList<>();
+        for (JSONObject p : installedPlugins(c)) {
+            if (isOn(c, p.optString("id", ""))) out.add(p);
+        }
+        return out;
+    }
+
     /** 工具名统一前缀，方便在 Agent 里识别与回收。 */
     public static final String PREFIX = "mkt_";
 
@@ -151,7 +175,7 @@ public final class Market {
     /** 插件里附带的技能（提示词），供 Skill 列表合并。 */
     public static List<JSONObject> installedSkills(Context c) {
         List<JSONObject> out = new ArrayList<>();
-        for (JSONObject p : installedPlugins(c)) {
+        for (JSONObject p : enabledPlugins(c)) {
             JSONArray arr = p.optJSONArray("skills");
             if (arr == null) continue;
             for (int i = 0; i < arr.length(); i++) {
