@@ -64,8 +64,28 @@ public final class Office {
         d.ink = colorOf(theme, "ink", d.ink);
 
         StringBuilder body = new StringBuilder();
+
+        // 封面：spec.cover = {title, subtitle, date} —— 单独一页，大标题居中，下面一条极细分隔线
+        JSONObject cover = spec.optJSONObject("cover");
+        if (cover != null) {
+            for (int i = 0; i < 6; i++) body.append(para(" ", false, 22, d.ink, 0, 0));
+            body.append(para(cover.optString("title", ""), true, 44, d.ink, 0, 120));
+            String sub = cover.optString("subtitle", "");
+            if (!sub.isEmpty()) body.append(para(sub, false, 24, d.accent, 0, 240));
+            String dt = cover.optString("date", "");
+            if (!dt.isEmpty()) body.append(para(dt, false, 20, d.muted, 0, 120));
+            body.append(pageBreak());
+        }
+
         String title = spec.optString("title", "");
         if (!title.isEmpty()) body.append(para(title, true, 36, d.accent, 0, 240));
+
+        // 目录域：Word 打开后按 F9 或右键"更新域"才填充（我们无法预计算页码）
+        if (spec.optBoolean("toc", false)) {
+            body.append(para("目录", true, 28, d.ink, 0, 160));
+            body.append(tocField());
+            body.append(pageBreak());
+        }
         JSONArray blocks = spec.optJSONArray("blocks");
         if (blocks != null) {
             for (int i = 0; i < blocks.length(); i++) {
@@ -136,6 +156,21 @@ public final class Office {
                         + "</Relationships>"});
         zip(out, files);
         return "已生成 docx：" + out.getAbsolutePath() + "（" + out.length() / 1024 + " KB）";
+    }
+
+    /** 分页符。 */
+    private static String pageBreak() {
+        return "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>";
+    }
+
+    /** 目录域（TOC field）。页码由 Word/LibreOffice 打开时计算，这里只放域标记。 */
+    private static String tocField() {
+        return "<w:p><w:r><w:fldChar w:fldCharType=\"begin\"/></w:r>"
+                + "<w:r><w:instrText xml:space=\"preserve\"> TOC \\o \"1-2\" \\h \\z \\u </w:instrText></w:r>"
+                + "<w:r><w:fldChar w:fldCharType=\"separate\"/></w:r>"
+                + "<w:r><w:rPr><w:color w:val=\"888888\"/></w:rPr>"
+                + "<w:t>（打开后右键「更新域」生成目录）</w:t></w:r>"
+                + "<w:r><w:fldChar w:fldCharType=\"end\"/></w:r></w:p>";
     }
 
     /** 段落：字号用半磅，颜色是 ARGB，段前段后单位 twips（1/20 磅）。 */
