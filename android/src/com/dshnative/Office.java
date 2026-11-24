@@ -1164,6 +1164,12 @@ public final class Office {
             page = null;
         }
 
+        /** 真实行高：用绘制时同一支 Paint 的字体度量（含 leading），而不是拍一个固定值。 */
+        float lineH(Paint p) {
+            Paint.FontMetrics fm = p.getFontMetrics();
+            return fm.descent - fm.ascent + fm.leading;
+        }
+
         void ensure(float need) {
             if (y + need > h - d.margin - 18) newPage();
         }
@@ -1239,10 +1245,11 @@ public final class Office {
                 case "bullet": {
                     Paint pb = p(d.fBody, false, d.ink, false);
                     java.util.List<String> ls = wrap(b.optString("text"), pb, w - d.margin * 2 - 16);
-                    ensure(ls.size() * d.lead + 6);
+                    float blh = lineH(pb);
                     cv.drawCircle(d.margin + 3, y + 4, 1.8f, paintFill(d.accent));
                     float ly = y;
                     for (String s : ls) {
+                        if (ly + blh > h - d.margin - 18) { y = ly; newPage(); ly = y; }
                         cv.drawText(s, d.margin + 14, ly + 8, pb);
                         ly += d.lead;
                     }
@@ -1252,7 +1259,8 @@ public final class Office {
                 case "quote": {
                     Paint pq = p(d.fBody, false, d.muted, false);
                     java.util.List<String> ls = wrap(b.optString("text"), pq, w - d.margin * 2 - 14);
-                    ensure(ls.size() * d.lead + 10);
+                    float qlh = lineH(pq);
+                    ensure(qlh + 10);
                     cv.drawRect(d.margin, y, d.margin + 2.5f, y + ls.size() * d.lead + 2,
                             paintFill(d.accent));
                     float ly = y;
@@ -1306,8 +1314,9 @@ public final class Office {
         void paragraph(String text) {
             if (text == null || text.isEmpty()) return;
             Paint pb = p(d.fBody, false, d.ink, false);
+            float lh = lineH(pb);
             for (String s : wrap(text, pb, w - d.margin * 2)) {
-                ensure(18);
+                ensure(lh);
                 cv.drawText(s, d.margin, y + 9, pb);
                 y += d.lead;
             }
