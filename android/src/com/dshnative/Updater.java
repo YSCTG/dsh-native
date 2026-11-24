@@ -76,6 +76,7 @@ public final class Updater {
 
     public static Info latestFromManifest() {
         StringBuilder diag = new StringBuilder();
+        Info best = null;
         for (String u : MANIFESTS) {
             HttpURLConnection conn = null;
             try {
@@ -89,8 +90,12 @@ public final class Updater {
                 String ver = o.optString("version", "");
                 String apk = o.optString("apk", "");
                 if (ver.isEmpty() || apk.isEmpty()) { diag.append(host(u)).append(" → 字段缺失\n"); continue; }
-                return new Info("v" + ver.replace("v", ""), apk, o.optLong("size", 0),
+                Info one = new Info("v" + ver.replace("v", ""), apk, o.optLong("size", 0),
                         o.optString("notes", ""), host(u));
+                // CDN 会缓存清单（raw/jsDelivr 都可能滞后几分钟），所以不能"谁先通用谁"——
+                // 取所有源里版本最高的那个，才不会因为读到旧清单而误判"已是最新"。
+                if (best == null || isNewer(one.tag, best.tag)) best = one;
+                diag.append(host(u)).append(" → ").append(one.tag).append("\n");
             } catch (Throwable e) {
                 diag.append(host(u)).append(" → ").append(e.getClass().getSimpleName()).append("\n");
             } finally {
@@ -98,7 +103,7 @@ public final class Updater {
             }
         }
         lastDiagnostic = diag.toString();
-        return null;
+        return best;
     }
 
     private static String host(String url) {
