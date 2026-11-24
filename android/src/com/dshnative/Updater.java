@@ -36,6 +36,7 @@ public final class Updater {
         public final long size;
         public final String notes;
         public final String source;   // 从哪个地址查到的，出错时也能说清"更新到哪查的"
+        public java.util.List<String> mirrors = new java.util.ArrayList<>();  // 清单里给的备用下载地址
 
         Info(String tag, String apkUrl, long size, String notes, String source) {
             this.tag = tag;
@@ -92,6 +93,12 @@ public final class Updater {
                 if (ver.isEmpty() || apk.isEmpty()) { diag.append(host(u)).append(" → 字段缺失\n"); continue; }
                 Info one = new Info("v" + ver.replace("v", ""), apk, o.optLong("size", 0),
                         o.optString("notes", ""), host(u));
+                // 清单里可以带 apk_mirrors（数组），国内可达的地址放前面
+                org.json.JSONArray mir = o.optJSONArray("apk_mirrors");
+                for (int i = 0; mir != null && i < mir.length(); i++) {
+                    String m = mir.optString(i, "");
+                    if (!m.isEmpty()) one.mirrors.add(m);
+                }
                 // CDN 会缓存清单（raw/jsDelivr 都可能滞后几分钟），所以不能"谁先通用谁"——
                 // 取所有源里版本最高的那个，才不会因为读到旧清单而误判"已是最新"。
                 if (best == null || isNewer(one.tag, best.tag)) best = one;
@@ -192,10 +199,15 @@ public final class Updater {
     /** 下载 APK 到缓存目录，直连不通就换镜像。 */
     public static File download(Context c, Info info, Progress p) throws Exception {
         Exception last = null;
-        for (String prefix : MIRRORS) {
+        // 1) 清单里指定的下载地址（可放国内对象存储，优先）
+        java.util.List<String> urls = new java.util.ArrayList<>();
+        if (info.mirrors != null) urls.addAll(info.mirrors);
+        urls.add(info.apkUrl);                       // 2) 主地址
+        for (String m : MIRRORS) if (!m.isEmpty()) urls.add(m + info.apkUrl);   // 3) 内置代理兜底
+
+        for (String url : urls) {
             try {
-                String url = prefix.isEmpty() ? info.apkUrl : prefix + info.apkUrl;
-                android.util.Log.i("DSHN", "更新 尝试下载 " + (prefix.isEmpty() ? "直连" : prefix));
+                android.util.Log.i("DSHN", "更新 尝试下载 " + url);
                 return fetch(c, url, info, p);
             } catch (Exception e) {
                 last = e;
