@@ -29,6 +29,26 @@ public final class Attach {
             ".docx", ".xlsx", ".pptx", ".pdf", ".wav", ".m4a", ".mp4", ".mp3",
             ".png", ".jpg", ".jpeg", ".webp", ".md", ".html", ".csv", ".txt"};
 
+
+    /** 真正的交付型文件：出现这种扩展名基本可以确定是给用户的东西。 */
+    private static final String[] DELIVERABLE_EXT = {
+            ".docx", ".xlsx", ".pptx", ".pdf", ".mp4", ".wav", ".m4a"};
+
+    /**
+     * 该不该挂成卡片。
+     *
+     * worth() 只回答"这个类型像不像结果"，但一轮里写出的 .md/.png 仍可能是草稿。
+     * 所以再加一条：**回答正文里提到这个文件名**，或者它本身就是交付型文档。
+     * 否则就只是过程文件，不该占据回答下面那块地方。
+     */
+    public static boolean shouldCard(File f, String answerText) {
+        if (!worth(f)) return false;
+        String name = f.getName().toLowerCase();
+        if (answerText != null && answerText.toLowerCase().contains(name)) return true;
+        for (String e : DELIVERABLE_EXT) if (name.endsWith(e)) return true;
+        return false;
+    }
+
     public static boolean worth(File f) {
         if (f == null || !f.isFile()) return false;
         String n = f.getName().toLowerCase();

@@ -3028,6 +3028,8 @@ public class MainActivity extends Activity implements Agent.Listener {
     private void renderHistory() {
         if (agent == null) return;
         JSONArray h = agent.history();
+        // 历史里的文件卡片靠索引复原：它记的是"第几条消息之后挂了哪些文件"
+        java.util.Map<Integer, java.util.List<String>> marks = loadFileMarks();
         for (int i = 1; i < h.length(); i++) {
             JSONObject m;
             try { m = h.getJSONObject(i); } catch (Exception e) { continue; }
@@ -3053,6 +3055,17 @@ public class MainActivity extends Activity implements Agent.Listener {
                     tv.setTextIsSelectable(true);
                     tv.setText(Markdown.render(this, c));
                     addView(tv);
+                }
+            }
+
+            // 这一条之后挂过的文件：索引对上就补回卡片
+            java.util.List<String> after = marks.get(i + 1);
+            if (after != null) {
+                for (String path : after) {
+                    File f = new File(path);
+                    // 旧索引里存的是"本轮碰过的所有文件"，这里再按交付型筛一遍，
+                    // 免得历史会话里冒出当年的草稿和截图。
+                    if (f.isFile() && Attach.shouldCard(f, null)) addView(buildFileCard(f));
                 }
             }
         }
@@ -3315,19 +3328,18 @@ public class MainActivity extends Activity implements Agent.Listener {
                 if (paths == null) return;
                 for (String p : paths) {
                     if (p != null && !p.isEmpty() && new File(p).isFile()) turnFiles.add(p);
-                saveFileMark();
                 }
             }
         });
     }
 
-    /** 把"这一刻改了哪些文件"追加到会话旁边的索引里（一行一条：序号<TAB>路径）。 */
-    private void saveFileMark() {
+    /** 把这一轮真正挂出来的卡片记进索引（一行一条：序号<TAB>路径），历史重绘时照它复原。 */
+    private void saveFileMark(java.util.List<String> paths) {
         try {
-            if (agent == null || session == null || turnFiles.isEmpty()) return;
+            if (agent == null || session == null || paths == null || paths.isEmpty()) return;
             int at = agent.history().length();
             StringBuilder sb = new StringBuilder();
-            for (String p : turnFiles) sb.append(at).append('\t').append(p).append('\n');
+            for (String p : paths) sb.append(at).append('\t').append(p).append('\n');
             File f = new File(Session.dir(this), "files_" + session.id + ".txt");
             java.io.FileOutputStream os = new java.io.FileOutputStream(f, true);
             os.write(sb.toString().getBytes("UTF-8"));
@@ -3361,20 +3373,31 @@ public class MainActivity extends Activity implements Agent.Listener {
     }
     /** 把本轮改动的文件做成卡片；只留成品，和正文里已经挂过的去重。 */
     private void flushTurnFiles() {
-        android.util.Log.i("DSHN", "flushTurnFiles: " + turnFiles.size() + " 个");
         if (turnFiles.isEmpty()) return;
-        int shown = 0;
+        String answer = lastAssistantText();
+        java.util.List<String> cards = new java.util.ArrayList<>();
         for (String p : turnFiles) {
-            if (shown >= 4) break;                      // 最多 4 张，别刷屏
+            if (cards.size() >= 3) break;                 // 最多 3 张
             if (fileCardsShown.contains(p)) continue;
             File f = new File(p);
-            if (!Attach.worth(f)) continue;           // 中间产物不挂
+            if (!Attach.shouldCard(f, answer)) continue;  // 只挂要点名的 / 交付型文档
             fileCardsShown.add(p);
+            cards.add(p);
             addView(buildFileCard(f));
-            shown++;
         }
+        saveFileMark(cards);                              // 存下来，历史里才能复原
         turnFiles.clear();
         scrollDown();
+    }
+
+    /** 本回合最后一条助手正文，用来判断哪个文件被"点名"了。 */
+    private String lastAssistantText() {
+        if (assistantView != null && assistantView.getText() != null
+                && assistantView.getText().length() > 0) {
+            CharSequence cs = assistantView.getText();
+            return cs.toString();
+        }
+        return assistantBuf.toString();
     }
     @Override public void onToolDone(final String name, final long ms) {
         ui.post(new Runnable() {
