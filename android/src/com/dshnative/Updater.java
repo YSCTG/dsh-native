@@ -119,8 +119,17 @@ public final class Updater {
 
     /** 查最新版本：先试清单源，再回退到 GitHub API。 */
     public static Info latest() {
+        // 清单源与 GitHub API **一起**比较，取最高版本。
+        // 以前 API 只在"清单全失败"时才用，于是 update.json 落后（push 失败/缓存）时
+        // 即使已经发布了新 release，也会被判成"已是最新"——正是 29.8 说 29.9 不存在的成因。
         Info m = latestFromManifest();
-        if (m != null) return m;
+        Info a = latestFromApi();
+        if (m == null) return a;
+        if (a == null) return m;
+        return isNewer(a.tag, m.tag) ? a : m;
+    }
+
+    private static Info latestFromApi() {
         HttpURLConnection conn = null;
         try {
             conn = (HttpURLConnection) new URL(API).openConnection();
