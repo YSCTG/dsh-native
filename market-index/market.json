@@ -1,0 +1,70 @@
+{
+  "format": 1,
+  "updated": "2026-11-24",
+  "note": "Native 插件目录（官方示例源）。任何返回此格式 JSON 的地址都能当目录：设置 → 插件市场 → 目录来源。",
+  "plugins": [
+    {
+      "id": "units",
+      "name": "单位换算",
+      "version": "1.0.0",
+      "category": "工具",
+      "description": "长度/重量/温度/数据量换算，避免模型心算出错。",
+      "tools": [
+        {
+          "name": "convert",
+          "desc": "单位换算。参数 value、from、to（例：3 km → m，100 F → C）。",
+          "params": {
+            "type": "object",
+            "properties": {
+              "value": {"type": "number"},
+              "from": {"type": "string"},
+              "to": {"type": "string"}
+            },
+            "required": ["value", "from", "to"]
+          },
+          "python": "v = float(ARGS['value']); f = ARGS['from'].strip().lower(); t = ARGS['to'].strip().lower()\nL = {'mm':0.001,'cm':0.01,'m':1.0,'km':1000.0,'inch':0.0254,'ft':0.3048,'mi':1609.344}\nW = {'mg':1e-6,'g':0.001,'kg':1.0,'t':1000.0,'lb':0.45359237,'oz':0.0283495}\nD = {'b':1.0,'kb':1024.0,'mb':1024.0**2,'gb':1024.0**3,'tb':1024.0**4}\nif f in L and t in L: print(v*L[f]/L[t])\nelif f in W and t in W: print(v*W[f]/W[t])\nelif f in D and t in D: print(v*D[f]/D[t])\nelif f in ('c','f','k') and t in ('c','f','k'):\n    c = v if f=='c' else (v-32)*5/9 if f=='f' else v-273.15\n    print(round(c if t=='c' else c*9/5+32 if t=='f' else c+273.15, 6))\nelse: print('不支持: %s -> %s' % (f, t))"
+        }
+      ],
+      "skills": []
+    },
+    {
+      "id": "textstat",
+      "name": "文本统计",
+      "version": "1.0.0",
+      "category": "文本",
+      "description": "统计字符数、行数、词频，检查稿子长度与重复用词。",
+      "tools": [
+        {
+          "name": "count",
+          "desc": "统计一段文本：字符数（含/不含空白）、行数、高频词前 N 个。",
+          "params": {
+            "type": "object",
+            "properties": {
+              "text": {"type": "string"},
+              "top": {"type": "integer"}
+            },
+            "required": ["text"]
+          },
+          "python": "import re, collections\nt = ARGS.get('text','')\ntop = int(ARGS.get('top') or 10)\nprint('字符数: %d' % len(t))\nprint('不含空白: %d' % len(re.sub(r'\\s','',t)))\nprint('行数: %d' % (t.count('\\n')+1))\nwords = re.findall(r'[\\u4e00-\\u9fff]|[A-Za-z0-9_]+', t.lower())\nfor w,n in collections.Counter(words).most_common(top):\n    print('  %s  %d' % (w,n))"
+        }
+      ],
+      "skills": []
+    },
+    {
+      "id": "sysprobe",
+      "name": "系统体检",
+      "version": "1.0.0",
+      "category": "工具",
+      "description": "一次汇报 CPU 核数、内存、数据分区剩余、Python 版本。",
+      "tools": [
+        {
+          "name": "report",
+          "desc": "返回手机关键指标摘要。无参数。",
+          "params": {"type": "object", "properties": {}, "required": []},
+          "python": "import os, platform, shutil\nprint('Python: %s' % platform.python_version())\nprint('CPU 核数: %s' % os.cpu_count())\ntry:\n    d = shutil.disk_usage('/data')\n    print('数据分区: 总 %.1f GB 可用 %.1f GB' % (d.total/2**30, d.free/2**30))\nexcept Exception as e: print('存储: %s' % e)\ntry:\n    for line in open('/proc/meminfo'):\n        if line.startswith(('MemTotal','MemAvailable')): print(line.strip())\nexcept Exception as e: print('内存: %s' % e)"
+        }
+      ],
+      "skills": []
+    }
+  ]
+}
