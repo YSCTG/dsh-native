@@ -333,6 +333,23 @@ public final class Agent {
                                  new String[]{"节点文字（包含匹配）", "ui_dump 里的 #序号", "横坐标", "纵坐标"}),
                            new String[]{})));
 
+            // ---- 插件市场的工具：清单里声明的 Python 工具 ----
+            for (JSONObject mp : Market.installedPlugins(ctx)) {
+                String pid = mp.optString("id", "");
+                JSONArray mtools = mp.optJSONArray("tools");
+                if (mtools == null) continue;
+                for (int mi = 0; mi < mtools.length(); mi++) {
+                    JSONObject mt = mtools.optJSONObject(mi);
+                    if (mt == null) continue;
+                    JSONObject params = mt.optJSONObject("params");
+                    JSONObject props = params == null ? null : params.optJSONObject("properties");
+                    if (props == null) props = new JSONObject();
+                    add("shell", tool(Market.toolName(pid, mt.optString("name")),
+                            mt.optString("desc", "插件工具"),
+                            schema(props, requiredOf(params))));
+                }
+            }
+
             add("ui.act", tool("ui_type",
                     "往输入框写字（无障碍 ACTION_SET_TEXT，不需要 root）。"
                             + "先 ui_dump 找到输入框的 #序号，再用 index 指定；"
@@ -700,6 +717,15 @@ public final class Agent {
             return null;
         }
     }
+    /** 从插件的 JSON Schema 里取 required，喂给 schema()。 */
+    private static String[] requiredOf(JSONObject params) {
+        JSONArray req = params == null ? null : params.optJSONArray("required");
+        if (req == null) return new String[]{};
+        String[] out = new String[req.length()];
+        for (int i = 0; i < req.length(); i++) out[i] = req.optString(i, "");
+        return out;
+    }
+
     private void addMessage(JSONObject m) {
         messages.put(m);
         appendLog(m);

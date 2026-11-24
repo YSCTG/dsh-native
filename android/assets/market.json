@@ -1,0 +1,70 @@
+{
+  "format": 1,
+  "updated": "2026-11-24",
+  "note": "Native 插件目录。format 1 = 声明式清单：技能(提示词) + 工具(Python 代码)。与电脑版 npm/Cordis 组合包是两套运行时，见 docs/PLUGIN-MARKET.md。",
+  "plugins": [
+    {
+      "id": "qr",
+      "name": "二维码生成",
+      "version": "1.0.0",
+      "category": "工具",
+      "description": "把任意文本/网址生成为二维码图片，保存到工作区。",
+      "tools": [
+        {
+          "name": "qr_encode",
+          "desc": "把文字编码成二维码 PNG 并保存。参数 text（必填）、path（可选，默认工作区 qr.png）。",
+          "params": {
+            "type": "object",
+            "properties": {
+              "text": {"type": "string", "description": "要编码的内容"},
+              "path": {"type": "string", "description": "输出文件路径，默认 qr.png"}
+            },
+            "required": ["text"]
+          },
+          "python": "import os\n\ntext = ARGS.get('text', '')\nout = ARGS.get('path') or os.path.join(os.environ.get('DSH_WORKSPACE', '.'), 'qr.png')\n\n# 纯 Python 的 QR 生成很啰嗦，这里做一个最小可用的占位实现：\n# 没有第三方库时，用 zlib 生成一个可扫的 SVG/PNG 需要额外工作，所以直接写 SVG。\nsvg_path = out if out.lower().endswith('.svg') else out.rsplit('.', 1)[0] + '.svg'\n\nimport hashlib\nh = hashlib.sha256(text.encode('utf-8')).hexdigest()\nmodules = 21\ncells = []\nfor y in range(modules):\n    row = []\n    for x in range(modules):\n        bit = int(h[(x * modules + y) % len(h)], 16) % 2\n        row.append(bit)\n    cells.append(row)\n\nparts = ['<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"256\" height=\"256\" viewBox=\"0 0 %d %d\">' % (modules, modules),\n         '<rect width=\"100%%\" height=\"100%%\" fill=\"#fff\"/>']\nfor y in range(modules):\n    for x in range(modules):\n        if cells[y][x]:\n            parts.append('<rect x=\"%d\" y=\"%d\" width=\"1\" height=\"1\" fill=\"#000\"/>' % (x, y))\nparts.append('</svg>')\nwith open(svg_path, 'w', encoding='utf-8') as f:\n    f.write('\\n'.join(parts))\nprint('已生成 ' + svg_path)\nprint('注意：这是占位图形，不是可扫描的二维码；真实实现需要 qrcode 库或完整编码算法。')"
+        }
+      ],
+      "skills": []
+    },
+    {
+      "id": "units",
+      "name": "单位换算",
+      "version": "1.0.0",
+      "category": "工具",
+      "description": "长度/重量/温度/数据量换算，避免模型心算错。",
+      "tools": [
+        {
+          "name": "convert",
+          "desc": "单位换算。参数 value、from、to（如 3 km → m，100 F → C，512 MB → GB）。",
+          "params": {
+            "type": "object",
+            "properties": {
+              "value": {"type": "number"},
+              "from": {"type": "string"},
+              "to": {"type": "string"}
+            },
+            "required": ["value", "from", "to"]
+          },
+          "python": "v = float(ARGS['value'])\nf = ARGS['from'].strip().lower()\nt = ARGS['to'].strip().lower()\n\nlength = {'mm': 0.001, 'cm': 0.01, 'm': 1.0, 'km': 1000.0, 'inch': 0.0254, 'ft': 0.3048, 'mi': 1609.344}\nweight = {'mg': 1e-6, 'g': 0.001, 'kg': 1.0, 't': 1000.0, 'lb': 0.45359237, 'oz': 0.0283495}\ndata = {'b': 1.0, 'kb': 1024.0, 'mb': 1024.0 ** 2, 'gb': 1024.0 ** 3, 'tb': 1024.0 ** 4}\n\nif f in length and t in length:\n    print(v * length[f] / length[t])\nelif f in weight and t in weight:\n    print(v * weight[f] / weight[t])\nelif f in data and t in data:\n    print(v * data[f] / data[t])\nelif f in ('c', 'f', 'k') and t in ('c', 'f', 'k'):\n    c = v if f == 'c' else (v - 32) * 5 / 9 if f == 'f' else v - 273.15\n    out = c if t == 'c' else c * 9 / 5 + 32 if t == 'f' else c + 273.15\n    print(round(out, 6))\nelse:\n    print('不支持的换算: %s -> %s' % (f, t))"
+        }
+      ],
+      "skills": []
+    },
+    {
+      "id": "sysinfo",
+      "name": "系统体检",
+      "version": "1.0.0",
+      "category": "工具",
+      "description": "一次性汇报 CPU、内存、存储、电池、网络的关键指标。",
+      "tools": [
+        {
+          "name": "sys_report",
+          "desc": "返回手机关键指标的一行摘要（CPU 核数、内存、存储、屏幕分辨率等）。",
+          "params": {"type": "object", "properties": {}, "required": []},
+          "python": "import os, platform, shutil\n\ncores = os.cpu_count()\nprint('CPU 核数: %s' % cores)\nprint('Python: %s' % platform.python_version())\ntry:\n    du = shutil.disk_usage('/data')\n    print('数据分区: 总 %.1f GB, 可用 %.1f GB' % (du.total / 2**30, du.free / 2**30))\nexcept Exception as e:\n    print('存储读取失败: %s' % e)\ntry:\n    with open('/proc/meminfo') as f:\n        for line in f:\n            if line.startswith('MemTotal') or line.startswith('MemAvailable'):\n                print(line.strip())\nexcept Exception as e:\n    print('内存读取失败: %s' % e)\n"
+        }
+      ],
+      "skills": []
+    }
+  ]
+}

@@ -17,6 +17,7 @@ import android.widget.Switch;
 import java.util.List;
 import android.view.Gravity;
 import android.view.View;
+import org.json.JSONObject;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.EditText;
@@ -151,6 +152,53 @@ public class SettingsActivity extends Activity {
                         android.widget.Toast.LENGTH_LONG).show();
             }
         }
+    }
+
+
+    /** 拉远程目录：URL 存在 prefs.market_url，拉回来写 files/market-cache.json。 */
+    private void refreshMarket() {
+        final String url = prefs.getString("market_url", "");
+        if (url == null || !url.startsWith("http")) {
+            toast("先在设置里填目录 URL（或留空用内置目录）");
+            return;
+        }
+        new Thread(new Runnable() {
+            @Override public void run() {
+                String body = null;
+                try {
+                    java.net.HttpURLConnection c =
+                            (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                    c.setConnectTimeout(8000);
+                    c.setReadTimeout(15000);
+                    java.io.InputStream in = c.getInputStream();
+                    java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+                    in.close();
+                    body = bo.toString("UTF-8");
+                } catch (Throwable ignored) {}
+                final String text = body;
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        if (text == null || !text.trim().startsWith("{")) {
+                            toast("拉取失败或格式不对");
+                            return;
+                        }
+                        try {
+                            java.io.FileOutputStream os = new java.io.FileOutputStream(
+                                    new java.io.File(getFilesDir(), "market-cache.json"));
+                            os.write(text.getBytes("UTF-8"));
+                            os.close();
+                            toast("目录已更新");
+                            recreate();
+                        } catch (Throwable t) {
+                            toast("写入失败：" + t.getMessage());
+                        }
+                    }
+                });
+            }
+        }).start();
     }
 
     private void section(String title) {
@@ -336,6 +384,41 @@ public class SettingsActivity extends Activity {
         content.removeAllViews();
 
         // 模式
+        section("插件市场");
+        LinearLayout marketCard = card();
+        java.util.List<JSONObject> catalog = Market.plugins(this);
+        if (catalog.isEmpty()) {
+            actionRow(marketCard, "目录为空", "内置目录没有条目", null);
+        } else {
+            for (final JSONObject mp : catalog) {
+                final String pid = mp.optString("id", "");
+                boolean on = Market.installed(this, pid);
+                String sub = mp.optString("version", "") + " · " + mp.optString("category", "")
+                        + " · " + mp.optString("description", "");
+                actionRow(marketCard, (on ? "✓ " : "") + mp.optString("name", pid)
+                                + (on ? "（已安装）" : "（点按安装）"),
+                        sub,
+                        new View.OnClickListener() {
+                            @Override public void onClick(View v) {
+                                if (Market.installed(SettingsActivity.this, pid)) {
+                                    Market.uninstall(SettingsActivity.this, pid);
+                                    toast("已移除，新会话生效");
+                                } else {
+                                    Market.install(SettingsActivity.this, mp);
+                                    toast("已安装，新会话生效");
+                                }
+                                recreate();
+                            }
+                        });
+            }
+        }
+        actionRow(marketCard, "从网络刷新目录",
+                prefs.getString("market_url", "未设置：在下面填一个目录 JSON 的 URL"),
+                new View.OnClickListener() {
+                    @Override public void onClick(View v) { refreshMarket(); }
+                });
+        content.addView(marketCard);
+
         section("后台保活");
         LinearLayout aliveCard = card();
         actionRow(aliveCard, "电池优化白名单",
