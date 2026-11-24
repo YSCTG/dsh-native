@@ -204,8 +204,9 @@ public final class Updater {
         File out = new File(c.getCacheDir(), "update-" + info.tag + ".apk");
         if (out.isFile() && info.size > 0 && out.length() == info.size) return out;
         HttpURLConnection conn = (HttpURLConnection) new URL(srcUrl).openConnection();
-        conn.setConnectTimeout(15000);
-        conn.setReadTimeout(180000);
+        // 直连常被阻断：读超时压短，才能快点换镜像；真慢速下载时反复重试总比干等 3 分钟好
+        conn.setConnectTimeout(10000);
+        conn.setReadTimeout(35000);
         conn.setRequestProperty("User-Agent", "DSH-Native");
         conn.setInstanceFollowRedirects(true);
         InputStream in = conn.getInputStream();
