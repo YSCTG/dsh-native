@@ -1261,14 +1261,37 @@ public class MainActivity extends Activity implements Agent.Listener {
         assistantBox = box;
         addView(box);
         lastSegment = "";
-        moveCopyBar();
     }
 
     /**
      * 每个回答只留一个「复制」，固定在最后一段输出下面。
      * 之前每段正文各挂一个，屏幕上散着一排复制按钮，而且分不清复制的是哪段。
      */
+    /** 建一条图标行（不挂到对话流）。 */
+    private View buildAnswerFooter(final String text) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(android.view.Gravity.START | android.view.Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(2), 0, dp(6));
+        row.addView(iconButton("⧉", new View.OnClickListener() {
+            @Override public void onClick(View v) { copyToClipboard(text); }
+        }));
+        row.addView(iconButton("↗", new View.OnClickListener() {
+            @Override public void onClick(View v) { shareText(text); }
+        }));
+        TextView time = new TextView(this);
+        time.setText(nowLabel());
+        time.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        time.setTextColor(getColor(R.color.label_caption));
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tlp.leftMargin = dp(6);
+        row.addView(time, tlp);
+        return row;
+    }
+
     private void moveCopyBar() {
+        if (lastSegment.isEmpty() && assistantBuf.length() == 0) return;
         if (copyBar != null && copyBar.getParent() == transcript) {
             transcript.removeView(copyBar);
         }
@@ -1380,6 +1403,9 @@ public class MainActivity extends Activity implements Agent.Listener {
                 for (int k = i; k < end; k++) {
                     if ("atext".equals(transcript.getChildAt(k).getTag())) lastText = k;
                 }
+                // 本回合最后一段正文的视图（在后面补图标行时用；必须折叠前抓，否则下标漂移）
+                View turnLastText = lastText >= 0 ? transcript.getChildAt(lastText) : null;
+
                 // 只有"最后一段正文之前还有内容"才值得折
                 if (lastText > i) {
                     java.util.List<View> moved = new java.util.ArrayList<>();
@@ -1413,10 +1439,35 @@ public class MainActivity extends Activity implements Agent.Listener {
                 } else {
                     i = end;
                 }
+
+                // 这个回合的最终正文后面补一条图标行（每个回答各一条）
+                if (turnLastText instanceof TextView && turnLastText.getParent() == transcript) {
+                    String t = ((TextView) turnLastText).getText().toString();
+                    if (!t.isEmpty()) {
+                        pendingFooterViews.add(turnLastText);
+                        pendingFooterTexts.add(t);
+                    }
+                }
             }
         } catch (Throwable t) {
             android.util.Log.w("DSHN", "foldHistoryTurns: " + t);
         }
+    }
+
+    private final java.util.List<View> pendingFooterViews = new java.util.ArrayList<>();
+    private final java.util.List<String> pendingFooterTexts = new java.util.ArrayList<>();
+
+    /** 历史图标行统一在最后插入（倒序，避免下标漂移）。 */
+    private void flushHistoryFooters() {
+        for (int k = pendingFooterViews.size() - 1; k >= 0; k--) {
+            View anchor = pendingFooterViews.get(k);
+            String text = pendingFooterTexts.get(k);
+            int idx = transcript.indexOfChild(anchor);
+            if (idx < 0) continue;
+            transcript.addView(buildAnswerFooter(text), idx + 1);
+        }
+        pendingFooterViews.clear();
+        pendingFooterTexts.clear();
     }
 
     /** 每回合耗时：第几轮 <TAB> 毫秒。 */
@@ -2008,6 +2059,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                         RunService.stop(MainActivity.this);
                         KeepAlive.release();
                         foldAnswerBody();
+                        moveCopyBar();      // 只在最终回答下面挂一个
                         refreshMeta();
                     }
                 });
@@ -2175,6 +2227,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                         RunService.stop(MainActivity.this);
                         KeepAlive.release();
                         foldAnswerBody();
+                        moveCopyBar();      // 只在最终回答下面挂一个
                         refreshMeta();
                     }
                 });
@@ -3583,8 +3636,8 @@ public class MainActivity extends Activity implements Agent.Listener {
                 }
             }
         }
-        if (!lastSegment.isEmpty()) moveCopyBar();
         foldHistoryTurns();
+        flushHistoryFooters();
         scrollDown();
     }
 
