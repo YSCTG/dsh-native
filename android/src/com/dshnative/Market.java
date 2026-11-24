@@ -31,6 +31,10 @@ public final class Market {
 
     private Market() {}
 
+    /** 官方示例目录。设置里可以用任意同格式地址覆盖它。 */
+    public static final String OFFICIAL_INDEX =
+            "https://raw.githubusercontent.com/YSCTG/dsh-native/master/market-index/market.json";
+
     /** 已安装插件的存放目录。 */
     private static File pluginDir(Context c) {
         File d = new File(c.getFilesDir(), "plugins");

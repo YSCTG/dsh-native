@@ -298,6 +298,16 @@ public class SettingsActivity extends Activity {
         final String src = prefs.getString("market_pending", "");
         if (src == null || src.isEmpty()) return;
         prefs.edit().remove("market_pending").apply();
+
+        // catalog:<url> = 把某个地址设为目录来源（便于分享"目录链接"、也便于自动化测试）
+        if (src.startsWith("catalog:")) {
+            String url = src.substring("catalog:".length()).trim();
+            prefs.edit().putString("market_url", url).apply();
+            new java.io.File(getFilesDir(), "market-cache.json").delete();
+            toast("已设为目录来源，正在刷新…");
+            refreshMarket();
+            return;
+        }
         toast("正在导入 " + src + " …");
         new Thread(new Runnable() {
             @Override public void run() {

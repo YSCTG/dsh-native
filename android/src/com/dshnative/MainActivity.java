@@ -171,7 +171,14 @@ public class MainActivity extends Activity implements Agent.Listener {
         // 有些网络/模拟器只有 IPv6 出网会直接连不上；所有 HTTP 都走 Java 栈，这里统一压到 IPv4。
         try { System.setProperty("java.net.preferIPv4Stack", "true"); } catch (Exception ignored) {}
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        // 外部导入入口：am start … --es import_src "pnpm包名/清单URL"
+        // 插件目录默认指向官方示例源（用户可在设置里改成任何同格式地址）
+        try {
+            if (prefs.getString("market_url", "").isEmpty()) {
+                prefs.edit().putString("market_url", Market.OFFICIAL_INDEX).apply();
+            }
+        } catch (Throwable ignored) {}
+
+        // 外部导入入口：am start … --es import_src "包名/清单URL/catalog:目录URL"
         // 转到设置页去执行（SettingsActivity 不导出，只能由本应用内部拉起）。
         try {
             String imp = getIntent() == null ? null : getIntent().getStringExtra("import_src");
