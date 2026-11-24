@@ -122,7 +122,7 @@ public class MainActivity extends Activity implements Agent.Listener {
             View h = thinkingBlock.findViewWithTag("head");
             if (h instanceof TextView) {
                 double s = (System.currentTimeMillis() - thinkingStart) / 1000.0;
-                ((TextView) h).setText("正在分析请求   " + String.format("%.1fs", s));
+                ((TextView) h).setText("▾ 正在分析请求   " + String.format("%.1fs", s));
             }
             ui.postDelayed(this, 200);
         }
@@ -826,6 +826,25 @@ public class MainActivity extends Activity implements Agent.Listener {
      * 工具行的动词。桌面的写法是「名词性动作」，不带"了"：
      * `运行命令`、`读取`、`编辑`——后面跟模型自己写的一句"要做什么"。
      */
+    /**
+     * 历史重放时拿到的是原始 arguments JSON。命令类优先用它自己写的 description，
+     * 否则退回命令/代码首行——否则内层行会把整串 JSON 显示出来。
+     */
+    private static String detailFromArgs(String name, String argsJson) {
+        if (argsJson == null || argsJson.trim().isEmpty()) return "";
+        if (!"sh".equals(name) && !"python".equals(name)) return argsJson;
+        try {
+            JSONObject o = new JSONObject(argsJson);
+            String d = o.optString("description", "").trim();
+            if (!d.isEmpty()) return d;
+            if ("sh".equals(name)) return o.optString("command", "").trim();
+            String code = o.optString("code", "").trim();
+            return code.isEmpty() ? "" : code.split("\\n")[0];
+        } catch (Throwable t) {
+            return argsJson;
+        }
+    }
+
     private static String verbOf(String tool, boolean done) {
         String a, b;
         if (tool == null) { a = "正在调用工具"; b = "调用了工具"; }
@@ -956,8 +975,7 @@ public class MainActivity extends Activity implements Agent.Listener {
             execGroupHeader = new TextView(this);
             execGroupHeader.setText("▾ " + execGroupVerb);
             execGroupHeader.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-            execGroupHeader.setTextColor(getColor(done ? R.color.label_secondary
-                    : R.color.label_primary));
+            execGroupHeader.setTextColor(getColor(R.color.label_secondary));
             execGroupHeader.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) {
                     execGroupCollapsed = !execGroupCollapsed;
@@ -1047,14 +1065,15 @@ public class MainActivity extends Activity implements Agent.Listener {
         thinkingBlock.setOrientation(LinearLayout.VERTICAL);
 
         TextView head = new TextView(this);
-        head.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        head.setTextColor(getColor(R.color.label_caption));
-        head.setText("正在分析…");
-        head.setPadding(dp(2), dp(10), dp(2), dp(10));   // 加大可点高度
+        // 和「执行了命令」同一层级：同样的字号、颜色和留白
+        head.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        head.setTextColor(getColor(R.color.label_secondary));
+        head.setText("▾ 正在分析请求");
+        head.setPadding(0, dp(4), 0, dp(4));
         head.setTag("head");
 
         View rule = new View(this);
-        rule.setBackgroundColor(getColor(R.color.border_l1));
+        rule.setBackgroundColor(0x00000000);   // 不再画分隔线（命令行也没有）
 
         TextView body = new TextView(this);
         body.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
@@ -1079,9 +1098,10 @@ public class MainActivity extends Activity implements Agent.Listener {
                 boolean show = fBody.getVisibility() != View.VISIBLE;
                 fBody.setVisibility(show ? View.VISIBLE : View.GONE);
                 thinkingOpen = show;
-                String base = fHead.getText().toString()
-                        .replace(" 展开 ▾", "").replace(" 收起 ▴", "");
-                fHead.setText(base + (show ? " 收起 ▴" : " 展开 ▾"));
+                // 统一成 chevron 前缀（和「执行了命令」一致），不再挂"展开/收起"字样
+                String base = fHead.getText().toString();
+                if (base.startsWith("▾ ") || base.startsWith("▸ ")) base = base.substring(2);
+                fHead.setText((show ? "▾ " : "▸ ") + base);
                 android.util.Log.i("DSHN", "think toggle show=" + show
                         + " bodyLen=" + fBody.getText().length());
                 if (show) {
@@ -1145,10 +1165,10 @@ public class MainActivity extends Activity implements Agent.Listener {
         if (head != null) {
             // 桌面版就是「思考 · 首句」：一眼看出这轮在想什么，字数与秒数是次要信息
             String first = firstLine(all);
-            StringBuilder sb = new StringBuilder("已完成分析");
+            StringBuilder sb = new StringBuilder();
+            sb.append(has ? (thinkingOpen ? "▾ " : "▸ ") : "").append("已完成分析");
             if (!first.isEmpty()) sb.append(" · ").append(first);
             if (secs >= 0.1) sb.append("   ").append(String.format("%.1fs", secs));
-            if (has) sb.append(thinkingOpen ? "  ▴" : "  ▾");
             head.setText(sb.toString());
         }
         thinkingBlock = null;
@@ -3259,7 +3279,8 @@ public class MainActivity extends Activity implements Agent.Listener {
                     for (int k = 0; k < calls.length(); k++) {
                         try {
                             JSONObject fn = calls.getJSONObject(k).getJSONObject("function");
-                            addToolChip(fn.optString("name"), fn.optString("arguments", ""), true);
+                            String tn = fn.optString("name");
+                            addToolChip(tn, detailFromArgs(tn, fn.optString("arguments", "")), true);
                         } catch (Exception ignored) {}
                     }
                 }
@@ -3275,6 +3296,11 @@ public class MainActivity extends Activity implements Agent.Listener {
                 }
             }
 
+            if ("assistant".equals(role)) {
+                String body = m.optString("content", "");
+                if (!body.isEmpty()) lastSegment = body;
+            }
+
             // 这一条之后挂过的文件：索引对上就补回卡片
             java.util.List<String> after = marks.get(i + 1);
             if (after != null) {
@@ -3286,6 +3312,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                 }
             }
         }
+        if (!lastSegment.isEmpty()) moveCopyBar();   // 历史里也留一个复制，内容是最末段
         scrollDown();
     }
 
