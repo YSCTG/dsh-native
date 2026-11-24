@@ -58,7 +58,7 @@ public final class Office {
     // ---------------- docx ----------------
 
     private static String docx(File out, JSONObject spec) throws Exception {
-        Design d = Design.of(spec.optString("style", "report"));
+        Design d = Design.of(spec);
         JSONObject theme = spec.optJSONObject("theme");
         d.accent = colorOf(theme, "accent", d.accent);
         d.ink = colorOf(theme, "ink", d.ink);
@@ -376,7 +376,7 @@ public final class Office {
     private static String pptx(Context ctx, File out, JSONObject spec) throws Exception {
         JSONArray slides = spec.optJSONArray("slides");
         if (slides == null || slides.length() == 0) return "错误：pptx 需要至少一张 slide";
-        Design d = Design.of(spec.optString("style", "report"));
+        Design d = Design.of(spec);
         JSONObject theme = spec.optJSONObject("theme");
         d.accent = colorOf(theme, "accent", d.accent);
         d.ink = colorOf(theme, "ink", d.ink);
@@ -715,7 +715,7 @@ public final class Office {
         }
 
         // 先取预设（style），再允许 theme 逐项覆盖
-        Design d = Design.of(spec.optString("style", "report"));
+        Design d = Design.of(spec);
         JSONObject theme = spec.optJSONObject("theme");
         d.accent = colorOf(theme, "accent", d.accent);
         d.ink = colorOf(theme, "ink", d.ink);
@@ -790,6 +790,50 @@ public final class Office {
         float fTitle = 28, fH1 = 15, fH2 = 12.5f, fBody = 10.5f, fSmall = 9.5f;
         float lead = 16.5f;
         boolean serifTitle;
+
+        /**
+         * 从 spec 取风格：style 可以是预设名，也可以是一个对象——
+         * 用户说"标题再大点、主色换成墨绿、留白多些"时，模型直接覆盖这些令牌，
+         * 不必等我们加一个预设。
+         */
+        static Design of(JSONObject spec) {
+            Object raw = spec == null ? null : spec.opt("style");
+            if (raw instanceof JSONObject) {
+                JSONObject o = (JSONObject) raw;
+                Design d = of(o.optString("base", "report"));
+                d.applyOverrides(o);
+                return d;
+            }
+            return of(raw == null ? "report" : raw.toString());
+        }
+
+        /** 令牌覆盖：只认给出的键，其余保持预设。 */
+        void applyOverrides(JSONObject o) {
+            page = hexOf(o, "page", page);
+            ink = hexOf(o, "ink", ink);
+            muted = hexOf(o, "muted", muted);
+            accent = hexOf(o, "accent", accent);
+            tableHead = hexOf(o, "tableHead", tableHead);
+            margin = o.optInt("margin", margin);
+            if (o.has("fTitle")) fTitle = (float) o.optDouble("fTitle", fTitle);
+            if (o.has("fH1")) fH1 = (float) o.optDouble("fH1", fH1);
+            if (o.has("fH2")) fH2 = (float) o.optDouble("fH2", fH2);
+            if (o.has("fBody")) fBody = (float) o.optDouble("fBody", fBody);
+            if (o.has("lead")) lead = (float) o.optDouble("lead", lead);
+            if (o.has("serifTitle")) serifTitle = o.optBoolean("serifTitle", serifTitle);
+        }
+
+        private static int hexOf(JSONObject o, String key, int def) {
+            String v = o.optString(key, "");
+            if (v == null || v.isEmpty()) return def;
+            try {
+                String t = v.startsWith("#") ? v.substring(1) : v;
+                long rgb = Long.parseLong(t, 16);
+                return (int) (0xFF000000L | (rgb & 0xFFFFFF));
+            } catch (Throwable t) {
+                return def;
+            }
+        }
 
         static Design of(String style) {
             Design d = new Design();
