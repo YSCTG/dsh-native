@@ -378,6 +378,15 @@ public final class Agent {
                 }
             }
 
+            add("ui.act", tool("ui_input",
+                    "点坐标并写字，一次完成：点 → 找焦点 → 写入 → 回读确认 → （可选）提交。"
+                            + "比 ui_tap + ui_type 两次调用稳，写不进去会自动改用剪贴板粘贴。密码框只回报字数。",
+                    schema(props(new String[]{"x", "y", "text", "submit"},
+                                 new String[]{"integer", "integer", "string", "boolean"},
+                                 new String[]{"横坐标", "纵坐标", "要写入的文字",
+                                         "写完是否按一次回车（默认 false）"}),
+                           new String[]{"x", "y", "text"})));
+
             add("ui.act", tool("ui_type",
                     "往输入框写字（无障碍 ACTION_SET_TEXT，不需要 root）。"
                             + "先 ui_dump 找到输入框的 #序号，再用 index 指定；"
@@ -1201,6 +1210,12 @@ public final class Agent {
             if ("clip_write".equals(name)) return clipWrite(a.optString("text", ""));
             if ("notify".equals(name)) return notifyUser(a.optString("title", "DSH Native"), a.optString("body", ""));
             if ("ui_dump".equals(name)) return uiDump(a.optInt("max_nodes", UI_MAX_NODES));
+            if ("ui_input".equals(name)) {
+                UiAgentService svc = UiAgentService.get();
+                if (svc == null) return "错误：无障碍服务没开";
+                return svc.input(a.optInt("x", 0), a.optInt("y", 0),
+                        a.optString("text", ""), a.optBoolean("submit", false));
+            }
             if ("ui_tap".equals(name)) return uiTap(a);
 
             if ("office_preview".equals(name)) {

@@ -187,6 +187,97 @@ public class UiAgentService extends AccessibilityService {
         return s.contains("EditText") || s.contains("TextInput");
     }
 
+
+    /**
+     * 点坐标 → 找焦点 → 写入 → 回读校验 → 收尾，一次调用完成。
+     *
+     * 为什么要回读：ACTION_SET_TEXT 返回 true 不等于文字真的进去了（部分输入法/自绘输入框会吞）。
+     * 所以每 100ms 读一次、最多 1.5 秒，确认之后才认为成功；仍失败就走剪贴板粘贴。
+     *
+     * 密码框只回报"已写入 N 字"，不回显内容，也不进日志。
+     */
+    public synchronized String input(float x, float y, String text, boolean submit) {
+        if (text == null) text = "";
+        if (!tap(x, y)) return "错误：坐标点击失败（无障碍服务未就绪？）";
+        sleep(220);
+
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        AccessibilityNodeInfo ed = findFocusedEditable(root);
+        if (ed == null) ed = findEditableAt(root, (int) x, (int) y, 0);
+
+        if (ed == null) {
+            // 有些页面只有真按住才聚焦
+            gesture(x, y, x, y, 600);
+            sleep(350);
+            root = getRootInActiveWindow();
+            ed = findFocusedEditable(root);
+            if (ed == null) ed = findEditableAt(root, (int) x, (int) y, 0);
+        }
+        if (ed == null) return "错误：这个坐标上没有找到输入框";
+
+        boolean pwd = ed.isPassword();
+        boolean ok = applyText(ed, text);
+        boolean verified = verifyText(x, y, text);
+
+        String via = "setText";
+        if (!verified) {
+            // 兜底：剪贴板 + 粘贴
+            try {
+                android.content.ClipboardManager cm = (android.content.ClipboardManager)
+                        getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("dsh", text));
+                sleep(120);
+                AccessibilityNodeInfo r2 = getRootInActiveWindow();
+                AccessibilityNodeInfo e2 = findFocusedEditable(r2);
+                if (e2 == null) e2 = findEditableAt(r2, (int) x, (int) y, 0);
+                if (e2 != null) e2.performAction(AccessibilityNodeInfo.ACTION_PASTE);
+                verified = verifyText(x, y, text);
+                via = "paste";
+            } catch (Throwable ignored) {}
+        }
+
+        if (submit && verified) {
+            AccessibilityNodeInfo r3 = getRootInActiveWindow();
+            AccessibilityNodeInfo e3 = findFocusedEditable(r3);
+            if (e3 == null) e3 = findEditableAt(r3, (int) x, (int) y, 0);
+            if (e3 != null) {
+                // ACTION_IME_ENTER 是 API 30 的常量，编译 SDK 里没有；这里只用点击。
+                // 需要真回车的输入框，调用方可以再用 sh 发 keyevent 66。
+                e3.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            }
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(verified ? "已写入" : "写入未确认");
+        sb.append("（").append(via).append("）");
+        sb.append(pwd ? "，密码框，共 " + text.length() + " 字（不回显）" : "：" + text);
+        if (submit) sb.append("，已提交");
+        if (!ok && !verified) sb.append("；setText 也返回失败");
+        return sb.toString();
+    }
+
+    /** 回读校验：比较时忽略空白与零宽字符。 */
+    private boolean verifyText(float x, float y, String want) {
+        String target = norm(want);
+        for (int i = 0; i < 15; i++) {
+            sleep(100);
+            AccessibilityNodeInfo r = getRootInActiveWindow();
+            AccessibilityNodeInfo e = findFocusedEditable(r);
+            if (e == null) e = findEditableAt(r, (int) x, (int) y, 0);
+            if (e != null && norm(String.valueOf(e.getText())).equals(target)) return true;
+        }
+        return false;
+    }
+
+    private static String norm(String s) {
+        if (s == null) return "";
+        return s.replaceAll("[\\s\\u200b\\u200c\\u200d\\uFEFF\\-]", "");
+    }
+
+    private static void sleep(long ms) {
+        try { Thread.sleep(ms); } catch (InterruptedException ignored) {}
+    }
+
     public synchronized boolean tapIndex(int index) {
         if (index < 0 || index >= lastBounds.size()) return false;
         int[] b = lastBounds.get(index);
