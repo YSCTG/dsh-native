@@ -161,6 +161,14 @@ public class MainActivity extends Activity implements Agent.Listener {
         // 有些网络/模拟器只有 IPv6 出网会直接连不上；所有 HTTP 都走 Java 栈，这里统一压到 IPv4。
         try { System.setProperty("java.net.preferIPv4Stack", "true"); } catch (Exception ignored) {}
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        // 老版本的默认推理等级是 max（"分析请求"能跑几分钟）。迁移一次到 high，
+        // 之后用户自己改的值不再覆盖。
+        if (!prefs.getBoolean("effort_migrated", false)) {
+            if ("max".equals(Prefs.get(this).getString("reasoning_effort", ""))) {
+                prefs.edit().putString("reasoning_effort", "high").apply();
+            }
+            prefs.edit().putBoolean("effort_migrated", true).apply();
+        }
         // 只用 deepseek-flash：旧版本可能存了 deepseek-v4-pro，这里强制回落
         model = "deepseek-flash";
         if (!"deepseek-flash".equals(prefs.getString("model", ""))) {
@@ -837,6 +845,39 @@ public class MainActivity extends Activity implements Agent.Listener {
      * 历史重放时拿到的是原始 arguments JSON。命令类优先用它自己写的 description，
      * 否则退回命令/代码首行——否则内层行会把整串 JSON 显示出来。
      */
+    /**
+     * 兜底美化：有些工具（job_output 之类）没给自定义文案，detail 会是整串 arguments JSON。
+     * 这里挑最像"在做什么"的字段显示，实在没有就拼接前两个键值。
+     */
+    private static String prettyDetail(String detail) {
+        if (detail == null) return "";
+        String d = detail.trim();
+        if (!d.startsWith("{")) return detail;
+        try {
+            JSONObject o = new JSONObject(d);
+            String[] prefer = {"description", "task", "command", "query", "url", "path", "id", "name", "to"};
+            for (String k : prefer) {
+                String v = o.optString(k, "");
+                if (!v.isEmpty()) {
+                    if (v.length() > 60) v = v.substring(0, 60) + "…";
+                    return k.equals("description") ? v : (k + " " + v);
+                }
+            }
+            StringBuilder sb = new StringBuilder();
+            java.util.Iterator<String> it = o.keys();
+            int n = 0;
+            while (it.hasNext() && n < 2) {
+                String k = it.next();
+                if (sb.length() > 0) sb.append("  ");
+                sb.append(k).append('=').append(o.optString(k, ""));
+                n++;
+            }
+            return sb.length() == 0 ? "" : sb.toString();
+        } catch (Throwable t) {
+            return detail;
+        }
+    }
+
     private static String detailFromArgs(String name, String argsJson) {
         if (argsJson == null || argsJson.trim().isEmpty()) return "";
         if (!"sh".equals(name) && !"python".equals(name)) return argsJson;
@@ -911,9 +952,7 @@ public class MainActivity extends Activity implements Agent.Listener {
      * 之前重放一律画成进行时，所以老会话里满屏"正在运行命令"。
      */
     private void addToolChip(String name, String detail, boolean done) {
-        android.util.Log.i("DSHN", "toolchip name=" + name + " done=" + done
-                + " shellish=" + ("sh".equals(name) || "python".equals(name))
-                + " groupBody=" + (execGroupBody == null ? "null" : "live"));
+        detail = prettyDetail(detail);
         boolean shellish = "sh".equals(name) || "python".equals(name);
         if (shellish) { addShellRow(name, detail, done); return; }
         execGroupBody = null;   // 非命令类工具：下次命令重新开一组

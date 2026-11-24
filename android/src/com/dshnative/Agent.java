@@ -68,7 +68,8 @@ public final class Agent {
         default String askChoice(String title, String[] options, boolean multi) { return null; }
     }
 
-    private static final int MAX_TURNS = 80;      // 轮次兜底（数的是模型往返，不是工具数）
+    /** 轮次兜底（数的是模型往返，不是工具数）。默认 400；设置里可用 max_turns 覆盖。 */
+    private static final int MAX_TURNS = 400;
     private static final double BUDGET_USD = 0.15;  // 单轮预算闸：约 ¥1
     private static final int READ_LIMIT = 200;
     private static final int READ_MAX_BYTES = 64 * 1024;
@@ -79,6 +80,8 @@ public final class Agent {
     private final File workspace;
     private final File sessionDir;
     private final DeepSeekClient client;
+    /** 单轮最多多少次模型往返（可配置，默认 400）。 */
+    private int maxTurns = MAX_TURNS;
     private final Listener listener;
     private final JSONArray messages = new JSONArray();
     private final JSONArray tools = new JSONArray();
@@ -132,8 +135,9 @@ public final class Agent {
             @Override public void run() { Tools.ensure(c0); }
         }).start();
         this.client = new DeepSeekClient(apiKey, model, baseUrl);
+        this.maxTurns = Math.max(20, Prefs.get(ctx).getInt("max_turns", MAX_TURNS));
         this.client.reasoningEffort = Prefs.get(ctx)
-                .getString("reasoning_effort", "max");
+                .getString("reasoning_effort", "high");
         this.listener = listener;
         this.plugins = Plugin.installed(this.ctx);
 
@@ -833,7 +837,7 @@ public final class Agent {
             String guardNote = null;         // 被某道闸拦下时的说明（null = 正常结束）
             String lastSig = null, lastOut = null;
             int sameSig = 0, sameOut = 0;
-            for (int turn = 0; turn < MAX_TURNS && !cancelled; turn++) {
+            for (int turn = 0; turn < maxTurns && !cancelled; turn++) {
                 turnsUsed = turn + 1;
                 // 插话：上一轮工具跑完、下一次请求还没发时把它接进来。
                 // 只在这个位置注入，消息序列才合法（tool 结果紧跟着它的 tool_calls）。
@@ -928,8 +932,8 @@ public final class Agent {
             }
             // 停下来的原因必须说出来，否则用户只会看到"任务自己断了"
             String stopNote = guardNote;
-            if (stopNote == null && !cancelled && turnsUsed >= MAX_TURNS) {
-                stopNote = "⚠ 已经连续执行 " + MAX_TURNS
+            if (stopNote == null && !cancelled && turnsUsed >= maxTurns) {
+                stopNote = "⚠ 已经连续执行 " + maxTurns
                         + " 轮工具调用，本轮到此为止（不是出错，是上限）。"
                         + "任务还没完的话回一句「继续」，我接着跑。";
             }
