@@ -67,6 +67,16 @@ public final class OfficeRead {
             }
         }
         tables = count(xml, "<w:tbl>");
+        // 顺带报告文档里定义的段落样式（restyle 的前置信息：模型得先知道有什么样式）
+        String st = entry(f, "word/styles.xml");
+        if (st != null) {
+            java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<>();
+            Matcher sm = Pattern.compile("<w:style[^>]*w:styleId=\"([^\"]+)\"").matcher(st);
+            while (sm.find()) ids.add(sm.group(1));
+            if (!ids.isEmpty()) {
+                sb.append("样式：").append(String.join("、", ids)).append('\n');
+            }
+        }
         sb.append("段落：").append(paras).append("　表格：").append(tables).append('\n');
         sb.append("---- 正文 ----\n").append(lines);
         return sb.toString();
