@@ -89,6 +89,10 @@ public class MainActivity extends Activity implements Agent.Listener {
     private boolean sessionsExpanded;
 
     private Agent agent;
+    /** 每个会话各自的 Agent：切走/新建不再中断上一个会话。 */
+    private final java.util.Map<String, Agent> agentPool = new java.util.HashMap<>();
+    /** 正在跑的会话 id（可以有多个并行）。 */
+    private final java.util.Set<String> runningSessions = new java.util.HashSet<>();
     private Mode mode;
     private Session session;
     private boolean root;
@@ -2049,6 +2053,8 @@ public class MainActivity extends Activity implements Agent.Listener {
             if (!imgsNow.contains(p) && new File(p).isFile()) imgsNow.add(p);
         }
         running = true;
+        final String sendSid = session == null ? null : session.id;
+        if (sendSid != null) runningSessions.add(sendSid);
         abortRequested = false;
         assistantClosed = false;
         fileCardsShown.clear();
@@ -2068,13 +2074,18 @@ public class MainActivity extends Activity implements Agent.Listener {
                 if (!abortRequested) a.run(text, imgsNow);
                 ui.post(new Runnable() {
                     @Override public void run() {
-                        running = false;
-                        setSendState(false);
-                        RunService.stop(MainActivity.this);
-                        KeepAlive.release();
-                        foldAnswerBody();
-                        moveCopyBar();      // 只在最终回答下面挂一个
-                        refreshMeta();
+                        if (sendSid != null) runningSessions.remove(sendSid);
+                        boolean stillCurrent = session != null && session.id.equals(sendSid);
+                        if (stillCurrent) {
+                            running = false;
+                            setSendState(false);
+                            RunService.stop(MainActivity.this);
+                            KeepAlive.release();
+                            foldAnswerBody();
+                            moveCopyBar();      // 只在最终回答下面挂一个
+                            refreshMeta();
+                        }
+                        // 切到别的会话了：这一轮在后台收尾，不动当前界面
                     }
                 });
             }
@@ -2129,7 +2140,47 @@ public class MainActivity extends Activity implements Agent.Listener {
         scrollDown();
     }
 
+    /**
+     * 按会话过滤的监听器。
+     *
+     * 后台会话的 Agent 继续跑，但它的回调不能去改当前屏幕上的对话流；
+     * 只有它自己的会话在前台时才转给 Activity。后台需要确认的动作一律按"拒绝"处理，
+     * 避免没人看着的时候执行危险命令。
+     */
+    private final class SessionUi implements Agent.Listener {
+        private final String sid;
+
+        SessionUi(String sid) { this.sid = sid; }
+
+        private boolean fg() { return session != null && sid != null && sid.equals(session.id); }
+
+        @Override public void onAssistant(String d) { if (fg()) MainActivity.this.onAssistant(d); }
+        @Override public void onReasoning(String d) { if (fg()) MainActivity.this.onReasoning(d); }
+        @Override public void onTool(String n, String d) { if (fg()) MainActivity.this.onTool(n, d); }
+        @Override public void onToolDone(String n, long ms) { if (fg()) MainActivity.this.onToolDone(n, ms); }
+        @Override public void onUsage(int h, int m, int o, double c) { if (fg()) MainActivity.this.onUsage(h, m, o, c); }
+        @Override public void onTurnStats(int out, long ms) { if (fg()) MainActivity.this.onTurnStats(out, ms); }
+        @Override public void onFilesTouched(java.util.List<String> p) {
+            if (fg()) MainActivity.this.onFilesTouched(p);
+        }
+        @Override public void onTodo(String sum) { if (fg()) MainActivity.this.onTodo(sum); }
+        @Override public void onStatus(String st) { if (fg()) MainActivity.this.onStatus(st); }
+        @Override public void onError(String msg) { if (fg()) MainActivity.this.onError(msg); }
+        @Override public void onBusy(boolean busy) { if (fg()) MainActivity.this.onBusy(busy); }
+        @Override public void onRender(String html, String url) { if (fg()) MainActivity.this.onRender(html, url); }
+
+        @Override public boolean confirm(String title, String body) {
+            // 后台会话没人看着：不执行需要确认的动作
+            return fg() && MainActivity.this.confirm(title, body);
+        }
+
+        @Override public String askChoice(String title, String[] options, boolean multi) {
+            return fg() ? MainActivity.this.askChoice(title, options, multi) : null;
+        }
+    }
+
     private Agent ensureAgent() {
+        if (agent == null && session != null) agent = agentPool.get(session.id);
         if (agent == null) {
             agent = new Agent(MainActivity.this,
                     apiKey(),
@@ -2139,7 +2190,8 @@ public class MainActivity extends Activity implements Agent.Listener {
                     session,
     
                     root,
-                    this);
+                    new SessionUi(session.id));
+            if (session != null) agentPool.put(session.id, agent);
             final String note0 = agent.toolCount() + " 个工具 · " + tierLabel();
             final boolean warn = a11yEnabledButNotConnected();
             ui.post(new Runnable() {
@@ -2264,10 +2316,12 @@ public class MainActivity extends Activity implements Agent.Listener {
     }
 
     private void onFresh() {
-        if (agent != null) agent.cancel();
+        // 不再中断上一个会话：它继续在后台跑，切回去能看到结果
         agent = null;
         // 设置页可能改过模式：新会话要用新的（模式在会话内冻结，只在这里重读）
         mode = Mode.byId(prefs.getString("mode", "standard"));
+        running = false;
+        setSendState(false);
         assistantView = null;
         assistantBuf.setLength(0);
         thinkingBlock = null;
@@ -3569,8 +3623,7 @@ public class MainActivity extends Activity implements Agent.Listener {
     }
 
     private void loadSession(String id) {
-        // 切会话后重新从底部开始看
-        if (agent != null) agent.cancel();
+        // 切会话后重新从底部开始看；正在跑的那个会话留在后台继续
         agent = null;
         assistantView = null;
         assistantBuf.setLength(0);
@@ -3584,6 +3637,8 @@ public class MainActivity extends Activity implements Agent.Listener {
         }
         if (session == null) session = new Session(id);
         prefs.edit().putString("session_id", id).apply();
+        running = runningSessions.contains(id);
+        setSendState(running);
         // 待办清单也是按会话存的：切过来要先读回，否则底部还挂着上一个会话的进度
         todoSummary = Todo.summary(this, id);
         refreshTodoLine();
