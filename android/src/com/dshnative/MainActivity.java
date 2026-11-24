@@ -106,10 +106,15 @@ public class MainActivity extends Activity implements Agent.Listener {
     private final StringBuilder assistantBuf = new StringBuilder();
     private Runnable pendingRender;
     private LinearLayout thinkingBlock;
+    /** 每个回答只保留一个复制入口，跟着最后一个输出段落走。 */
+    private View copyBar;
+    private String lastSegment = "";
     /** shell/python 这类"执行命令"是外层归类，具体命令收在它下面（桌面版就是两层）。 */
     private LinearLayout execGroupBody;
     private TextView execGroupHeader;
     private TextView execGroupMeta;
+    private String execGroupVerb = "正在执行命令";
+    private boolean execGroupCollapsed;
     /** 思考计时：每 200ms 刷一次，桌面版也是跳着涨的。 */
     private final Runnable thinkTick = new Runnable() {
         @Override public void run() {
@@ -625,6 +630,22 @@ public class MainActivity extends Activity implements Agent.Listener {
         }
     }
 
+    /**
+     * 清空对话流时必须复位这些引用。
+     *
+     * 它们是"上一次渲染留下的 View 指针"：transcript.removeAllViews() 之后那些 View 已经脱离，
+     * 但字段还指着它们，于是新的工具行被追加进看不见的孤儿容器里（表现为整组工具行消失）。
+     */
+    private void resetTranscriptRefs() {
+        execGroupBody = null;
+        execGroupHeader = null;
+        execGroupMeta = null;
+        copyBar = null;
+        lastSegment = "";
+        assistantView = null;
+        thinkingBlock = null;
+    }
+
     private void addView(View v) {
         hideEmptyState();
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -864,6 +885,9 @@ public class MainActivity extends Activity implements Agent.Listener {
      * 之前重放一律画成进行时，所以老会话里满屏"正在运行命令"。
      */
     private void addToolChip(String name, String detail, boolean done) {
+        android.util.Log.i("DSHN", "toolchip name=" + name + " done=" + done
+                + " shellish=" + ("sh".equals(name) || "python".equals(name))
+                + " groupBody=" + (execGroupBody == null ? "null" : "live"));
         boolean shellish = "sh".equals(name) || "python".equals(name);
         if (shellish) { addShellRow(name, detail, done); return; }
         execGroupBody = null;   // 非命令类工具：下次命令重新开一组
@@ -911,6 +935,13 @@ public class MainActivity extends Activity implements Agent.Listener {
      *   内层      正在运行命令 · <一句话>  →  运行命令 · <一句话>
      */
     private void addShellRow(String name, String detail, boolean done) {
+        try { addShellRow0(name, detail, done); }
+        catch (Throwable t) {
+            android.util.Log.e("DSHN", "addShellRow failed: " + t, t);
+        }
+    }
+
+    private void addShellRow0(String name, String detail, boolean done) {
         if (execGroupBody == null) {
             LinearLayout group = new LinearLayout(this);
             group.setOrientation(LinearLayout.VERTICAL);
@@ -920,11 +951,20 @@ public class MainActivity extends Activity implements Agent.Listener {
             head.setOrientation(LinearLayout.HORIZONTAL);
             head.setGravity(Gravity.CENTER_VERTICAL);
 
+            execGroupVerb = done ? "执行了命令" : "正在执行命令";
+            execGroupCollapsed = false;
             execGroupHeader = new TextView(this);
-            execGroupHeader.setText(done ? "› 执行了命令" : "▾ 正在执行命令");
+            execGroupHeader.setText("▾ " + execGroupVerb);
             execGroupHeader.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
             execGroupHeader.setTextColor(getColor(done ? R.color.label_secondary
                     : R.color.label_primary));
+            execGroupHeader.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    execGroupCollapsed = !execGroupCollapsed;
+                    execGroupBody.setVisibility(execGroupCollapsed ? View.GONE : View.VISIBLE);
+                    execGroupHeader.setText((execGroupCollapsed ? "▸ " : "▾ ") + execGroupVerb);
+                }
+            });
             head.addView(execGroupHeader);
 
             execGroupMeta = new TextView(this);
@@ -1126,10 +1166,25 @@ public class MainActivity extends Activity implements Agent.Listener {
         assistantView.setLineSpacing(dp(5), 1f);
         assistantView.setTextIsSelectable(true);
 
-        // 气泡 + 右下角「复制」装进同一个容器
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.addView(assistantView);
+        addView(box);
+        lastSegment = "";
+        moveCopyBar();
+    }
+
+    /**
+     * 每个回答只留一个「复制」，固定在最后一段输出下面。
+     * 之前每段正文各挂一个，屏幕上散着一排复制按钮，而且分不清复制的是哪段。
+     */
+    private void moveCopyBar() {
+        if (copyBar != null && copyBar.getParent() == transcript) {
+            transcript.removeView(copyBar);
+        }
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(android.view.Gravity.END);
 
         TextView copy = new TextView(this);
         copy.setText("⧉ 复制");
@@ -1137,15 +1192,13 @@ public class MainActivity extends Activity implements Agent.Listener {
         copy.setTextColor(getColor(R.color.label_caption));
         copy.setPadding(dp(8), dp(2), dp(2), dp(4));
         copy.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { copyToClipboard(assistantBuf.toString()); }
+            @Override public void onClick(View v) {
+                copyToClipboard(lastSegment.isEmpty() ? assistantBuf.toString() : lastSegment);
+            }
         });
-        LinearLayout copyRow = new LinearLayout(this);
-        copyRow.setOrientation(LinearLayout.HORIZONTAL);
-        copyRow.setGravity(android.view.Gravity.END);
-        copyRow.addView(copy);
-        box.addView(copyRow);
-
-        addView(box);
+        row.addView(copy);
+        copyBar = row;
+        transcript.addView(row);
     }
 
     /** 把文字放进剪贴板。 */
@@ -1863,6 +1916,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         thinkingBlock = null;
         destroyWebviews();
         transcript.removeAllViews();
+        resetTranscriptRefs();
         transcript.addView(buildEmptyState());
         session = Session.create(this);
         session.ws = Workspaces.currentId(this);   // 新会话归到当前工作区
@@ -2611,6 +2665,7 @@ public class MainActivity extends Activity implements Agent.Listener {
             // 换成一行极轻的"正在载入"，等 renderHistory 顶上来。
             if (transcript != null && transcript.findViewWithTag("empty") != null) {
                 transcript.removeAllViews();
+        resetTranscriptRefs();
                 TextView loading = new TextView(this);
                 loading.setText("载入中…");
                 loading.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
@@ -3165,6 +3220,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         thinkingBlock = null;
         destroyWebviews();
         transcript.removeAllViews();
+        resetTranscriptRefs();
         session = null;
         for (Session s : Session.list(this)) {
             if (s.id.equals(id)) { session = s; break; }
@@ -3443,6 +3499,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                 }
                 ensureAssistantView();
                 assistantBuf.append(delta);
+                lastSegment = assistantBuf.toString();   // 复制以最后一段为准
                 scheduleAssistantRender();
                 bumpGenStatus(true);
             }
@@ -3577,7 +3634,8 @@ public class MainActivity extends Activity implements Agent.Listener {
                     hit.meta.setText(hit.base + "   " + dur);
                     pendingTools.remove(hit);
                     if (execGroupHeader != null && ("sh".equals(name) || "python".equals(name))) {
-                        execGroupHeader.setText("› 执行了命令");
+                        execGroupVerb = "执行了命令";
+                        execGroupHeader.setText((execGroupCollapsed ? "▸ " : "▾ ") + execGroupVerb);
                         execGroupHeader.setTextColor(getColor(R.color.label_secondary));
                         if (execGroupMeta != null) execGroupMeta.setText(dur);
                     }
