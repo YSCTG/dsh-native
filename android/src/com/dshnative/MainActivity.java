@@ -2260,21 +2260,12 @@ public class MainActivity extends Activity implements Agent.Listener {
         }
         prefs.edit().putInt(key, count).apply();
 
-        // 不再自动续跑：上一轮被中断后自己动起来，用户会以为"新会话自己开始干活"。
-        // 改成一行可点的提示，点一下才继续。
-        final TextView bar = new TextView(this);
-        bar.setText("⚠ 上一轮被中断了 · 点此继续（不会自动开始）");
-        bar.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        bar.setTextColor(getColor(R.color.label_secondary));
-        bar.setPadding(0, dp(6), 0, dp(6));
-        bar.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                bar.setVisibility(View.GONE);
-                note("（继续上一轮）");
-                onResumeTurn();
-            }
-        });
-        addView(bar);
+        // 中断续跑是预期行为：进程被杀/被安装打断后，自动把那一轮接上。
+        // 但要说清楚"这是续跑"，否则看起来像新会话自己开始干活。
+        note("↻ 接上被中断的上一轮…");
+        ui.postDelayed(new Runnable() {
+            @Override public void run() { onResumeTurn(); }
+        }, 800);
     }
 
     /** 一行浅色提示，不占按钮。 */
