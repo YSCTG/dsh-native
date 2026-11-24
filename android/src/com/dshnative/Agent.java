@@ -199,8 +199,10 @@ public final class Agent {
                 "- office_write 的 style 决定整套配色与字号层级：report（默认）、editorial、swiss、"
                 + "magazine、minimal、warm、tech、ink、bold。同一份内容换个 style 观感完全不同，"
                 + "做多种方案时可以并存几版给用户挑。\n" +
+                "- pptx 支持封面页：第一页写 cover:true 并给 title/subtitle/date，会渲染成满幅"
+                + "色带 + 大标题的封面版式（不出页码）；其余页照常 title + bullets。"
+                + "做汇报、提案、宣讲类演示时默认加一页封面。\n" +
                 "- 用户对风格不满意时，**不要只换预设**：把 style 写成对象即可逐项覆盖——"
-                                + "  用户对风格不满意时，**不要只换预设**：把 style 写成对象即可逐项覆盖——"
                 + "例如 {\"base\":\"warm\",\"accent\":\"#2F6B3A\",\"fTitle\":34,\"margin\":72}。"
                 + "可用键：page/ink/muted/accent/tableHead（#RRGGBB）、margin、fTitle/fH1/fH2/fBody/lead（磅）、serifTitle。"
                 + "按用户原话改，不要自己发挥。\n" +

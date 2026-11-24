@@ -727,15 +727,42 @@ public final class Office {
         String accent = String.format("%06X", d.accent & 0xFFFFFF);
         String ink = String.format("%06X", d.ink & 0xFFFFFF);
         String muted = String.format("%06X", d.muted & 0xFFFFFF);
+        // 统一网格：左右边距跟着预设走（1pt = 12700 EMU），封面与正文页共用
+        int m = (int) (d.margin * 12700L);
+        int cw = Math.max(3000000, 9144000 - m * 2);
         StringBuilder body = new StringBuilder();
+
+        // 封面页：满幅色带 + 大标题 + 副标题 + 日期，不画页码、不画要点
+        if (s.optBoolean("cover", false) || index == 1 && s.optBoolean("cover", false)) {
+            String pg = String.format("%06X", d.page & 0xFFFFFF);
+            body.append("<p:sp><p:nvSpPr><p:cNvPr id=\"9\" name=\"bg\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
+                    + "<p:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"9144000\" cy=\"6858000\"/></a:xfrm>"
+                    + "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>"
+                    + "<a:solidFill><a:srgbClr val=\"" + pg + "\"/></a:solidFill>"
+                    + "<a:ln><a:noFill/></a:ln></p:spPr></p:sp>");
+            body.append("<p:sp><p:nvSpPr><p:cNvPr id=\"10\" name=\"rule\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
+                    + "<p:spPr><a:xfrm><a:off x=\"" + (m + 0) + "\" y=\"3100000\"/>"
+                    + "<a:ext cx=\"" + (int)(cw * 0.16) + "\" cy=\"45720\"/></a:xfrm>"
+                    + "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>"
+                    + "<a:solidFill><a:srgbClr val=\"" + accent + "\"/></a:solidFill>"
+                    + "<a:ln><a:noFill/></a:ln></p:spPr></p:sp>");
+            body.append(shapeColored(11, m, 3250000, cw, 1100000, title, 4000, true, ink));
+            String sub = s.optString("subtitle", "");
+            if (!sub.isEmpty()) {
+                body.append(shapeColored(12, m, 4350000, cw, 600000, sub, 1800, false, muted));
+            }
+            String dt = s.optString("date", "");
+            if (!dt.isEmpty()) {
+                body.append(shapeColored(13, m, 5500000, cw, 400000, dt, 1200, false, muted));
+            }
+            return body.toString();
+        }
+
         body.append("<p:sp><p:nvSpPr><p:cNvPr id=\"9\" name=\"band\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
                 + "<p:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"9144000\" cy=\"91440\"/></a:xfrm>"
                 + "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>"
                 + "<a:solidFill><a:srgbClr val=\"" + accent + "\"/></a:solidFill>"
                 + "<a:ln><a:noFill/></a:ln></p:spPr></p:sp>");
-        // 统一网格：左右边距跟着预设走（1pt = 12700 EMU），不同风格因此有不同留白
-        int m = (int) (d.margin * 12700L);
-        int cw = Math.max(3000000, 9144000 - m * 2);
         body.append(shapeColored(2, m, 274638, cw, 1143000, title, 2800, true, accent));
         if (bullets != null && bullets.length() > 0) {
             StringBuilder t = new StringBuilder();
