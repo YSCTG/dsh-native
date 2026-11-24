@@ -38,6 +38,7 @@ public class SettingsActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        prefs = getSharedPreferences("dshnative", MODE_PRIVATE);
         int bg = getColor(R.color.bg_base);
         Window w = getWindow();
         w.setStatusBarColor(bg);
