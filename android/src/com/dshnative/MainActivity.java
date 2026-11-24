@@ -108,6 +108,10 @@ public class MainActivity extends Activity implements Agent.Listener {
     private LinearLayout thinkingBlock;
     /** 每个回答只保留一个复制入口，跟着最后一个输出段落走。 */
     private View copyBar;
+    /** 本回合在对话流里的起始下标 / 最后一段正文的容器 / 起始时间，用来做「已完成」总收口。 */
+    private int turnViewStart = -1;
+    private View assistantBox;
+    private long turnStartMs;
     private String lastSegment = "";
     /** shell/python 这类"执行命令"是外层归类，具体命令收在它下面（桌面版就是两层）。 */
     private LinearLayout execGroupBody;
@@ -953,6 +957,18 @@ public class MainActivity extends Activity implements Agent.Listener {
      *   外层  ▸ 正在执行命令 / › 执行了命令
      *   内层      正在运行命令 · <一句话>  →  运行命令 · <一句话>
      */
+    /** 命令行标题所在的分组 → 它的内容容器（标题的下一个兄弟）。 */
+    private View findBodyOf(View header) {
+        View parent = (View) header.getParent();         // head
+        if (!(parent instanceof LinearLayout)) return null;
+        View group = (View) parent.getParent();          // group
+        if (!(group instanceof LinearLayout)) return null;
+        LinearLayout g = (LinearLayout) group;
+        int i = g.indexOfChild(parent);
+        if (i >= 0 && i + 1 < g.getChildCount()) return g.getChildAt(i + 1);
+        return null;
+    }
+
     private void addShellRow(String name, String detail, boolean done) {
         try { addShellRow0(name, detail, done); }
         catch (Throwable t) {
@@ -976,11 +992,17 @@ public class MainActivity extends Activity implements Agent.Listener {
             execGroupHeader.setText("▾ " + execGroupVerb);
             execGroupHeader.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
             execGroupHeader.setTextColor(getColor(R.color.label_secondary));
+            final TextView fHead = execGroupHeader;
             execGroupHeader.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) {
-                    execGroupCollapsed = !execGroupCollapsed;
-                    execGroupBody.setVisibility(execGroupCollapsed ? View.GONE : View.VISIBLE);
-                    execGroupHeader.setText((execGroupCollapsed ? "▸ " : "▾ ") + execGroupVerb);
+                    // 不能用字段：新建一组后字段已经指向别的组，点老组会 NPE（闪退）
+                    View body = findBodyOf(fHead);
+                    if (body == null) return;
+                    boolean hide = body.getVisibility() == View.VISIBLE;
+                    body.setVisibility(hide ? View.GONE : View.VISIBLE);
+                    String t = fHead.getText().toString();
+                    if (t.startsWith("▾ ") || t.startsWith("▸ ")) t = t.substring(2);
+                    fHead.setText((hide ? "▸ " : "▾ ") + t);
                 }
             });
             head.addView(execGroupHeader);
@@ -1030,6 +1052,11 @@ public class MainActivity extends Activity implements Agent.Listener {
         card.addView(dt, dlp);
 
         execGroupBody.addView(card);
+        if (!done) {
+            execGroupCollapsed = false;
+            execGroupBody.setVisibility(View.VISIBLE);
+            if (execGroupHeader != null) execGroupHeader.setText("▾ " + execGroupVerb);
+        }
 
         if (!done) {
             lastToolName = nm;
@@ -1189,6 +1216,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.addView(assistantView);
+        assistantBox = box;
         addView(box);
         lastSegment = "";
         moveCopyBar();
@@ -1219,6 +1247,69 @@ public class MainActivity extends Activity implements Agent.Listener {
         row.addView(copy);
         copyBar = row;
         transcript.addView(row);
+    }
+
+    /**
+     * 回答结束后，把"最终答案之前"的过程（思考、交错的正文、工具行）收进一行：
+     *   ▸ 已完成，用时 1分12秒
+     * 最终输出段、复制、文件卡片留在外面；点一下可以重新展开。
+     */
+    private void foldAnswerBody() {
+        try {
+            if (turnViewStart < 0 || assistantBox == null) return;
+            int boxIdx = transcript.indexOfChild(assistantBox);
+            int last = boxIdx < 0 ? transcript.getChildCount() - 1 : boxIdx - 1;
+            int from = turnViewStart;
+            turnViewStart = -1;
+            if (last < from) return;
+
+            java.util.List<View> moved = new java.util.ArrayList<>();
+            for (int i = from; i <= last; i++) {
+                View v = transcript.getChildAt(i);
+                if (v != null) moved.add(v);
+            }
+            if (moved.isEmpty()) return;
+            for (View v : moved) transcript.removeView(v);
+
+            final LinearLayout holder = new LinearLayout(this);
+            holder.setOrientation(LinearLayout.VERTICAL);
+            for (View v : moved) {
+                holder.addView(v, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            }
+            holder.setVisibility(View.GONE);
+
+            String dur = humanDuration(System.currentTimeMillis() - turnStartMs);
+            final TextView head = new TextView(this);
+            head.setText("▸ 已完成，用时 " + dur);
+            head.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            head.setTextColor(getColor(R.color.label_secondary));
+            head.setPadding(0, dp(6), 0, dp(6));
+            head.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    boolean show = holder.getVisibility() != View.VISIBLE;
+                    holder.setVisibility(show ? View.VISIBLE : View.GONE);
+                    head.setText((show ? "▾ " : "▸ ") + "已完成，用时 " + dur);
+                }
+            });
+
+            if (from <= transcript.getChildCount()) {
+                transcript.addView(head, from);
+                transcript.addView(holder, from + 1);
+            } else {
+                transcript.addView(head);
+                transcript.addView(holder);
+            }
+        } catch (Throwable t) {
+            android.util.Log.w("DSHN", "foldAnswerBody: " + t);
+        }
+    }
+
+    /** 1分12秒 / 43秒 */
+    private static String humanDuration(long ms) {
+        long sec = Math.max(0, ms / 1000);
+        if (sec < 60) return sec + "秒";
+        return (sec / 60) + "分" + String.format("%02d", sec % 60) + "秒";
     }
 
     /** 把文字放进剪贴板。 */
@@ -1699,6 +1790,8 @@ public class MainActivity extends Activity implements Agent.Listener {
 
         input.setText("");
         addUserBubble(text);
+        turnViewStart = transcript.getChildCount();
+        turnStartMs = System.currentTimeMillis();
         scrollDown(true);
         assistantView = null;
         assistantBuf.setLength(0);
@@ -1739,6 +1832,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                         setSendState(false);
                         RunService.stop(MainActivity.this);
                         KeepAlive.release();
+                        foldAnswerBody();
                         refreshMeta();
                     }
                 });
@@ -1905,6 +1999,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                         setSendState(false);
                         RunService.stop(MainActivity.this);
                         KeepAlive.release();
+                        foldAnswerBody();
                         refreshMeta();
                     }
                 });
@@ -3662,7 +3757,10 @@ public class MainActivity extends Activity implements Agent.Listener {
                     pendingTools.remove(hit);
                     if (execGroupHeader != null && ("sh".equals(name) || "python".equals(name))) {
                         execGroupVerb = "执行了命令";
-                        execGroupHeader.setText((execGroupCollapsed ? "▸ " : "▾ ") + execGroupVerb);
+                        // 执行完自动收起，和桌面一致；用户想看细节再点开
+                        execGroupCollapsed = true;
+                        execGroupHeader.setText("▸ " + execGroupVerb);
+                        if (execGroupBody != null) execGroupBody.setVisibility(View.GONE);
                         execGroupHeader.setTextColor(getColor(R.color.label_secondary));
                         if (execGroupMeta != null) execGroupMeta.setText(dur);
                     }
