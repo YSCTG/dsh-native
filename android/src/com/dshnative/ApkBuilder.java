@@ -28,6 +28,8 @@ public final class ApkBuilder {
     private static final String KEY_PKG = "com.example.hello";
 
     /** 最近一次成功构建的 APK（app_run 用它接着装）。工具调用是串行的，这样最简单。 */
+    /** 上一次 run() 的退出码。ecj 报错但退出码非零时必须停下，不能照样出货。 */
+    private static volatile int LAST_EXIT = 0;
     private static volatile File LAST_APK = null;
     private static volatile String LAST_PKG = "";
     private static volatile String LAST_ACT = "";
@@ -170,7 +172,11 @@ public final class ApkBuilder {
             for (File f : javaFiles) cmd.add(f.getAbsolutePath());
             out = run(cmd, abt);
             log.append("编译：").append(out.isEmpty() ? "OK" : out).append('\n');
-            if (!hasClass(classes)) return "编译失败：\n" + log;
+            // ecj 可能"报了错仍产出部分 class"，只要退出码非零就当失败，绝不打包
+            if (LAST_EXIT != 0) {
+                return "编译失败（ecj 退出码 " + LAST_EXIT + "），已停止，不会打包：\n" + log;
+            }
+            if (!hasClass(classes)) return "编译失败：没有产出 class\n" + log;
 
             // 2) dex
             List<File> classFiles = new ArrayList<>();
@@ -185,6 +191,7 @@ public final class ApkBuilder {
             for (File f : classFiles) d8.add(f.getAbsolutePath());
             out = run(d8, abt);
             log.append("dex：").append(out.isEmpty() ? "OK" : out).append('\n');
+            if (LAST_EXIT != 0) return "dex 失败（d8 退出码 " + LAST_EXIT + "）：\n" + log;
             File dex = new File(dexOut, "classes.dex");
             if (!dex.isFile()) return "dex 失败：\n" + log;
 
@@ -199,6 +206,7 @@ public final class ApkBuilder {
             if (hasRes && resZip.isFile()) link.add(resZip.getAbsolutePath());
             out = run(link, abt);
             log.append("打包：").append(out.isEmpty() ? "OK" : out).append('\n');
+            if (LAST_EXIT != 0) return "打包失败（aapt2 退出码 " + LAST_EXIT + "）：\n" + log;
             if (!unsigned.isFile() || unsigned.length() < 500) return "打包失败：\n" + log;
 
             // 4) 把 classes.dex 塞进 APK（java.util.zip，不依赖 zip 命令）
@@ -228,6 +236,7 @@ public final class ApkBuilder {
             sign.add(aligned.getAbsolutePath());
             out = run(sign, abt);
             log.append("签名：").append(out.isEmpty() ? "OK" : out).append('\n');
+            if (LAST_EXIT != 0) return "签名失败（apksigner 退出码 " + LAST_EXIT + "）：\n" + log;
             if (!signed.isFile()) return "签名失败：\n" + log;
 
             LAST_APK = signed;
@@ -284,6 +293,12 @@ public final class ApkBuilder {
      * 一步到位：编 → 装 → 起。
      * 装和起都走设备内 adb（需要「Android shell」开启）；没开就只报告"编好了但没装"。
      */
+    /**
+     * 一步到位：编 → 停旧进程 → 装 → 起 → 自查是否真的在运行。
+     *
+     * 为什么要"自查"：安装成功不等于跑得起来。启动后读一次 dumpsys 确认前台是不是它，
+     * 起不来就把这包的 logcat 尾巴带回来 —— 否则调用方只能靠猜。
+     */
     public static String runApp(Context c, String workspace, String name) {
         String built = build(c, workspace, name);
         if (!built.startsWith("构建完成")) return built;
@@ -299,19 +314,95 @@ public final class ApkBuilder {
             sb.append("已构建，但找不到产物路径，跳过安装。");
             return sb.toString();
         }
+        if (pkg.isEmpty() || act.isEmpty()) {
+            sb.append("manifest 里没解析到包名/入口，跳过。");
+            return sb.toString();
+        }
+
+        // 旧实例先停掉，否则装完起来的可能还是老的
+        AdbCli.shell(c, "am force-stop " + pkg, 15000);
 
         String ins = AdbCli.install(c, apk.getAbsolutePath());
         sb.append("安装：").append(ins).append('\n');
         if (!ins.startsWith("安装成功")) return sb.toString();
 
-        if (pkg.isEmpty() || act.isEmpty()) {
-            sb.append("装好了，但 manifest 里没解析到入口 activity，跳过启动。");
-            return sb.toString();
-        }
+        // 先清日志：否则拿回来的是上一轮的陈旧输出（我在测试里就被它骗过一次）
+        AdbCli.shell(c, "logcat -c", 15000);
         String launch = AdbCli.shell(c, "am start -n " + pkg + "/" + act, 30000);
-        sb.append("启动：").append(launch.isEmpty() ? "（无输出）" : launch);
+        sb.append("启动：").append(launch.isEmpty() ? "（无输出）" : oneLine(launch)).append('\n');
+        if (launch.contains("Error") || launch.contains("Exception")) {
+            sb.append("—— 启动就失败了，日志见下 ——\n");
+        }
+
+        // 起来没有：sleep 一下再看前台
+        try { Thread.sleep(1200); } catch (InterruptedException ignored) {}
+        String resumed = AdbCli.shell(c, "dumpsys activity activities | grep -m1 ResumedActivity", 20000);
+        boolean running = resumedIs(resumed, pkg);
+
+        if (running) {
+            sb.append("运行中：").append(pkg).append("/").append(act).append("（已在前台）");
+            // 前台正常也顺手看看有没有异常（有些错误不阻止启动）
+            String warn = crashHint(AdbCli.shell(c,
+                    "logcat -d -t 800 | grep -iE \"FATAL|AndroidRuntime|Exception\"", 20000));
+            if (!warn.isEmpty()) sb.append("\n但日志里有报错：\n").append(warn);
+        } else {
+            sb.append("没起来：前台不是 ").append(pkg).append("。日志尾巴：\n");
+            String log = crashHint(AdbCli.shell(c,
+                    "logcat -d -t 1200 | grep -iE \"FATAL|AndroidRuntime|" + pkg + "\"", 20000));
+            sb.append(log.isEmpty() ? "（logcat 里没有这个包的输出，可能根本没被拉起）" : log);
+        }
         return sb.toString();
     }
+
+    /** dumpsys 的前台记录里是不是这个包。 */
+    static boolean resumedIs(String dumpsysOut, String pkg) {
+        if (dumpsysOut == null || pkg == null || pkg.isEmpty()) return false;
+        return dumpsysOut.contains(pkg + "/") || dumpsysOut.contains(pkg + " ");
+    }
+
+    /**
+     * 从 logcat 里挑出"最能说明问题"的几行：优先 FATAL/AndroidRuntime（崩溃栈），
+     * 没有就退化成普通行。别把几百行系统广播倒给调用方。
+     */
+    static String crashHint(String log) {
+        if (log == null || log.trim().isEmpty()) return "";
+        String[] lines = log.split("\n");
+        StringBuilder fatal = new StringBuilder();
+        int fatalCount = 0;
+        for (String line : lines) {
+            if (line.contains("FATAL") || line.contains("AndroidRuntime")) {
+                fatal.append("  ").append(clip(line)).append('\n');
+                if (++fatalCount >= 8) break;
+            }
+        }
+        if (fatal.length() > 0) return fatal.toString().trim();
+        return tailMatching(log, 6);
+    }
+
+    private static String clip(String t) {
+        String x = t.trim();
+        return x.length() > 200 ? x.substring(0, 200) + "…" : x;
+    }
+
+    /** 取文本最后 n 行（日志回传别一股脑塞给模型）。 */
+    static String tailMatching(String text, int n) {
+        if (text == null) return "";
+        String[] lines = text.split("\n");
+        int from = Math.max(0, lines.length - n);
+        StringBuilder sb = new StringBuilder();
+        for (int i = from; i < lines.length; i++) {
+            String t = lines[i].trim();
+            if (t.isEmpty()) continue;
+            sb.append("  ").append(t.length() > 200 ? t.substring(0, 200) + "…" : t).append('\n');
+        }
+        return sb.toString().trim();
+    }
+
+    private static String oneLine(String s) {
+        String t = s == null ? "" : s.replace("\r", "").replace("\n", " ⏎ ").trim();
+        return t.length() > 160 ? t.substring(0, 160) + "…" : t;
+    }
+
 
     // ---------- helpers ----------
 
@@ -350,13 +441,14 @@ public final class ApkBuilder {
             pb.directory(abtDir);
             pb.environment().put("LD_LIBRARY_PATH", abtDir.getAbsolutePath());
             Process p = pb.start();
+            LAST_EXIT = -1;
             BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream(), "UTF-8"));
             String line;
             while ((line = br.readLine()) != null) {
                 sb.append(line).append('\n');
             }
             br.close();
-            p.waitFor();
+            LAST_EXIT = p.waitFor();
         } catch (Throwable t) {
             sb.append("执行失败：").append(t).append('\n');
         }

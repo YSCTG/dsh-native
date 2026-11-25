@@ -135,7 +135,8 @@ final class ToolCatalog {
                            new String[]{"name"})));
 
             a.add("shell", tool("app_run",
-                    "一步到位：把 app_new 生成的项目编成 APK、装到本机、然后启动它。"
+                    "一步到位：把 app_new 生成的项目编成 APK、停掉旧实例、装到本机、启动，"
+                            + "然后自查是否真的在前台（起不来会把该包的 logcat 尾巴带回来）。"
                             + "编+装+起都在这台设备上完成（装和起需要「Android shell」开启）。",
                     schema(props(new String[]{"name", "workspace"},
                                  new String[]{"string", "string"},

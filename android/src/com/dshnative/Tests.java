@@ -107,6 +107,30 @@ public final class Tests {
             total += 4; fails.add("桌面索引用例异常 " + t);
         }
 
+        // ---- 崩溃日志挑拣：优先 FATAL，不刷屏 ----
+        total++; String ch = ApkBuilder.crashHint(
+                "I/x: 普通行\nE/AndroidRuntime: FATAL EXCEPTION: main\n  at demo.Crashme.onCreate");
+        if (!ch.contains("FATAL")) fails.add("crashHint 应优先挑出 FATAL 行");
+        total++; if (ApkBuilder.crashHint("I/x: 只有普通行").contains("FATAL")) {
+            fails.add("没有 FATAL 时不该凭空出现");
+        }
+        total++; if (!ApkBuilder.crashHint("").isEmpty()) fails.add("空日志应返回空");
+
+        // ---- 启动自查：前台判定与日志裁剪 ----
+        total++; if (!ApkBuilder.resumedIs(
+                "mResumedActivity: ActivityRecord{1 u0 com.dsh.x/.Main t1}", "com.dsh.x")) {
+            fails.add("前台是这个包时应判为运行中");
+        }
+        total++; if (ApkBuilder.resumedIs(
+                "mResumedActivity: ActivityRecord{1 u0 com.other/.Main t1}", "com.dsh.x")) {
+            fails.add("前台是别的包时不该判为运行中");
+        }
+        total++; if (ApkBuilder.resumedIs("", "com.dsh.x")) fails.add("空输入应判为否");
+
+        total++; String tail = ApkBuilder.tailMatching("a\nb\nc\nd\ne", 2);
+        if (!tail.contains("d") || tail.contains("c")) fails.add("tailMatching 取错了行数");
+        total++; if (!ApkBuilder.tailMatching("", 3).isEmpty()) fails.add("空文本应返回空");
+
         // ---- adb devices 解析：只认 device，不认 unauthorized/offline ----
         total++; if (!"127.0.0.1:5555".equals(AdbCli.parseSerial(
                 "List of devices attached\n127.0.0.1:5555\tdevice\n"))) {
