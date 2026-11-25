@@ -369,6 +369,22 @@ public final class Agent {
                         "抓取网址的文本内容（仅 http/https）。域名不在允许列表时会确认。",
                         schema(obj("url", "string", "完整 URL"), new String[]{"url"})));
 
+            add("fs.write", tool("game_new",
+                    "生成一个可玩的手机端游戏骨架（纯 canvas，不依赖 npm）："
+                            + "工作区 games/<name>/ 下有 index.html、game.js、README。生成即可 play。",
+                    schema(props(new String[]{"name", "workspace"},
+                                 new String[]{"string", "string"},
+                                 new String[]{"项目名（目录名）", "工作区目录（可空）"}),
+                           new String[]{"name"})));
+
+            add("fs.write", tool("game_build",
+                    "把游戏打成单文件 HTML：把同目录的 .js 内联进 index.html，"
+                            + "产出 <name>.single.html，可以直接发给别人玩。",
+                    schema(props(new String[]{"name", "workspace"},
+                                 new String[]{"string", "string"},
+                                 new String[]{"项目名", "工作区目录（可空）"}),
+                           new String[]{"name"})));
+
             add("net.fetch", tool("npm_install",
                     "从 npm registry 装一个纯 JS 包到工作区 node_modules/（不需要 npm 命令）。"
                             + "用法：package 写包名（PixiJS 就写 pixi.js），version 可留空取 latest。"
@@ -1311,6 +1327,22 @@ public final class Agent {
             if ("clip_read".equals(name)) return clipRead();
             if ("clip_write".equals(name)) return clipWrite(a.optString("text", ""));
             if ("notify".equals(name)) return notifyUser(a.optString("title", "DSH Native"), a.optString("body", ""));
+            if ("game_new".equals(name)) {
+                String nm = a.optString("name", "game");
+                String ws = a.optString("workspace", "").trim();
+                if (ws.isEmpty()) {
+                    try { ws = Workspaces.currentDir(ctx).getAbsolutePath(); } catch (Throwable ignored) {}
+                }
+                return Game.scaffold(ctx, ws, nm);
+            }
+            if ("game_build".equals(name)) {
+                String nm = a.optString("name", "game");
+                String ws = a.optString("workspace", "").trim();
+                if (ws.isEmpty()) {
+                    try { ws = Workspaces.currentDir(ctx).getAbsolutePath(); } catch (Throwable ignored) {}
+                }
+                return Game.buildSingle(ws, nm);
+            }
             if ("npm_install".equals(name)) {
                 String pkg = a.optString("package", "").trim();
                 String ver = a.optString("version", "").trim();

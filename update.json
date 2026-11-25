@@ -1,6 +1,6 @@
 {
-  "version": "32.1",
-  "apk": "https://github.com/YSCTG/dsh-native/releases/download/v32.1/DSHNative.apk",
+  "version": "32.2",
+  "apk": "https://github.com/YSCTG/dsh-native/releases/download/v32.2/DSHNative.apk",
   "size": 77695307,
   "notes": "坐标绑定截图（observation）、ui_gesture 手势脚本、ui_input 回读校验"
 }

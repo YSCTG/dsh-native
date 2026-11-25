@@ -82,7 +82,12 @@ Write-Host "[3/7] aapt2 link"
 $unaligned = Join-Path $Out "app-unaligned.apk"
 $assetsDir = Join-Path $Proj "assets"
 $assetsArg = @()
-if (Test-Path $assetsDir) { $assetsArg = @("-A", $assetsDir) }
+# 注意：aapt2 在 Windows 上会把 -A 目录里的路径用反斜杠写进 zip，
+# 结果 AssetManager 按 "scaffold/index.html" 永远找不到（列表里是 scaffold\index.html）。
+# 传正斜杠路径可以让它写出正确分隔符。
+if (Test-Path $assetsDir) {
+    $assetsArg = @("-A", ($assetsDir -replace '\\', '/'))
+}
 & $Aapt2 link -o $unaligned -I $AndroidJar `
     --manifest (Join-Path $Proj "AndroidManifest.xml") `
     --java $Gen `

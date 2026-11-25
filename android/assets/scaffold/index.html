@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>地下城</title>
+<style>
+  :root{--bg:#0f1115;--ink:#e8eaed;--dim:#9aa0a6;--acc:#2fbf9c;--dang:#e8710a}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:8px;touch-action:none;-webkit-user-select:none;user-select:none}
+  #hud{font-size:13px;color:var(--dim);letter-spacing:.3px}
+  #hud b{color:var(--ink)}
+  canvas{background:#151a21;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.5);image-rendering:pixelated}
+  #log{font-size:12px;color:var(--dim);height:32px;line-height:16px;overflow:hidden;
+       width:min(92vw,360px);text-align:center}
+  .pad{display:grid;grid-template-columns:repeat(3,52px);gap:6px}
+  .pad button{width:52px;height:52px;border:0;border-radius:12px;background:#1f242c;
+              color:#cfd3d8;font-size:18px}
+  .pad button:active{background:#2b313a}
+  .pad .sp{visibility:hidden}
+</style>
+</head>
+<body>
+  <div id="hud">HP <b id="hp">10</b>/10 · 层 <b id="depth">1</b> · 金币 <b id="gold">0</b></div>
+  <canvas id="cv" width="320" height="320"></canvas>
+  <div id="log">用方向键 / 滑动走一格，撞上怪物就是攻击，踩到 ▼ 下一层</div>
+  <div class="pad">
+    <button class="sp"></button><button data-d="u">▲</button><button class="sp"></button>
+    <button data-d="l">◀</button><button data-d="d">▼</button><button data-d="r">▶</button>
+  </div>
+<script src="game.js"></script>
+</body>
+</html>
