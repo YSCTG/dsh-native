@@ -243,6 +243,8 @@ public final class DesktopImport {
             if (id.isEmpty()) return;
             File dir = new File(c.getFilesDir(), "plugins");
             if (!dir.isDirectory()) dir.mkdirs();
+            // 导入路径也要算指纹，否则状态面板里看不到"装的是哪一份"
+            try { manifest.put("_sha256", Market.sha256(manifest.toString())); } catch (Throwable ignored) {}
             FileOutputStream os = new FileOutputStream(new File(dir, id + ".json"));
             os.write(manifest.toString().getBytes("UTF-8"));
             os.close();

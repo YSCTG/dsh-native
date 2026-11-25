@@ -319,6 +319,28 @@ public class SettingsActivity extends Activity {
         final java.util.List<String> keys = new java.util.ArrayList<>();
         final java.util.List<String> types = new java.util.ArrayList<>();
 
+        // ---- 状态（只读）：权限 / 指纹 / 拦截次数 ----
+        try {
+            String[] pm2 = Market.perms(plugin);
+            int blocks = Audit.count(this, id, "拦截");
+            String lastReason = Audit.last(this, id, "拦截");
+            String sha = plugin.optString("_sha256", "");
+            StringBuilder st = new StringBuilder();
+            st.append("-net".equals(pm2[0]) ? "禁止联网" : "允许联网").append(" · ")
+              .append("-shell".equals(pm2[1]) ? "禁止命令" : "允许命令");
+            if (!sha.isEmpty()) st.append(" · 指纹 ").append(sha);
+            st.append("\n钩子拦截 ").append(blocks).append(" 次");
+            if (blocks > 0 && !lastReason.isEmpty()) {
+                st.append("（最近：").append(lastReason).append("）");
+            }
+            TextView stv = new TextView(this);
+            stv.setText(st.toString());
+            stv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            stv.setTextColor(getColor(R.color.label_tertiary));
+            stv.setPadding(0, 0, 0, dp(10));
+            box.addView(stv);
+        } catch (Throwable ignored) {}
+
         for (int i = 0; i < fields.length(); i++) {
             org.json.JSONObject f = fields.optJSONObject(i);
             if (f == null) continue;
@@ -730,7 +752,11 @@ public class SettingsActivity extends Activity {
             final org.json.JSONArray cfgFields = Market.settings(np);
             nativeRow.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) {
-                    if (Market.settings(np).length() > 0) openPluginConfig(np);
+                    // 有配置项、有钩子、或有审计记录，都值得点开
+                    boolean hasCfg = Market.settings(np).length() > 0;
+                    boolean hasHooks = pluginHooks(np) > 0;
+                    boolean hasAudit = Audit.read(SettingsActivity.this, nid).length() > 0;
+                    if (hasCfg || hasHooks || hasAudit) openPluginConfig(np);
                 }
             });
             nativeRow.setOnLongClickListener(new View.OnLongClickListener() {
