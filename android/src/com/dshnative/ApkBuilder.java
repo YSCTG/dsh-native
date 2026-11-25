@@ -67,7 +67,7 @@ public final class ApkBuilder {
                     + "    @Override protected void onCreate(Bundle b) {\n"
                     + "        super.onCreate(b);\n"
                     + "        TextView t = new TextView(this);\n"
-                    + "        t.setText(\"" + cls + "\");\n"
+                    + "        t.setText(getString(R.string.app_name) + \" · 资源可用\");\n"
                     + "        t.setTextSize(24);\n"
                     + "        t.setTextColor(Color.WHITE);\n"
                     + "        t.setGravity(Gravity.CENTER);\n"
@@ -78,6 +78,14 @@ public final class ApkBuilder {
             File srcDir = new File(dir, "src/" + pkg.replace('.', '/'));
             if (!srcDir.isDirectory()) srcDir.mkdirs();
             write(new File(srcDir, cls + ".java"), java);
+
+            // 资源：aapt2 compile + R 类由 link 生成，App 里可以直接用 R.string.*
+            String strings = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+                    + "<resources>\n"
+                    + "    <string name=\"app_name\">" + cls + "</string>\n"
+                    + "    <string name=\"hint\">在手机上编出来的</string>\n"
+                    + "</resources>\n";
+            write(new File(dir, "res/values/strings.xml"), strings);
 
             return "已生成 App 项目：" + dir.getAbsolutePath()
                     + "\n包名：" + pkg + " · 入口：" + pkg + "." + cls
@@ -102,15 +110,47 @@ public final class ApkBuilder {
 
         File abt = AbTools.dir(c);
         StringBuilder log = new StringBuilder();
+        String out;
         try {
             File classes = new File(proj, "classes");
             File dexOut = new File(proj, "dexout");
             deleteTree(classes); deleteTree(dexOut);
             classes.mkdirs(); dexOut.mkdirs();
 
-            // 1) 编译
+            // 0) 资源编译（有 res/ 才做）：aapt2 compile → 中间产物
+            File resZip = new File(proj, "res.zip");
+            File gen = new File(proj, "gen");
+            deleteTree(gen);
+            File resDir = new File(proj, "res");
+            boolean hasRes = resDir.isDirectory();
+            if (hasRes) {
+                List<String> rc = new ArrayList<>();
+                rc.add(new File(abt, "aapt2").getAbsolutePath());
+                rc.add("compile");
+                rc.add("--dir"); rc.add(resDir.getAbsolutePath());
+                rc.add("-o"); rc.add(resZip.getAbsolutePath());
+                out = run(rc, abt);
+                log.append("资源编译：").append(out.isEmpty() ? "OK" : out).append('\n');
+                if (!resZip.isFile()) return "资源编译失败：\n" + log;
+            }
+
+            // 1) 编译（有资源时先把 R.java 生成出来，再和源码一起编）
+            if (hasRes) {
+                List<String> rl = new ArrayList<>();
+                rl.add(new File(abt, "aapt2").getAbsolutePath());
+                rl.add("link");
+                rl.add("-o"); rl.add(new File(proj, "rgen.apk").getAbsolutePath());
+                rl.add("--manifest"); rl.add(new File(proj, "AndroidManifest.xml").getAbsolutePath());
+                rl.add("-I"); rl.add(new File(abt, "framework.jar").getAbsolutePath());
+                rl.add("--java"); rl.add(gen.getAbsolutePath());
+                rl.add(resZip.getAbsolutePath());
+                out = run(rl, abt);
+                log.append("R 类生成：").append(out.isEmpty() ? "OK" : out).append('\n');
+            }
+
             List<File> javaFiles = new ArrayList<>();
             collect(proj, javaFiles, ".java");
+            if (gen.isDirectory()) collect(gen, javaFiles, ".java");   // R.java 也要编
             if (javaFiles.isEmpty()) return "错误：项目里没有 .java";
             List<String> cmd = new ArrayList<>();
             cmd.add("dalvikvm"); cmd.add("-Xmx512m");
@@ -122,7 +162,7 @@ public final class ApkBuilder {
             cmd.add("-cp"); cmd.add(new File(abt, "android-stub.jar").getAbsolutePath());
             cmd.add("-d"); cmd.add(classes.getAbsolutePath());
             for (File f : javaFiles) cmd.add(f.getAbsolutePath());
-            String out = run(cmd, abt);
+            out = run(cmd, abt);
             log.append("编译：").append(out.isEmpty() ? "OK" : out).append('\n');
             if (!hasClass(classes)) return "编译失败：\n" + log;
 
@@ -150,6 +190,7 @@ public final class ApkBuilder {
             link.add("-o"); link.add(unsigned.getAbsolutePath());
             link.add("--manifest"); link.add(new File(proj, "AndroidManifest.xml").getAbsolutePath());
             link.add("-I"); link.add(new File(abt, "framework.jar").getAbsolutePath());
+            if (hasRes && resZip.isFile()) link.add(resZip.getAbsolutePath());
             out = run(link, abt);
             log.append("打包：").append(out.isEmpty() ? "OK" : out).append('\n');
             if (!unsigned.isFile() || unsigned.length() < 500) return "打包失败：\n" + log;
@@ -247,8 +288,15 @@ public final class ApkBuilder {
         File[] fs = dir.listFiles();
         if (fs == null) return;
         for (File f : fs) {
-            if (f.isDirectory()) collect(f, out, suffix);
-            else if (f.getName().endsWith(suffix)) out.add(f);
+            if (f.isDirectory()) {
+                // gen/ 是 aapt2 生成的 R.java，由调用方显式加；classes/dexout 是产物。
+                // 不排除的话 R.java 会被收两次，ecj 直接报 "specified more than once"。
+                String n = f.getName();
+                if (n.equals("gen") || n.equals("classes") || n.equals("dexout")) continue;
+                collect(f, out, suffix);
+            } else if (f.getName().endsWith(suffix)) {
+                out.add(f);
+            }
         }
     }
 

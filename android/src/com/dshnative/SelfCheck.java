@@ -69,6 +69,7 @@ public final class SelfCheck {
         checkJsonPairing(out);
         checkCompact(out);
         checkPluginMarket(out, c);
+        checkUnitTests(out, c);
 
         clean(dir);
         return out;
@@ -649,6 +650,17 @@ public final class SelfCheck {
             return bo.toString("UTF-8").contains(needle);
         } catch (Throwable e) {
             return false;
+        }
+    }
+
+    /** 纯逻辑单测（见 Tests）：一次算一项，把失败具体原因带出来。 */
+    private static void checkUnitTests(List<Item> out, Context c) {
+        try {
+            Tests.Result r = Tests.run(c);
+            out.add(new Item("单元测试", r.ok(),
+                    r.ok() ? (r.passed + "/" + r.total) : r.summary()));
+        } catch (Throwable t) {
+            out.add(new Item("单元测试", false, String.valueOf(t)));
         }
     }
 }

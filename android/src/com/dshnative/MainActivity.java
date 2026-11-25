@@ -2000,107 +2000,9 @@ public class MainActivity extends Activity implements Agent.Listener {
         }).start();
     }
 
+    /** 下载并安装更新；细节都在 {@link UpdateFlow} 里。 */
     private void downloadAndInstall(final Updater.Info info) {
-        if (!Updater.canInstall(this)) {
-            toast("先允许「安装未知应用」，然后再点一次检查更新");
-            Updater.openInstallPermission(this);
-            return;
-        }
-        android.util.Log.i("DSHN", "更新 开始下载 " + info.apkUrl);
-
-        final int[] lastPct = {-2};
-
-        // 真进度条：总大小已知就显示百分比，未知就显示已下载量
-        final android.widget.ProgressBar bar = new android.widget.ProgressBar(this, null,
-                android.R.attr.progressBarStyleHorizontal);
-        bar.setMax(100);
-        bar.setProgress(0);
-        // AlertDialog 里的自定义控件默认没有高度，得显式给，否则只看到文字看不到条
-        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(8));
-        blp.bottomMargin = dp(10);
-        bar.setLayoutParams(blp);
-        // 总大小未知时用"不确定"模式（跑马灯），已知再切成百分比
-        bar.setIndeterminate(true);
-        final TextView pct = new TextView(this);
-        pct.setText("正在下载 " + info.tag + "（0%）");
-        pct.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        pct.setTextColor(getColor(R.color.label_secondary));
-        LinearLayout pbox = new LinearLayout(this);
-        pbox.setOrientation(LinearLayout.VERTICAL);
-        pbox.setPadding(dp(22), dp(18), dp(22), dp(6));
-        pbox.addView(bar, blp);
-        pbox.addView(pct);
-        final AlertDialog pdlg = new AlertDialog.Builder(this, R.style.DshDialog)
-                .setTitle("更新 " + info.tag)
-                .setView(pbox)
-                .setNegativeButton("取消", new DialogInterface.OnClickListener() {
-                    @Override public void onClick(DialogInterface d, int w) {
-                        Updater.cancelRequested = true;
-                        toast("已取消下载");
-                    }
-                })
-                .setCancelable(false)
-                .show();
-        new Thread(new Runnable() {
-            @Override public void run() {
-                try {
-                    File apk = Updater.download(MainActivity.this, info,
-                            new Updater.Progress() {
-                                @Override public void onProgress(final long got, final long total) {
-                                    final int p2 = total > 0 ? (int) (got * 100 / total) : -1;
-                                    if (p2 == lastPct[0]) return;
-                                    lastPct[0] = p2;
-                                    ui.post(new Runnable() {
-                                        @Override public void run() {
-                                            try {
-                                                if (p2 >= 0) bar.setIndeterminate(false);
-                                                bar.setProgress(Math.max(0, p2));
-                                                pct.setText(p2 >= 0
-                                                        ? String.format("正在下载 %s（%d%%）· %.1f/%.1f MB",
-                                                            info.tag, p2, got / 1048576.0, total / 1048576.0)
-                                                        : String.format("正在下载 %s · %.1f MB",
-                                                            info.tag, got / 1048576.0));
-                                            } catch (Throwable ignored) {}
-                                        }
-                                    });
-                                }
-                            });
-                    // 装之前先核对版本号：比当前旧的包一律不装（缓存旧包是真实发生过的坑）
-                    try {
-                        int gotCode = Updater.apkVersionCode(MainActivity.this, apk);
-                        int curCode = getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
-                        if (gotCode > 0 && gotCode <= curCode) {
-                            apk.delete();
-                            ui.post(new Runnable() {
-                                @Override public void run() {
-                                    try { if (pdlg.isShowing()) pdlg.dismiss(); } catch (Throwable ignored) {}
-                                    toast("下载到的包不比当前版本新（" + curCode + "），已删除；请重新检查更新");
-                                }
-                            });
-                            return;
-                        }
-                    } catch (Throwable ignored) {}
-
-                    ui.post(new Runnable() {
-                        @Override public void run() {
-                            android.util.Log.i("DSHN", "更新 下载完成，转安装器");
-                            try { if (pdlg.isShowing()) pdlg.dismiss(); } catch (Throwable ignored) {}
-                            toast("下载完成，交给系统安装");
-                        }
-                    });
-                    Updater.install(MainActivity.this, apk);
-                } catch (Throwable e) {
-                    ui.post(new Runnable() {
-                        @Override public void run() {
-                            android.util.Log.i("DSHN", "更新 下载失败: " + e);
-                            try { if (pdlg.isShowing()) pdlg.dismiss(); } catch (Throwable ignored) {}
-                            toast("下载失败：" + e.getMessage());
-                        }
-                    });
-                }
-            }
-        }).start();
+        UpdateFlow.start(this, info);
     }
     private void pickFile() {
         try {
@@ -4075,116 +3977,13 @@ public class MainActivity extends Activity implements Agent.Listener {
      * 这版按界面语言重画：进度条 + 每项一个状态圆点 + 完成项划掉、进行项用强调色。
      */
     private void showTodoSheet() {
-        String sid = session == null ? "" : session.id;
-        java.util.List<Todo.Item> items = Todo.load(this, sid);
-        if (items.isEmpty()) {
+        AlertDialog d = TodoSheet.build(this, session == null ? "" : session.id);
+        if (d == null) {
             toast("当前没有待办");
             return;
         }
-        int done = 0;
-        for (Todo.Item it : items) if ("done".equals(it.status)) done++;
-
-        ScrollView sc = new ScrollView(this);
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(20);
-        box.setPadding(pad, dp(16), pad, dp(8));
-
-        // 头部：完成度
-        LinearLayout head = new LinearLayout(this);
-        head.setOrientation(LinearLayout.HORIZONTAL);
-        head.setGravity(Gravity.CENTER_VERTICAL);
-        TextView t1 = new TextView(this);
-        t1.setText("待办");
-        t1.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        t1.setTextColor(getColor(R.color.label_primary));
-        t1.setTypeface(t1.getTypeface(), Typeface.BOLD);
-        head.addView(t1, new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        TextView t2 = new TextView(this);
-        t2.setText(done + " / " + items.size());
-        t2.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        t2.setTextColor(getColor(R.color.label_tertiary));
-        head.addView(t2);
-        box.addView(head);
-
-        // 进度条：两条 View 叠出来的细条，比 ProgressBar 更贴合界面
-        LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setBackgroundColor(getColor(R.color.border_l2));
-        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(4));
-        barLp.topMargin = dp(12);
-        barLp.bottomMargin = dp(18);
-        box.addView(bar, barLp);
-        View fill = new View(this);
-        fill.setBackgroundColor(getColor(R.color.accent));
-        bar.addView(fill, new LinearLayout.LayoutParams(0, dp(4),
-                items.isEmpty() ? 0f : (float) done / items.size()));
-        View rest = new View(this);
-        bar.addView(rest, new LinearLayout.LayoutParams(0, dp(4),
-                items.isEmpty() ? 1f : 1f - (float) done / items.size()));
-
-        // 每项一行：圆点 + 文本 + 右侧状态
-        for (Todo.Item it : items) {
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.TOP);
-            row.setPadding(0, dp(9), 0, dp(9));
-
-            View dot = new View(this);
-            android.graphics.drawable.GradientDrawable g =
-                    new android.graphics.drawable.GradientDrawable();
-            g.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-            boolean isDone = "done".equals(it.status);
-            boolean isDoing = "doing".equals(it.status);
-            g.setColor(isDone ? getColor(R.color.success)
-                    : (isDoing ? getColor(R.color.accent) : getColor(R.color.border_l3)));
-            dot.setBackground(g);
-            LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dp(9), dp(9));
-            dotLp.topMargin = dp(6);
-            dotLp.rightMargin = dp(10);
-            row.addView(dot, dotLp);
-
-            TextView tx = new TextView(this);
-            tx.setText(it.text);
-            tx.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-            if (isDone) {
-                tx.setTextColor(getColor(R.color.label_caption));
-                tx.setPaintFlags(tx.getPaintFlags() | android.graphics.Paint.STRIKE_THRU_TEXT_FLAG);
-            } else if (isDoing) {
-                tx.setTextColor(getColor(R.color.label_primary));
-                tx.setTypeface(tx.getTypeface(), Typeface.BOLD);
-            } else {
-                tx.setTextColor(getColor(R.color.label_secondary));
-            }
-            row.addView(tx, new LinearLayout.LayoutParams(0,
-                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-
-            if (isDoing || isDone) {
-                TextView tag = new TextView(this);
-                tag.setText(isDoing ? "在做" : "完成");
-                tag.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-                tag.setTextColor(isDoing ? getColor(R.color.accent) : getColor(R.color.label_caption));
-                LinearLayout.LayoutParams tagLp = new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT);
-                tagLp.leftMargin = dp(8);
-                tagLp.topMargin = dp(2);
-                row.addView(tag, tagLp);
-            }
-            box.addView(row);
-        }
-        sc.addView(box);
-
-        currentDialog = new AlertDialog.Builder(this, R.style.DshDialog)
-                .setView(sc)
-                .setPositiveButton("关闭", null)
-                .create();
-        currentDialog.show();
-        try {
-            currentDialog.getWindow().setBackgroundDrawableResource(R.drawable.bg_sheet);
-        } catch (Exception ignored) {}
+        currentDialog = d;
+        d.show();
     }
 
     /** 把「生成进度」和「待办进度」合成一行，空着就整行隐藏。 */
