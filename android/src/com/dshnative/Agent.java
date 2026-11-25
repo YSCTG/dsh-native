@@ -369,6 +369,22 @@ public final class Agent {
                         "抓取网址的文本内容（仅 http/https）。域名不在允许列表时会确认。",
                         schema(obj("url", "string", "完整 URL"), new String[]{"url"})));
 
+            add("fs.write", tool("app_new",
+                    "生成一个能在手机上编成 APK 的最小 Android 项目（Java）："
+                            + "工作区 apps/<name>/ 下有 AndroidManifest.xml 和 src 源码。",
+                    schema(props(new String[]{"name", "workspace"},
+                                 new String[]{"string", "string"},
+                                 new String[]{"项目名", "工作区目录（可空）"}),
+                           new String[]{"name"})));
+
+            add("shell", tool("app_build",
+                    "在手机上把 app_new 生成的项目编成可安装的 APK（ecj+d8+aapt2+zipalign+apksigner "
+                            + "全部在设备上跑）。首次会下载约 16 MB 构建工具链。",
+                    schema(props(new String[]{"name", "workspace"},
+                                 new String[]{"string", "string"},
+                                 new String[]{"项目名", "工作区目录（可空）"}),
+                           new String[]{"name"})));
+
             add("fs.write", tool("game_new",
                     "生成一个可玩的手机端游戏骨架（纯 canvas，不依赖 npm）："
                             + "工作区 games/<name>/ 下有 index.html、game.js、README。生成即可 play。",
@@ -1327,6 +1343,23 @@ public final class Agent {
             if ("clip_read".equals(name)) return clipRead();
             if ("clip_write".equals(name)) return clipWrite(a.optString("text", ""));
             if ("notify".equals(name)) return notifyUser(a.optString("title", "DSH Native"), a.optString("body", ""));
+            if ("app_new".equals(name)) {
+                String nm = a.optString("name", "myapp");
+                String ws = a.optString("workspace", "").trim();
+                if (ws.isEmpty()) {
+                    try { ws = Workspaces.currentDir(ctx).getAbsolutePath(); } catch (Throwable ignored) {}
+                }
+                return ApkBuilder.scaffold(ctx, ws, nm);
+            }
+            if ("app_build".equals(name)) {
+                String nm = a.optString("name", "myapp");
+                String ws = a.optString("workspace", "").trim();
+                if (ws.isEmpty()) {
+                    try { ws = Workspaces.currentDir(ctx).getAbsolutePath(); } catch (Throwable ignored) {}
+                }
+                // 构建要几十秒，别让 UI 线程等
+                return ApkBuilder.build(ctx, ws, nm);
+            }
             if ("game_new".equals(name)) {
                 String nm = a.optString("name", "game");
                 String ws = a.optString("workspace", "").trim();
