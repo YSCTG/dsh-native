@@ -2066,6 +2066,22 @@ public class MainActivity extends Activity implements Agent.Listener {
                                     });
                                 }
                             });
+                    // 装之前先核对版本号：比当前旧的包一律不装（缓存旧包是真实发生过的坑）
+                    try {
+                        int gotCode = Updater.apkVersionCode(MainActivity.this, apk);
+                        int curCode = getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
+                        if (gotCode > 0 && gotCode <= curCode) {
+                            apk.delete();
+                            ui.post(new Runnable() {
+                                @Override public void run() {
+                                    try { if (pdlg.isShowing()) pdlg.dismiss(); } catch (Throwable ignored) {}
+                                    toast("下载到的包不比当前版本新（" + curCode + "），已删除；请重新检查更新");
+                                }
+                            });
+                            return;
+                        }
+                    } catch (Throwable ignored) {}
+
                     ui.post(new Runnable() {
                         @Override public void run() {
                             android.util.Log.i("DSHN", "更新 下载完成，转安装器");

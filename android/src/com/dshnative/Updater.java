@@ -229,6 +229,7 @@ public final class Updater {
     }
 
     private static File fetch(Context c, String srcUrl, Info info, Progress p) throws Exception {
+        cleanOldApks(c, info.tag);
         File out = new File(c.getCacheDir(), "update-" + info.tag + ".apk");
         if (out.isFile() && info.size > 0 && out.length() == info.size) return out;
         HttpURLConnection conn = (HttpURLConnection) new URL(srcUrl).openConnection();
@@ -251,6 +252,32 @@ public final class Updater {
         in.close();
         conn.disconnect();
         return out;
+    }
+
+
+    /** 下载前先清掉旧的 update-*.apk：留着会让安装器拿到一个更旧的包。 */
+    public static void cleanOldApks(Context c, String keepTag) {
+        try {
+            File[] fs = c.getCacheDir().listFiles();
+            if (fs == null) return;
+            for (File f : fs) {
+                String n = f.getName();
+                if (!n.startsWith("update-") || !n.endsWith(".apk")) continue;
+                if (keepTag != null && n.equals("update-" + keepTag + ".apk")) continue;
+                if (f.delete()) android.util.Log.i("DSHN", "更新 清掉旧缓存包 " + n);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    /** 读一个 APK 的 versionCode；读不出返回 -1。 */
+    public static int apkVersionCode(Context c, File apk) {
+        try {
+            android.content.pm.PackageInfo pi = c.getPackageManager()
+                    .getPackageArchiveInfo(apk.getAbsolutePath(), 0);
+            return pi == null ? -1 : pi.versionCode;
+        } catch (Throwable t) {
+            return -1;
+        }
     }
 
     /** 交给系统安装器。 */
