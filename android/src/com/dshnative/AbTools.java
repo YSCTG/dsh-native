@@ -32,8 +32,8 @@ public final class AbTools {
     private static final String ZIP = "abt.zip";
     /** 工具链发布地址；跟着 App 版本走，改版本时同步。 */
     private static final String[] URLS = {
-            "https://github.com/YSCTG/dsh-native/releases/download/v33.1/abt.zip",
-            "https://gh-proxy.org/https://github.com/YSCTG/dsh-native/releases/download/v33.1/abt.zip",
+            "https://github.com/YSCTG/dsh-native/releases/download/v33.2/abt.zip",
+            "https://gh-proxy.org/https://github.com/YSCTG/dsh-native/releases/download/v33.2/abt.zip",
     };
     private static final long EXPECT_SIZE = 24541944;   // 约 16.5 MB
 
@@ -70,10 +70,20 @@ public final class AbTools {
             deleteTree(d);
             if (!d.isDirectory()) d.mkdirs();
             File zip = new File(c.getFilesDir(), ZIP);
+            // 缓存包也要看版本内容：只看"条目在不在"会放过旧包（真踩过这个坑）
             boolean zipLooksOld = false;
             try {
                 java.util.zip.ZipFile zf = new java.util.zip.ZipFile(zip);
-                zipLooksOld = zf.getEntry("abt.version") == null;
+                java.util.zip.ZipEntry ve = zf.getEntry("abt.version");
+                String v = "";
+                if (ve != null) {
+                    java.io.InputStream in = zf.getInputStream(ve);
+                    byte[] b = new byte[16];
+                    int n = in.read(b);
+                    in.close();
+                    if (n > 0) v = new String(b, 0, n, "UTF-8").trim();
+                }
+                zipLooksOld = !VERSION.equals(v);
                 zf.close();
             } catch (Throwable ignored) {}
             if (!zip.isFile() || zip.length() < EXPECT_SIZE / 2 || zipLooksOld) {
