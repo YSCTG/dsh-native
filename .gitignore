@@ -11,3 +11,7 @@ android/assets/tools.zip
 *.jks
 local.properties
 .DS_Store
+# Swift 构建产物（iOS 引擎）
+ios/**/.build/
+ios/**/.swiftpm/
+

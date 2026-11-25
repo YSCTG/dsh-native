@@ -1,0 +1,32 @@
+name: ios-engine
+
+# iOS 引擎（跨平台 Swift 包）的构建与单测。
+#
+# 这里只编 ios/DSHEngine：它是纯 Swift、不依赖 iOS SDK 的部分（模型调用、工具协议、
+# 文件与文本原语）。SwiftUI 那一层需要 iOS SDK，本工作流不涉及。
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-engine.yml'
+
+jobs:
+  test:
+    runs-on: macos-13
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 工具链版本
+        run: |
+          swift --version
+          xcodebuild -version | head -2
+
+      - name: 构建
+        working-directory: ios/DSHEngine
+        run: swift build -v 2>&1 | tail -40
+
+      - name: 单测
+        working-directory: ios/DSHEngine
+        run: swift test 2>&1 | tail -40
