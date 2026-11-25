@@ -76,10 +76,31 @@ public final class Market {
         return new File(pluginDir(c), id + ".json").isFile();
     }
 
+    /** 插件声明的 MCP 脚本落盘路径。 */
+    public static java.io.File mcpScript(Context c, String pluginId, String file) {
+        java.io.File dir = new java.io.File(new java.io.File(c.getFilesDir(), "plugins"), "mcp_" + pluginId);
+        if (!dir.isDirectory()) dir.mkdirs();
+        return new java.io.File(dir, file == null || file.isEmpty() ? "server.py" : file);
+    }
+
     public static void install(Context c, JSONObject plugin) {
         try {
             String id = plugin.optString("id", "");
             if (id.isEmpty()) return;
+            // 插件若声明了 MCP 服务，把它的脚本落盘，并把真实路径写进清单，
+            // 这样运行期（Mcp.all）只认一条绝对路径，不用再猜。
+            try {
+                org.json.JSONObject cap = plugin.optJSONObject("capabilities");
+                org.json.JSONObject mcp = cap == null ? plugin.optJSONObject("mcp") : cap.optJSONObject("mcp");
+                if (mcp != null && mcp.optString("code", "").length() > 0) {
+                    java.io.File f = mcpScript(c, id, mcp.optString("file", "server.py"));
+                    java.io.FileOutputStream mo = new java.io.FileOutputStream(f);
+                    mo.write(mcp.optString("code", "").getBytes("UTF-8"));
+                    mo.close();
+                    mcp.put("script", f.getAbsolutePath());
+                }
+            } catch (Throwable ignored) {}
+
             FileOutputStream os = new FileOutputStream(new File(pluginDir(c), id + ".json"));
             os.write(plugin.toString().getBytes("UTF-8"));
             os.close();

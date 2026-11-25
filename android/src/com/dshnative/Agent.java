@@ -225,6 +225,24 @@ public final class Agent {
         String sys = base + (mode.promptExtra.isEmpty() ? "" : "\n\n" + mode.promptExtra)
                 + (goalNow.isEmpty() ? "" : "\n\n【本轮目标】" + goalNow
                    + "\n（用户确认过的终点，别偏离；做完用 goal_clear 清掉。）");
+        // 插件自己写的"什么时候用我"：这段文字直接进系统提示，
+        // 否则装了插件模型也不知道它存在（这是插件能不能被用起来的关键）。
+        try {
+            StringBuilder pp = new StringBuilder();
+            for (org.json.JSONObject mp : Market.enabledPlugins(ctx)) {
+                String txt = "";
+                org.json.JSONObject cap = mp.optJSONObject("capabilities");
+                if (cap != null) txt = cap.optString("prompt", "");
+                if (txt == null || txt.isEmpty()) txt = mp.optString("prompt", "");
+                if (txt == null || txt.isEmpty()) continue;
+                pp.append("\n- ").append(mp.optString("name", mp.optString("id", "")))
+                  .append("：").append(txt.trim());
+            }
+            if (pp.length() > 0) {
+                sys = sys + "\n\n## 插件补充说明（由已装插件提供）" + pp + "\n";
+            }
+        } catch (Throwable ignored) {}
+
         if (Plugin.isOn(ctx, "builtin.skills")) {
             String cat = Skill.catalog(ctx);
             if (!cat.isEmpty()) {
@@ -1604,7 +1622,7 @@ public final class Agent {
                 if (!gate("mcp.call", mt[0] + "/" + mt[1])) return denied("mcp.call");
                 listener.onTool("mcp", mt[0] + " · " + mt[1]);
                 Mcp.Server sv = null;
-                for (Mcp.Server s : Mcp.servers(ctx)) if (s.name.equals(mt[0])) { sv = s; break; }
+                for (Mcp.Server s : Mcp.all(ctx)) if (s.name.equals(mt[0])) { sv = s; break; }
                 if (sv == null) return "错误：MCP server 已被移除";
                 return Mcp.call(sv, mt[1], a);
             }
@@ -2074,7 +2092,7 @@ public final class Agent {
     /** 把 MCP server 的工具映射进清单。连不上就跳过（失败即关闭）。 */
     private void buildMcpTools() {
         if (!mode.allows("mcp.call")) return;
-        for (Mcp.Server s : Mcp.servers(ctx)) {
+        for (Mcp.Server s : Mcp.all(ctx)) {
             if (!s.enabled) continue;
             for (JSONObject t : Mcp.listTools(s)) {
                 String tname = t.optString("name");
@@ -2131,7 +2149,7 @@ public final class Agent {
         sb.append("skills    ").append(Plugin.isOn(ctx, "builtin.skills") ? "开" : "关")
           .append(" · ").append(Skill.all(ctx).size()).append(" 个（DSH Ultra Mode）\n");
         sb.append("mcp       ");
-        java.util.List<Mcp.Server> ms = Mcp.servers(ctx);
+        java.util.List<Mcp.Server> ms = Mcp.all(ctx);
         if (ms.isEmpty()) sb.append("未配置\n");
         else {
             for (Mcp.Server s : ms) {

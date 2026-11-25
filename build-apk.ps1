@@ -120,6 +120,17 @@ foreach ($dex in (Get-ChildItem $Dex -Filter "classes*.dex")) {
     $e = $zip.GetEntry($dex.Name); if ($e) { $e.Delete() }
     [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $dex.FullName, $dex.Name) | Out-Null
 }
+# LibreOffice 引擎自带的 dex（org.libreoffice.* 那层胶水）：作为 classes2/3.dex 打进包，
+# 我们的代码用反射调用，不参与编译。
+$loDex = Join-Path $Proj "lodex"
+if (Test-Path $loDex) {
+    foreach ($d in (Get-ChildItem $loDex -Filter "classes*.dex")) {
+        $e = $zip.GetEntry($d.Name); if ($e) { $e.Delete() }
+        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $d.FullName, $d.Name) | Out-Null
+        Write-Host "   + $($d.Name) ($([math]::Round($d.Length/1MB,1)) MB)"
+    }
+}
+
 # 原生库：Python 解释器与依赖。放在 lib/ 下，安装时会被解到 nativeLibraryDir，
 # 那里是唯一允许 execve 的应用私有目录（dataDir 在 targetSdk>=29 上被 W^X 拦住）。
 $nativeDir = Join-Path $Proj "native\arm64-v8a"

@@ -112,6 +112,33 @@ public final class Python {
     }
 
     /** 跑一段代码。首次调用会先解标准库（约 15 MB，一两秒）。 */
+
+    /**
+     * 生成"以我们的 Python 跑某个脚本"的完整 shell 命令（含环境变量）。
+     * MCP 插件要常驻一个 stdio 服务，复用同一套环境，避免两处漂移。
+     */
+    public static String commandFor(Context c, File script) {
+        String nativeDir = c.getApplicationInfo().nativeLibraryDir;
+        StringBuilder ld = new StringBuilder(nativeDir);
+        ld.append(':').append(new File(home(c), "lib").getAbsolutePath());
+        if (Tools.ready(c)) ld.append(':').append(new File(Tools.dir(c), "lib").getAbsolutePath());
+        StringBuilder cmd = new StringBuilder();
+        cmd.append("LD_LIBRARY_PATH='").append(ld).append("' ");
+        cmd.append("PYTHONHOME='").append(home(c).getAbsolutePath()).append("' ");
+        cmd.append("PYTHONPATH='").append(new File(home(c), "lib/python3.14").getAbsolutePath()).append("' ");
+        cmd.append("PYTHONIOENCODING=utf-8 PYTHONDONTWRITEBYTECODE=1 ");
+        cmd.append("TMPDIR='").append(new File(home(c), "tmp").getAbsolutePath()).append("' ");
+        if (Tools.ready(c)) {
+            cmd.append("PATH='").append(new File(Tools.dir(c), "wrap").getAbsolutePath())
+               .append(":/system/bin:/system/xbin' ");
+            cmd.append("GIT_EXEC_PATH='")
+               .append(new File(Tools.dir(c), "libexec/git-core").getAbsolutePath()).append("' ");
+        }
+        cmd.append("exec '").append(bin(c).getAbsolutePath()).append("' '")
+           .append(script.getAbsolutePath()).append("'");
+        return cmd.toString();
+    }
+
     public static Result run(Context c, String code, int timeoutMs) {
         String err = ensure(c);
         if (err != null) return new Result(-1, err, 0);

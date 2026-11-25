@@ -65,6 +65,42 @@ public final class Mcp {
         return out;
     }
 
+
+    /**
+     * 全部 MCP 服务 = 用户手工配置的 + **插件声明的**。
+     *
+     * 插件在清单里写 capabilities.mcp（或顶层 mcp）：
+     *   {"file": "server.py", "code": "<python 源码>"}
+     * 安装时把 code 落成文件，这里把它登记为一个 stdio 服务，名字就是插件 id。
+     */
+    public static List<Server> all(Context c) {
+        List<Server> out = new ArrayList<>(servers(c));
+        try {
+            for (android.net.Uri ignored : new android.net.Uri[0]) { /* 占位，保持 import 简单 */ }
+            for (org.json.JSONObject p : Market.enabledPlugins(c)) {
+                String id = p.optString("id", "");
+                if (id.isEmpty()) continue;
+                org.json.JSONObject cap = p.optJSONObject("capabilities");
+                org.json.JSONObject m = cap == null ? p.optJSONObject("mcp") : cap.optJSONObject("mcp");
+                if (m == null) continue;
+                String script = m.optString("script", "");
+                if (script.isEmpty()) continue;
+                java.io.File f = new java.io.File(script);
+                if (!f.isFile()) continue;
+                boolean dup = false;
+                for (Server s : out) if (s.name.equals(id)) { dup = true; break; }
+                if (dup) continue;
+                Server sv = new Server(id, "", true);
+                sv.command = Python.commandFor(c, f);
+                out.add(sv);
+                android.util.Log.i("DSHN", "插件 MCP 服务: " + id);
+            }
+        } catch (Throwable t2) {
+            android.util.Log.i("DSHN", "插件 MCP 汇总失败: " + t2);
+        }
+        return out;
+    }
+
     public static void save(Context c, List<Server> all) {
         try {
             JSONArray arr = new JSONArray();
