@@ -1266,6 +1266,25 @@ public final class Agent {
                     + " 秒没有返回，已放弃这次调用。换个更小的做法，或者告诉用户这一步卡住了。";
         }
         if (err[0] != null) return "错误：" + err[0];
+        // 插件可视化输出：DSH_UI:<path>
+        try {
+            String r0 = box[0];
+            if (r0 != null) {
+                int at = r0.indexOf("DSH_UI:");
+                if (at >= 0) {
+                    String path = r0.substring(at + "DSH_UI:".length()).trim();
+                    int nl = path.indexOf('\n');
+                    if (nl > 0) path = path.substring(0, nl).trim();
+                    java.io.File f = new java.io.File(path);
+                    if (f.isFile()) {
+                        java.util.List<String> one = new java.util.ArrayList<>();
+                        // "ui|" 前缀 = 插件显式要求挂卡片（不受"回答里是否点名"限制）
+                        one.add("ui|" + path);
+                        listener.onFilesTouched(one);
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
         return box[0] == null ? "" : box[0];
     }
     private String execute(String name, String argsJson) {

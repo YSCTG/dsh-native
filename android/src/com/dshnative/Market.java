@@ -256,14 +256,58 @@ public final class Market {
         }
     }
 
+
+    /**
+     * 插件配置 = 清单里声明的默认值 + 用户保存的值。
+     *
+     * 只返回用户存的还不够：插件第一次跑、用户还没配置时，默认值应该已经在 CFG 里，
+     * 否则工具拿到的全是 None，插件得自己写一堆兜底代码。
+     */
+    public static org.json.JSONObject cfg(Context c, org.json.JSONObject plugin) {
+        org.json.JSONObject out = new org.json.JSONObject();
+        try {
+            String id = plugin.optString("id", "");
+            org.json.JSONArray fields = settings(plugin);
+            for (int i = 0; i < fields.length(); i++) {
+                org.json.JSONObject f = fields.optJSONObject(i);
+                if (f == null) continue;
+                String key = f.optString("key", "");
+                if (key.isEmpty()) continue;
+                if (f.has("default")) out.put(key, f.opt("default"));
+            }
+            String raw = Prefs.get(c).getString("plugin_cfg_" + id, "{}");
+            org.json.JSONObject saved = new org.json.JSONObject(raw);
+            java.util.Iterator<String> it = saved.keys();
+            while (it.hasNext()) {
+                String k = it.next();
+                out.put(k, saved.opt(k));
+            }
+        } catch (Throwable ignored) {}
+        return out;
+    }
+
+    public static void saveCfg(Context c, String id, org.json.JSONObject v) {
+        Prefs.get(c).edit().putString("plugin_cfg_" + id,
+                v == null ? "{}" : v.toString()).apply();
+    }
+
+    /** 插件声明的配置字段（capabilities.settings）。 */
+    public static org.json.JSONArray settings(org.json.JSONObject p) {
+        org.json.JSONObject cap = p.optJSONObject("capabilities");
+        org.json.JSONArray arr = cap == null ? p.optJSONArray("settings") : cap.optJSONArray("settings");
+        return arr == null ? new org.json.JSONArray() : arr;
+    }
+
     public static String run(Context c, String fullName, JSONObject args, int timeoutSec) {
         JSONObject[] hit = findTool(c, fullName);
         if (hit == null) return "错误：没有这个插件工具 " + fullName;
         String code = sandboxPreamble(hit[0]) + hit[1].optString("python", "");
         if (code.trim().isEmpty()) return "错误：插件工具没有实现";
         String payload = args == null ? "{}" : args.toString();
+        String cfg = cfg(c, hit[0]).toString();
         String src = "import json\n"
                 + "ARGS = json.loads(r'''" + payload.replace("'''", "\\'\\'\\'") + "''')\n"
+                + "CFG = json.loads(r'''" + cfg.replace("'''", "\\'\\'\\'") + "''')\n"
                 + code;
         Python.Result r = Python.run(c, src, (int) Math.max(5, timeoutSec) * 1000);
         String out = r.out == null ? "" : r.out;

@@ -294,6 +294,87 @@ public class SettingsActivity extends Activity {
 
 
     /** 有 --es import_src 时，进来就开始导入并把结果写进"最近一次导入"。 */
+
+    /** 插件配置：按声明的字段自动生成表单，不涉及任何 WebView / JS。 */
+    private void openPluginConfig(final org.json.JSONObject plugin) {
+        final String id = plugin.optString("id", "");
+        final org.json.JSONArray fields = Market.settings(plugin);
+        if (fields.length() == 0) { toast("这个插件没有可配置项"); return; }
+        final org.json.JSONObject cur = Market.cfg(this, plugin);
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(20), dp(14), dp(20), dp(4));
+        final java.util.List<View> widgets = new java.util.ArrayList<>();
+        final java.util.List<String> keys = new java.util.ArrayList<>();
+        final java.util.List<String> types = new java.util.ArrayList<>();
+
+        for (int i = 0; i < fields.length(); i++) {
+            org.json.JSONObject f = fields.optJSONObject(i);
+            if (f == null) continue;
+            String key = f.optString("key", "");
+            if (key.isEmpty()) continue;
+            String label = f.optString("label", key);
+            String type = f.optString("type", "string");
+
+            TextView t = new TextView(this);
+            t.setText(label);
+            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            t.setTextColor(getColor(R.color.label_secondary));
+            box.addView(t);
+
+            if ("bool".equals(type)) {
+                android.widget.Switch sw = new android.widget.Switch(this);
+                sw.setChecked(cur.optBoolean(key, f.optBoolean("default", false)));
+                sw.setTag(key);
+                box.addView(sw);
+                widgets.add(sw); keys.add(key); types.add("bool");
+            } else {
+                android.widget.EditText e = new android.widget.EditText(this);
+                e.setText(cur.optString(key, f.optString("default", "")));
+                e.setHint(f.optString("hint", ""));
+                e.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+                if ("secret".equals(type)) {
+                    e.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                            | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+                } else if ("number".equals(type)) {
+                    e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER
+                            | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
+                }
+                box.addView(e);
+                widgets.add(e); keys.add(key); types.add(type);
+            }
+        }
+
+        new AlertDialog.Builder(this, R.style.DshDialog)
+                .setTitle(plugin.optString("name", id) + " 配置")
+                .setView(box)
+                .setPositiveButton("保存", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        org.json.JSONObject out = new org.json.JSONObject();
+                        for (int i = 0; i < keys.size(); i++) {
+                            try {
+                                String key = keys.get(i);
+                                View ctl = widgets.get(i);
+                                if ("bool".equals(types.get(i))) {
+                                    out.put(key, ((android.widget.Switch) ctl).isChecked());
+                                } else if ("number".equals(types.get(i))) {
+                                    String v = ((android.widget.EditText) ctl).getText().toString().trim();
+                                    out.put(key, v.isEmpty() ? 0 : Double.parseDouble(v));
+                                } else {
+                                    out.put(key, ((android.widget.EditText) ctl).getText().toString());
+                                }
+                            } catch (Throwable ignored) {}
+                        }
+                        Market.saveCfg(SettingsActivity.this, id, out);
+                        toast("已保存，新会话生效");
+                        recreate();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
     private void runPendingImport() {
         final String src = prefs.getString("market_pending", "");
         if (src == null || src.isEmpty()) return;
@@ -636,6 +717,12 @@ public class SettingsActivity extends Activity {
                         }
                     });
             final View nativeRow = dshpCard.getChildAt(dshpCard.getChildCount() - 1);
+            final org.json.JSONArray cfgFields = Market.settings(np);
+            nativeRow.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    if (Market.settings(np).length() > 0) openPluginConfig(np);
+                }
+            });
             nativeRow.setOnLongClickListener(new View.OnLongClickListener() {
                 @Override public boolean onLongClick(View v) {
                     new AlertDialog.Builder(SettingsActivity.this, R.style.DshDialog)

@@ -105,7 +105,9 @@ public class MainActivity extends Activity implements Agent.Listener {
     private volatile boolean running;
     private volatile boolean abortRequested;
     private boolean assistantClosed;
-    private final java.util.HashSet<String> fileCardsShown = new java.util.HashSet<>();   // 上一段文字后面已经跟了工具卡
+    private final java.util.HashSet<String> fileCardsShown = new java.util.HashSet<>();
+    /** 同一轮里按"文件名"再去一次重：插件写文件后又在正文里点名，会让同一张卡挂两次。 */
+    private final java.util.HashSet<String> cardShownNames = new java.util.HashSet<>();   // 上一段文字后面已经跟了工具卡
     private String migratedNote;   // 用户按了停止；构造 Agent 期间也要认账
     private boolean dark;
     private volatile String balance;      // 账户余额，形如 ¥61.53
@@ -1633,6 +1635,7 @@ public class MainActivity extends Activity implements Agent.Listener {
             if (fileCardsShown.contains(p)) continue;
             File f = new File(p);
             if (!Attach.worth(f)) continue;      // 正文里提到的脚本/中间文件也不挂
+            if (!cardShownNames.add(f.getName())) continue;
             fileCardsShown.add(p);
             addView(buildFileCard(f));
         }
@@ -2158,6 +2161,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         lastTurnEventAt = System.currentTimeMillis();
         assistantClosed = false;
         fileCardsShown.clear();
+        cardShownNames.clear();
         pendingTools.clear();
         setSendState(true);
         RunService.start(this);
@@ -2491,6 +2495,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         abortRequested = false;
         assistantClosed = false;
         fileCardsShown.clear();
+        cardShownNames.clear();
         pendingTools.clear();
         setSendState(true);
         RunService.start(this);
@@ -4159,6 +4164,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                     assistantBuf.setLength(0);
                     assistantClosed = false;
         fileCardsShown.clear();
+        cardShownNames.clear();
         pendingTools.clear();
                 }
                 ensureAssistantView();
@@ -4203,13 +4209,21 @@ public class MainActivity extends Activity implements Agent.Listener {
 
     /** 本轮工具改动过的文件（来自 Agent 的 collectTouched + 工作区快照）。 */
     private final java.util.LinkedHashSet<String> turnFiles = new java.util.LinkedHashSet<>();
+    /** 插件用 DSH_UI 显式要求的卡片：不看回答里有没有点名，一律挂。 */
+    private final java.util.LinkedHashSet<String> forcedCards = new java.util.LinkedHashSet<>();
 
     @Override public void onFilesTouched(final java.util.List<String> paths) {
         ui.post(new Runnable() {
             @Override public void run() {
                 if (paths == null) return;
                 for (String p : paths) {
-                    if (p != null && !p.isEmpty() && new File(p).isFile()) turnFiles.add(p);
+                    if (p == null || p.isEmpty()) continue;
+                    if (p.startsWith("ui|")) {
+                        String real = p.substring(3);
+                        if (new File(real).isFile()) forcedCards.add(real);
+                    } else if (new File(p).isFile()) {
+                        turnFiles.add(p);
+                    }
                 }
             }
         });
@@ -4255,20 +4269,25 @@ public class MainActivity extends Activity implements Agent.Listener {
     }
     /** 把本轮改动的文件做成卡片；只留成品，和正文里已经挂过的去重。 */
     private void flushTurnFiles() {
-        if (turnFiles.isEmpty()) return;
+        if (turnFiles.isEmpty() && forcedCards.isEmpty()) return;
         String answer = lastAssistantText();
         java.util.List<String> cards = new java.util.ArrayList<>();
-        for (String p : turnFiles) {
+        java.util.LinkedHashSet<String> all = new java.util.LinkedHashSet<>(forcedCards);
+        all.addAll(turnFiles);
+        for (String p : all) {
             if (cards.size() >= 3) break;                 // 最多 3 张
             if (fileCardsShown.contains(p)) continue;
             File f = new File(p);
-            if (!Attach.shouldCard(f, answer)) continue;  // 只挂要点名的 / 交付型文档
+            boolean forced = forcedCards.contains(p);
+            if (!forced && !Attach.shouldCard(f, answer)) continue;  // 显式要求的不看点名
+            if (!cardShownNames.add(f.getName())) continue;   // 同名文件只挂一次
             fileCardsShown.add(p);
             cards.add(p);
             addView(buildFileCard(f));
         }
         saveFileMark(cards);                              // 存下来，历史里才能复原
         turnFiles.clear();
+        forcedCards.clear();
         scrollDown();
     }
 
