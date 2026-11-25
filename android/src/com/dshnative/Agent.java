@@ -369,6 +369,15 @@ public final class Agent {
                         "抓取网址的文本内容（仅 http/https）。域名不在允许列表时会确认。",
                         schema(obj("url", "string", "完整 URL"), new String[]{"url"})));
 
+            add("net.fetch", tool("npm_install",
+                    "从 npm registry 装一个纯 JS 包到工作区 node_modules/（不需要 npm 命令）。"
+                            + "用法：package 写包名（PixiJS 就写 pixi.js），version 可留空取 latest。"
+                            + "只解这个包本身，不装它的依赖树。",
+                    schema(props(new String[]{"package", "version", "workspace"},
+                                 new String[]{"string", "string", "string"},
+                                 new String[]{"包名，如 pixi.js", "版本号（可空）", "工作区目录（可空）"}),
+                           new String[]{"package"})));
+
             add("ui.read", tool("ui_dump",
                     "读当前界面：每行 #序号 [类型] \"文字\" (x,y) 标记。已压缩，只含有内容的节点。"
                             + "image:true 会同时截一张图并返回编号 sN —— 后面点坐标时带上 observation:\"sN\"，"
@@ -1302,6 +1311,15 @@ public final class Agent {
             if ("clip_read".equals(name)) return clipRead();
             if ("clip_write".equals(name)) return clipWrite(a.optString("text", ""));
             if ("notify".equals(name)) return notifyUser(a.optString("title", "DSH Native"), a.optString("body", ""));
+            if ("npm_install".equals(name)) {
+                String pkg = a.optString("package", "").trim();
+                String ver = a.optString("version", "").trim();
+                String ws = a.optString("workspace", "").trim();
+                if (ws.isEmpty()) {
+                    try { ws = Workspaces.currentDir(ctx).getAbsolutePath(); } catch (Throwable ignored) {}
+                }
+                return Npm.install(ctx, ws, pkg, ver);
+            }
             if ("ui_dump".equals(name)) {
                 String dump = uiDump(a.optInt("max_nodes", UI_MAX_NODES));
                 if (a.optBoolean("image", false)) {
