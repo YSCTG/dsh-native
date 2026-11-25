@@ -59,6 +59,38 @@ public final class Session {
         return "s" + Long.toString(System.currentTimeMillis(), 36);
     }
 
+
+    /**
+     * 草稿会话：只生成 id，**不写索引**。
+     *
+     * 点 ＋ 就落盘会留下一条条空会话；用户没发消息时它不该存在，
+     * 所以新建先走草稿，真正发送时才 touch() 落盘。
+     */
+    public static Session draft() {
+        Session s = new Session(newId());
+        s.title = "新会话";
+        return s;
+    }
+
+    /** 清掉索引里所有"一条消息都没有"的会话（除了 keepId）。 */
+    public static void pruneEmpty(Context c, String keepId) {
+        try {
+            List<Session> all = list(c);
+            List<Session> kept = new ArrayList<>();
+            boolean changed = false;
+            for (Session s : all) {
+                if (s.id.equals(keepId)) { kept.add(s); continue; }
+                if (count(c, s.id) > 0) { kept.add(s); continue; }
+                changed = true;
+                android.util.Log.i("DSHN", "清理空会话 " + s.id);
+                body(c, s.id).delete();
+            }
+            if (changed) saveIndex(c, kept);
+        } catch (Throwable t) {
+            android.util.Log.i("DSHN", "清理空会话失败: " + t);
+        }
+    }
+
     public static Session create(Context c) {
         Session s = new Session(newId());
         s.title = "新会话";

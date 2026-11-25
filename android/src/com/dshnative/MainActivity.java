@@ -180,6 +180,11 @@ public class MainActivity extends Activity implements Agent.Listener {
             }
         } catch (Throwable ignored) {}
 
+        // 启动时清掉历史遗留的空会话（点 ＋ 从没发过消息的那些）
+        try {
+            Session.pruneEmpty(this, prefs.getString("session_id", ""));
+        } catch (Throwable ignored) {}
+
         // 插件目录默认指向官方示例源（用户可在设置里改成任何同格式地址）
         try {
             if (prefs.getString("market_url", "").isEmpty()) {
@@ -2128,6 +2133,7 @@ public class MainActivity extends Activity implements Agent.Listener {
             if (!imgsNow.contains(p) && new File(p).isFile()) imgsNow.add(p);
         }
         running = true;
+        if (session != null) Session.touch(this, session);   // 真发消息了才把草稿写进索引
         final String sendSid = session == null ? null : session.id;
         final String sendTitle = session == null ? "" : session.title;
         if (sendSid != null) runningSessions.add(sendSid);
@@ -2465,6 +2471,12 @@ public class MainActivity extends Activity implements Agent.Listener {
 
     private void onFresh() {
         // 不再中断上一个会话：它继续在后台跑，切回去能看到结果
+        // 但要先收拾上一个会话：如果它一条消息都没有，直接删掉（点 ＋ 不该留下空壳）
+        try {
+            if (session != null && Session.count(this, session.id) == 0) {
+                Session.delete(this, session.id);
+            }
+        } catch (Throwable ignored) {}
         agent = null;
         // 设置页可能改过模式：新会话要用新的（模式在会话内冻结，只在这里重读）
         mode = Mode.byId(prefs.getString("mode", "standard"));
@@ -2477,9 +2489,8 @@ public class MainActivity extends Activity implements Agent.Listener {
         transcript.removeAllViews();
         resetTranscriptRefs();
         transcript.addView(buildEmptyState());
-        session = Session.create(this);
-        session.ws = Workspaces.currentId(this);   // 新会话归到当前工作区
-        Session.touch(this, session);
+        session = Session.draft();                  // 草稿：没发消息就不落盘
+        session.ws = Workspaces.currentId(this);
         prefs.edit().putString("session_id", session.id).apply();
         refreshMeta();
     }
