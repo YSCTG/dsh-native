@@ -32,18 +32,33 @@ public final class AbTools {
     private static final String ZIP = "abt.zip";
     /** 工具链发布地址；跟着 App 版本走，改版本时同步。 */
     private static final String[] URLS = {
-            "https://github.com/YSCTG/dsh-native/releases/download/v32.9/abt.zip",
-            "https://gh-proxy.org/https://github.com/YSCTG/dsh-native/releases/download/v32.9/abt.zip",
+            "https://github.com/YSCTG/dsh-native/releases/download/v33.0/abt.zip",
+            "https://gh-proxy.org/https://github.com/YSCTG/dsh-native/releases/download/v33.0/abt.zip",
     };
-    private static final long EXPECT_SIZE = 23733347L;   // 约 16.5 MB
+    private static final long EXPECT_SIZE = 24541944;   // 约 16.5 MB
 
     private AbTools() {}
 
     public static File dir(Context c) { return new File(c.getFilesDir(), "abt"); }
 
+    /** 工具链版本；包内容变了就加一，老解压会被丢掉重来。 */
+    private static final String VERSION = "2";
+
     public static boolean ready(Context c) {
         File d = dir(c);
-        return new File(d, "aapt2").isFile() && new File(d, "ecj-dex.jar").isFile();
+        if (!new File(d, "aapt2").isFile() || !new File(d, "ecj-dex.jar").isFile()) return false;
+        // 版本对不上（比如新版本包里多了 adb）就当没就绪，重新解压
+        try {
+            File vf = new File(d, "abt.version");
+            if (!vf.isFile()) return false;
+            java.io.BufferedReader br = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(new java.io.FileInputStream(vf), "UTF-8"));
+            String v = br.readLine();
+            br.close();
+            return VERSION.equals(v == null ? "" : v.trim());
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     /** 确保工具链就位；返回 null 表示成功，否则返回错误说明。 */
@@ -51,9 +66,17 @@ public final class AbTools {
         File d = dir(c);
         if (ready(c)) return null;
         try {
+            // 旧解压先清掉，否则新版文件不会覆盖进来
+            deleteTree(d);
             if (!d.isDirectory()) d.mkdirs();
             File zip = new File(c.getFilesDir(), ZIP);
-            if (!zip.isFile() || zip.length() < EXPECT_SIZE / 2) {
+            boolean zipLooksOld = false;
+            try {
+                java.util.zip.ZipFile zf = new java.util.zip.ZipFile(zip);
+                zipLooksOld = zf.getEntry("abt.version") == null;
+                zf.close();
+            } catch (Throwable ignored) {}
+            if (!zip.isFile() || zip.length() < EXPECT_SIZE / 2 || zipLooksOld) {
                 String err = download(zip);
                 if (err != null) return err;
             }
@@ -118,6 +141,13 @@ public final class AbTools {
             in.close();
         }
         zf.close();
+    }
+
+    private static void deleteTree(File f) {
+        if (f == null || !f.exists()) return;
+        File[] kids = f.listFiles();
+        if (kids != null) for (File k : kids) deleteTree(k);
+        f.delete();
     }
 
     private static void chmod(File dir) {
