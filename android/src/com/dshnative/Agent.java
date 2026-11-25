@@ -921,6 +921,7 @@ public final class Agent {
                 // 插话：上一轮工具跑完、下一次请求还没发时把它接进来。
                 // 只在这个位置注入，消息序列才合法（tool 结果紧跟着它的 tool_calls）。
                 drainSteers();
+                sanitizeThinkingHistory();
                 DeepSeekClient.Result r = client.complete(messages, tools, new DeepSeekClient.Hooks() {
                     @Override public void onContent(String d) { listener.onAssistant(d); }
                     @Override public void onReasoning(String d) { listener.onReasoning(d); }
@@ -1166,6 +1167,35 @@ public final class Agent {
      * 触发条件：上一次请求的 prompt 已经吃掉上限的 65%。
      * 压缩后模型看到的是一份更短但结构合法的历史，会话文件同步重写。
      */
+
+    /**
+     * 思考模式的前置修补。
+     *
+     * 新的 API 要求：带 tools 或处于 thinking 模式时，历史里的 assistant 消息必须把
+     * reasoning_content 原样传回去，否则整轮 400：
+     * "The `reasoning_content` in the thinking mode must be passed back to the API."
+     *
+     * 但历史可能来自：被中断的流（没写 reasoning）、旧版本存的会话、压缩后重拼的数组。
+     * 这些都没有那个字段。这里统一补一个空字符串——保持"传回去了"这个约定，
+     * 而不是让用户对着 400 发呆。
+     */
+    private void sanitizeThinkingHistory() {
+        try {
+            String effort = client.reasoningEffort;
+            if (effort == null || effort.isEmpty() || "none".equalsIgnoreCase(effort)) return;
+            int fixed = 0;
+            for (int i = 0; i < messages.length(); i++) {
+                JSONObject m = messages.optJSONObject(i);
+                if (m == null) continue;
+                if (!"assistant".equals(m.optString("role"))) continue;
+                if (m.has("reasoning_content")) continue;
+                m.put("reasoning_content", "");
+                fixed++;
+            }
+            if (fixed > 0) android.util.Log.i("DSHN", "思考模式：补 reasoning_content 共 " + fixed + " 条");
+        } catch (Throwable ignored) {}
+    }
+
     private void autoCompact() {
         try {
             int lim = contextLimit();
