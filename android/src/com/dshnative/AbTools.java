@@ -32,8 +32,8 @@ public final class AbTools {
     private static final String ZIP = "abt.zip";
     /** 工具链发布地址；跟着 App 版本走，改版本时同步。 */
     private static final String[] URLS = {
-            "https://github.com/YSCTG/dsh-native/releases/download/v33.0/abt.zip",
-            "https://gh-proxy.org/https://github.com/YSCTG/dsh-native/releases/download/v33.0/abt.zip",
+            "https://github.com/YSCTG/dsh-native/releases/download/v33.1/abt.zip",
+            "https://gh-proxy.org/https://github.com/YSCTG/dsh-native/releases/download/v33.1/abt.zip",
     };
     private static final long EXPECT_SIZE = 24541944;   // 约 16.5 MB
 
@@ -42,7 +42,7 @@ public final class AbTools {
     public static File dir(Context c) { return new File(c.getFilesDir(), "abt"); }
 
     /** 工具链版本；包内容变了就加一，老解压会被丢掉重来。 */
-    private static final String VERSION = "2";
+    private static final String VERSION = "3";
 
     public static boolean ready(Context c) {
         File d = dir(c);
@@ -151,7 +151,8 @@ public final class AbTools {
     }
 
     private static void chmod(File dir) {
-        String[] exes = {"aapt2", "zipalign"};
+        // adb 也要可执行位：漏了它 exec 会失败，而失败是静默的（返回空输出）
+        String[] exes = {"aapt2", "zipalign", "adb/adb"};
         for (String name : exes) {
             File f = new File(dir, name);
             if (f.isFile()) {

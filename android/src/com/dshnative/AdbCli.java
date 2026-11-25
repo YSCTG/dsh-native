@@ -95,6 +95,10 @@ public final class AdbCli {
         String target = (hostPort == null || hostPort.trim().isEmpty())
                 ? "127.0.0.1:5555" : hostPort.trim();
         String out = run(c, new String[]{"connect", target}, 20000);
+        if (out.isEmpty()) {
+            return "（无输出）adb 客户端没吭声：检查 files/abt/adb/adb 是否可执行、"
+                    + "以及 adbd 是否在 " + target + " 上监听（插电脑执行一次 adb tcpip 5555）";
+        }
         Log.i(TAG, "adb connect " + target + " → " + out.replace("\n", " "));
         Audit.record(c, "adb", "连接", target + " · " + oneLine(out));
         return out;
@@ -116,6 +120,39 @@ public final class AdbCli {
         String out = run(c, new String[]{"-s", s, "shell", cmd}, timeoutMs);
         Audit.record(c, "adb", "shell", oneLine(cmd) + " → " + oneLine(out));
         return out.isEmpty() ? "（无输出）" : out;
+    }
+
+
+    /**
+     * 导入一把已被本机授权的 adb 私钥（通常来自电脑的 ~/.android/adbkey）。
+     *
+     * 为什么需要：设备内的 adb 是新客户端，adbd 不认识它的密钥，连接会停在 unauthorized。
+     * 常规解法是无线调试配对，但有些 ROM（例如这台华为的开发者选项）没有这一项。
+     * 那就把"已经在本机授权过"的那把私钥拿过来用 —— 不是伪造授权，是复用用户已有的信任。
+     */
+    public static String importKey(Context c, String srcPath) {
+        try {
+            String path = (srcPath == null || srcPath.trim().isEmpty())
+                    ? "/sdcard/DSHNative/adbkey" : srcPath.trim();
+            File src = new File(path);
+            if (!src.isFile()) return "错误：找不到 " + path + "（把电脑上的 adbkey 放到这里）";
+            File dst = new File(new File(home(c), ".android"), "adbkey");
+            java.io.FileInputStream in = new java.io.FileInputStream(src);
+            java.io.FileOutputStream out = new java.io.FileOutputStream(dst);
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            out.close();
+            in.close();
+            dst.setReadable(false, false);
+            dst.setReadable(true, true);
+            // 让 adb 重新读取密钥
+            run(c, new String[]{"kill-server"}, 8000);
+            Audit.record(c, "adb", "导入密钥", path);
+            return "已导入密钥：" + path + " → " + dst.getAbsolutePath() + "（长度 " + dst.length() + " 字节）";
+        } catch (Throwable t) {
+            return "错误：" + t;
+        }
     }
 
     /** 把本机 adb 跑起来；返回合并输出。 */

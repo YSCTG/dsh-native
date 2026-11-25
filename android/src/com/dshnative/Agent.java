@@ -874,6 +874,9 @@ public final class Agent {
                 if ("pair".equals(act)) {
                     return AdbCli.pair(ctx, a.optString("host", ""), a.optString("code", ""));
                 }
+                if ("import_key".equals(act)) {
+                    return AdbCli.importKey(ctx, a.optString("path", ""));
+                }
                 if ("shell".equals(act)) {
                     return AdbCli.shell(ctx, a.optString("command", ""), a.optInt("timeout", 20000));
                 }
