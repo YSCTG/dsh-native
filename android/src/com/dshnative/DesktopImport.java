@@ -114,6 +114,31 @@ public final class DesktopImport {
 
 
     /** 从 URL 导入：可以是单个 Native 清单，也可以是 {"plugins":[...]} 目录；逐个转译后返回。 */
+    /** 从本地文件读清单（离线安装 / 测试用）。 */
+    public static java.util.List<JSONObject> fromFile(java.io.File f) {
+        java.util.List<JSONObject> out = new java.util.ArrayList<>();
+        try {
+            java.io.BufferedReader br = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(new java.io.FileInputStream(f), "UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) sb.append(line).append('\n');
+            br.close();
+            JSONObject o = new JSONObject(sb.toString());
+            if (o.has("plugins")) {
+                org.json.JSONArray arr = o.optJSONArray("plugins");
+                for (int i = 0; arr != null && i < arr.length(); i++) {
+                    JSONObject one = normalize(arr.optJSONObject(i), f.getName());
+                    if (one != null) out.add(one);
+                }
+            } else {
+                JSONObject one = normalize(o, f.getName());
+                if (one != null) out.add(one);
+            }
+        } catch (Throwable ignored) {}
+        return out;
+    }
+
     public static java.util.List<JSONObject> fromUrl(Context c, String url) {
         java.util.List<JSONObject> out = new java.util.ArrayList<>();
         try {
@@ -177,6 +202,21 @@ public final class DesktopImport {
     /** 写入插件清单 + 追加到附加技能表（Skill.all 会合并它）。 */
     public static void install(Context c, JSONObject manifest) {
         try {
+            String id0 = manifest.optString("id", "");
+            // 插件声明了 MCP 服务：把脚本落盘，并把绝对路径写回清单（运行期只认路径）
+            try {
+                org.json.JSONObject cap = manifest.optJSONObject("capabilities");
+                org.json.JSONObject mcp = cap == null ? manifest.optJSONObject("mcp")
+                        : cap.optJSONObject("mcp");
+                if (mcp != null && mcp.optString("code", "").length() > 0 && !id0.isEmpty()) {
+                    java.io.File f = Market.mcpScript(c, id0, mcp.optString("file", "server.py"));
+                    java.io.FileOutputStream mo = new java.io.FileOutputStream(f);
+                    mo.write(mcp.optString("code", "").getBytes("UTF-8"));
+                    mo.close();
+                    mcp.put("script", f.getAbsolutePath());
+                }
+            } catch (Throwable ignored) {}
+
             String id = manifest.optString("id", "");
             if (id.isEmpty()) return;
             File dir = new File(c.getFilesDir(), "plugins");

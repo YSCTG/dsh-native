@@ -299,6 +299,18 @@ public class SettingsActivity extends Activity {
         if (src == null || src.isEmpty()) return;
         prefs.edit().remove("market_pending").apply();
 
+        // 本地清单（file:// 或 /sdcard 路径）：离线安装
+        if (src.startsWith("file://") || src.startsWith("/sdcard") || src.startsWith("/storage")) {
+            String path = src.startsWith("file://") ? src.substring(7) : src;
+            java.util.List<org.json.JSONObject> list = DesktopImport.fromFile(new java.io.File(path));
+            if (list.isEmpty()) { toast("清单读不出来：" + path); return; }
+            int n = 0;
+            for (org.json.JSONObject m : list) { DesktopImport.install(this, m); n++; }
+            toast("已导入 " + n + " 个本地插件");
+            recreate();
+            return;
+        }
+
         // catalog:<url> = 把某个地址设为目录来源（便于分享"目录链接"、也便于自动化测试）
         if (src.startsWith("catalog:")) {
             String url = src.substring("catalog:".length()).trim();
