@@ -27,6 +27,11 @@ public final class ApkBuilder {
     private static final String TAG = "DSHN";
     private static final String KEY_PKG = "com.example.hello";
 
+    /** 最近一次成功构建的 APK（app_run 用它接着装）。工具调用是串行的，这样最简单。 */
+    private static volatile File LAST_APK = null;
+    private static volatile String LAST_PKG = "";
+    private static volatile String LAST_ACT = "";
+
     private ApkBuilder() {}
 
     /** 生成一个最小可运行的 App 项目。 */
@@ -225,13 +230,87 @@ public final class ApkBuilder {
             log.append("签名：").append(out.isEmpty() ? "OK" : out).append('\n');
             if (!signed.isFile()) return "签名失败：\n" + log;
 
-            Log.i(TAG, "APK 构建完成 " + signed.getAbsolutePath());
+            LAST_APK = signed;
+            String[] pa = pkgAndActivity(proj);
+            LAST_PKG = pa[0];
+            LAST_ACT = pa[1];
+            Log.i(TAG, "APK 构建完成 " + signed.getAbsolutePath()
+                    + " · " + LAST_PKG + "/" + LAST_ACT);
             return "构建完成：" + signed.getAbsolutePath()
                     + "\n大小 " + (signed.length() / 1024) + " KB"
                     + "\n（自签证书，只能自用/侧载；上架需要自己的密钥）\n---\n" + log;
         } catch (Throwable t) {
             return "错误：" + t + "\n" + log;
         }
+    }
+
+
+    /** 从 AndroidManifest.xml 里读 package 与入口 activity 的全名。 */
+
+    private static String readSmall(File f) {
+        try {
+            java.io.BufferedReader br = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(new java.io.FileInputStream(f), "UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) sb.append(line).append('\n');
+            br.close();
+            return sb.toString();
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    static String[] pkgAndActivity(File proj) {
+        String pkg = "", act = "";
+        try {
+            String xml = readSmall(new File(proj, "AndroidManifest.xml"));
+            java.util.regex.Matcher m1 = java.util.regex.Pattern
+                    .compile("package=\"([^\"]+)\"").matcher(xml);
+            if (m1.find()) pkg = m1.group(1);
+            java.util.regex.Matcher m2 = java.util.regex.Pattern
+                    .compile("<activity[^>]*android:name=\"([^\"]+)\"").matcher(xml);
+            if (m2.find()) {
+                act = m2.group(1);
+                if (act.startsWith(".")) act = pkg + act;
+                else if (!act.contains(".")) act = pkg + "." + act;
+            }
+        } catch (Throwable ignored) {}
+        return new String[]{pkg, act};
+    }
+
+
+    /**
+     * 一步到位：编 → 装 → 起。
+     * 装和起都走设备内 adb（需要「Android shell」开启）；没开就只报告"编好了但没装"。
+     */
+    public static String runApp(Context c, String workspace, String name) {
+        String built = build(c, workspace, name);
+        if (!built.startsWith("构建完成")) return built;
+        File apk = LAST_APK;
+        String pkg = LAST_PKG, act = LAST_ACT;
+        StringBuilder sb = new StringBuilder(built).append('\n');
+
+        if (!AdbCli.enabled(c)) {
+            sb.append("已构建，但没安装：Android shell 未启用（设置 → Android shell 打开后可一键装+起）。");
+            return sb.toString();
+        }
+        if (apk == null || !apk.isFile()) {
+            sb.append("已构建，但找不到产物路径，跳过安装。");
+            return sb.toString();
+        }
+
+        String ins = AdbCli.install(c, apk.getAbsolutePath());
+        sb.append("安装：").append(ins).append('\n');
+        if (!ins.startsWith("安装成功")) return sb.toString();
+
+        if (pkg.isEmpty() || act.isEmpty()) {
+            sb.append("装好了，但 manifest 里没解析到入口 activity，跳过启动。");
+            return sb.toString();
+        }
+        String launch = AdbCli.shell(c, "am start -n " + pkg + "/" + act, 30000);
+        sb.append("启动：").append(launch.isEmpty() ? "（无输出）" : launch);
+        return sb.toString();
     }
 
     // ---------- helpers ----------

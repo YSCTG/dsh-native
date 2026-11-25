@@ -134,6 +134,14 @@ final class ToolCatalog {
                                  new String[]{"项目名", "工作区目录（可空）"}),
                            new String[]{"name"})));
 
+            a.add("shell", tool("app_run",
+                    "一步到位：把 app_new 生成的项目编成 APK、装到本机、然后启动它。"
+                            + "编+装+起都在这台设备上完成（装和起需要「Android shell」开启）。",
+                    schema(props(new String[]{"name", "workspace"},
+                                 new String[]{"string", "string"},
+                                 new String[]{"项目名", "工作区目录（可空）"}),
+                           new String[]{"name"})));
+
             a.add("shell", tool("app_build",
                     "在手机上把 app_new 生成的项目编成可安装的 APK（ecj+d8+aapt2+zipalign+apksigner "
                             + "全部在设备上跑）。首次会下载约 16 MB 构建工具链。",

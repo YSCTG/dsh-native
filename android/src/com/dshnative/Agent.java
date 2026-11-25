@@ -905,6 +905,14 @@ public final class Agent {
                 }
                 return ApkBuilder.scaffold(ctx, ws, nm);
             }
+            if ("app_run".equals(name)) {
+                String nm = a.optString("name", "myapp");
+                String ws = a.optString("workspace", "").trim();
+                if (ws.isEmpty()) {
+                    try { ws = Workspaces.currentDir(ctx).getAbsolutePath(); } catch (Throwable ignored) {}
+                }
+                return ApkBuilder.runApp(ctx, ws, nm);
+            }
             if ("app_build".equals(name)) {
                 String nm = a.optString("name", "myapp");
                 String ws = a.optString("workspace", "").trim();
