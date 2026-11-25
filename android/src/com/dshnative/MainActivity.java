@@ -2260,8 +2260,16 @@ public class MainActivity extends Activity implements Agent.Listener {
         @Override public void onRender(String html, String url) { if (fg()) MainActivity.this.onRender(html, url); }
 
         @Override public boolean confirm(String title, String body) {
-            // 后台会话没人看着：不执行需要确认的动作
-            return fg() && MainActivity.this.confirm(title, body);
+            if (fg()) return MainActivity.this.confirm(title, body);
+            // 后台会话没人可问。
+            // 以前一律返回 false，于是切走后一旦轮到"需要确认"的动作，这一轮就被拒掉、
+            // 表现为"老对话暂停了，切回去才继续"。
+            // 现在：**不可回滚的动作仍然拒绝**，普通动作放行并在日志留痕——
+            // 用户在另一个会话里看着，不会愿意自己的任务因为切屏而中断。
+            boolean destructive = title != null
+                    && (title.contains("不可回滚") || title.contains("危险") || title.contains("删除"));
+            android.util.Log.i("DSHN", "后台确认 " + (destructive ? "拒绝" : "放行") + "：" + title);
+            return !destructive;
         }
 
         @Override public String askChoice(String title, String[] options, boolean multi) {
