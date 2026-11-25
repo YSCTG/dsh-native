@@ -2015,6 +2015,13 @@ public class MainActivity extends Activity implements Agent.Listener {
                 android.R.attr.progressBarStyleHorizontal);
         bar.setMax(100);
         bar.setProgress(0);
+        // AlertDialog 里的自定义控件默认没有高度，得显式给，否则只看到文字看不到条
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(8));
+        blp.bottomMargin = dp(10);
+        bar.setLayoutParams(blp);
+        // 总大小未知时用"不确定"模式（跑马灯），已知再切成百分比
+        bar.setIndeterminate(true);
         final TextView pct = new TextView(this);
         pct.setText("正在下载 " + info.tag + "（0%）");
         pct.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
@@ -2022,7 +2029,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         LinearLayout pbox = new LinearLayout(this);
         pbox.setOrientation(LinearLayout.VERTICAL);
         pbox.setPadding(dp(22), dp(18), dp(22), dp(6));
-        pbox.addView(bar);
+        pbox.addView(bar, blp);
         pbox.addView(pct);
         final AlertDialog pdlg = new AlertDialog.Builder(this, R.style.DshDialog)
                 .setTitle("更新 " + info.tag)
@@ -2047,6 +2054,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                                     ui.post(new Runnable() {
                                         @Override public void run() {
                                             try {
+                                                if (p2 >= 0) bar.setIndeterminate(false);
                                                 bar.setProgress(Math.max(0, p2));
                                                 pct.setText(p2 >= 0
                                                         ? String.format("正在下载 %s（%d%%）· %.1f/%.1f MB",
