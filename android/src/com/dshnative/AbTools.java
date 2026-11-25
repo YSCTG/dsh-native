@@ -32,8 +32,8 @@ public final class AbTools {
     private static final String ZIP = "abt.zip";
     /** 工具链发布地址；跟着 App 版本走，改版本时同步。 */
     private static final String[] URLS = {
-            "https://github.com/YSCTG/dsh-native/releases/download/v33.2/abt.zip",
-            "https://gh-proxy.org/https://github.com/YSCTG/dsh-native/releases/download/v33.2/abt.zip",
+            "https://github.com/YSCTG/dsh-native/releases/download/v33.3/abt.zip",
+            "https://gh-proxy.org/https://github.com/YSCTG/dsh-native/releases/download/v33.3/abt.zip",
     };
     private static final long EXPECT_SIZE = 24541944;   // 约 16.5 MB
 
@@ -42,7 +42,7 @@ public final class AbTools {
     public static File dir(Context c) { return new File(c.getFilesDir(), "abt"); }
 
     /** 工具链版本；包内容变了就加一，老解压会被丢掉重来。 */
-    private static final String VERSION = "3";
+    private static final String VERSION = "4";
 
     public static boolean ready(Context c) {
         File d = dir(c);
@@ -69,6 +69,15 @@ public final class AbTools {
             // 旧解压先清掉，否则新版文件不会覆盖进来
             deleteTree(d);
             if (!d.isDirectory()) d.mkdirs();
+            // 先就地释放：安装包里自带工具链，装完即可用，不必等下载
+            if (extractFromAssets(c, d)) {
+                chmod(d);
+                if (ready(c)) {
+                    Log.i(TAG, "工具链从安装包释放完成 " + d.getAbsolutePath());
+                    return null;
+                }
+            }
+
             File zip = new File(c.getFilesDir(), ZIP);
             // 缓存包也要看版本内容：只看"条目在不在"会放过旧包（真踩过这个坑）
             boolean zipLooksOld = false;
@@ -97,6 +106,47 @@ public final class AbTools {
             return null;
         } catch (Throwable t) {
             return "错误：" + t;
+        }
+    }
+
+
+    /** 从 APK 的 assets/abt.zip 直接解压；成功返回 true。 */
+    private static boolean extractFromAssets(Context c, File dir) {
+        java.io.FileOutputStream os = null;
+        try {
+            java.io.InputStream in = c.getAssets().open(ZIP);
+            File tmp = new File(c.getFilesDir(), ZIP + ".asset");
+            os = new java.io.FileOutputStream(tmp);
+            byte[] buf = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+            os.close();
+            os = null;
+            in.close();
+            // 复用同一套解压逻辑
+            java.util.zip.ZipFile zf = new java.util.zip.ZipFile(tmp);
+            java.util.Enumeration<? extends java.util.zip.ZipEntry> en = zf.entries();
+            while (en.hasMoreElements()) {
+                java.util.zip.ZipEntry e = en.nextElement();
+                if (e.isDirectory()) continue;
+                File f = new File(dir, e.getName());
+                File parent = f.getParentFile();
+                if (parent != null && !parent.isDirectory()) parent.mkdirs();
+                java.io.InputStream zi = zf.getInputStream(e);
+                java.io.FileOutputStream zo = new java.io.FileOutputStream(f);
+                int m;
+                byte[] b2 = new byte[64 * 1024];
+                while ((m = zi.read(b2)) > 0) zo.write(b2, 0, m);
+                zo.close();
+                zi.close();
+            }
+            zf.close();
+            tmp.delete();
+            return true;
+        } catch (Throwable t) {
+            Log.i(TAG, "安装包内没有工具链（回退到下载）: " + t);
+            if (os != null) try { os.close(); } catch (Throwable ignored) {}
+            return false;
         }
     }
 
