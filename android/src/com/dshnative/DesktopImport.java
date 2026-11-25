@@ -117,6 +117,11 @@ public final class DesktopImport {
     /** 从本地文件读清单（离线安装 / 测试用）。 */
     public static java.util.List<JSONObject> fromFile(java.io.File f) {
         java.util.List<JSONObject> out = new java.util.ArrayList<>();
+        // .dshp 目录：里面就是 manifest.json，与市场单文件清单是同一套格式
+        if (f != null && f.isDirectory()) {
+            java.io.File inner = new java.io.File(f, "manifest.json");
+            if (inner.isFile()) f = inner;
+        }
         try {
             java.io.BufferedReader br = new java.io.BufferedReader(
                     new java.io.InputStreamReader(new java.io.FileInputStream(f), "UTF-8"));
