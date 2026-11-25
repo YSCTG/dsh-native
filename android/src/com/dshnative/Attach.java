@@ -44,9 +44,8 @@ public final class Attach {
     public static boolean shouldCard(File f, String answerText) {
         if (!worth(f)) return false;
         String name = f.getName().toLowerCase();
-        if (answerText == null) {
-            // 历史复原：正文拿不到，只认交付型扩展名
-            for (String e : DELIVERABLE_EXT) if (name.endsWith(e)) return true;
+        if (answerText == null || answerText.isEmpty()) {
+            // 拿不到正文就不挂——宁可少挂，也不要挂错。
             return false;
         }
         // 实时回合：**必须**在回答里点了名才挂。

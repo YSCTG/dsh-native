@@ -2133,7 +2133,15 @@ public class MainActivity extends Activity implements Agent.Listener {
             if (!imgsNow.contains(p) && new File(p).isFile()) imgsNow.add(p);
         }
         running = true;
-        if (session != null) Session.touch(this, session);   // 真发消息了才把草稿写进索引
+        if (session != null) {
+            // 标题在发送当下就定下来，别等 Agent 跑完（跑挂了就永远叫"新会话"）
+            if (session.title == null || session.title.isEmpty()
+                    || "新会话".equals(session.title)) {
+                session.title = Session.titleFrom(text);
+            }
+            Session.touch(this, session);   // 真发消息了才把草稿写进索引
+        }
+        final Session sendSession = session;
         final String sendSid = session == null ? null : session.id;
         final String sendTitle = session == null ? "" : session.title;
         if (sendSid != null) runningSessions.add(sendSid);
@@ -2157,6 +2165,11 @@ public class MainActivity extends Activity implements Agent.Listener {
                 ui.post(new Runnable() {
                     @Override public void run() {
                         if (sendSid != null) runningSessions.remove(sendSid);
+                        // 结束再落盘一次：标题与 token 用量都要进索引。
+                        // 用发起这一轮时捕获的 sendSession，后台会话也能写对。
+                        try {
+                            if (sendSession != null) Session.touch(MainActivity.this, sendSession);
+                        } catch (Throwable ignored) {}
                         boolean stillCurrent = session != null && session.id.equals(sendSid);
                         // 还有别的会话在跑就别撤前锋：服务与 WakeLock 都要留着
                         trimAgentPool();
@@ -3871,7 +3884,11 @@ public class MainActivity extends Activity implements Agent.Listener {
                     File f = new File(path);
                     // 旧索引里存的是"本轮碰过的所有文件"，这里再按交付型筛一遍，
                     // 免得历史会话里冒出当年的草稿和截图。
-                    if (f.isFile() && Attach.shouldCard(f, null)) addView(buildFileCard(f));
+                    // 用这一轮的回答正文来判断，而不是传 null。
+                    // 传 null 时 Attach 会放行所有"交付型扩展名"，于是历史里冒出
+                    // 当年顺手写过、但回答根本没提的文件——屏幕上那两张莫名附件就是这么来的。
+                    String turnAnswer = lastSegment == null ? "" : lastSegment;
+                    if (f.isFile() && Attach.shouldCard(f, turnAnswer)) addView(buildFileCard(f));
                 }
             }
         }
