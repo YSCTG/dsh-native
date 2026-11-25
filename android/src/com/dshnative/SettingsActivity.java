@@ -296,10 +296,20 @@ public class SettingsActivity extends Activity {
     /** 有 --es import_src 时，进来就开始导入并把结果写进"最近一次导入"。 */
 
     /** 插件配置：按声明的字段自动生成表单，不涉及任何 WebView / JS。 */
+    /** 插件声明的钩子数量（用于判断要不要给它一个状态面板）。 */
+    private int pluginHooks(org.json.JSONObject p) {
+        org.json.JSONObject cap = p.optJSONObject("capabilities");
+        org.json.JSONArray h = cap == null ? p.optJSONArray("hooks") : cap.optJSONArray("hooks");
+        return h == null ? 0 : h.length();
+    }
+
     private void openPluginConfig(final org.json.JSONObject plugin) {
         final String id = plugin.optString("id", "");
         final org.json.JSONArray fields = Market.settings(plugin);
-        if (fields.length() == 0) { toast("这个插件没有可配置项"); return; }
+        // 没有配置项也要能打开：钩子/审计面板同样在这里（status 面板）
+        boolean anyInteraction = fields.length() > 0 || pluginHooks(plugin) > 0
+                || Audit.read(this, plugin.optString("id", "")).length() > 0;
+        if (!anyInteraction) { toast("这个插件没有配置项，也没有审计记录"); return; }
         final org.json.JSONObject cur = Market.cfg(this, plugin);
 
         LinearLayout box = new LinearLayout(this);

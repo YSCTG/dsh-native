@@ -29,8 +29,8 @@ public final class PluginHooks {
     private PluginHooks() {}
 
     /** 某个事件的脚本路径（安装时已落盘）。 */
-    private static java.util.List<String> scripts(Context c, String event) {
-        java.util.List<String> out = new java.util.ArrayList<>();
+    private static java.util.List<String[]> scripts(Context c, String event) {
+        java.util.List<String[]> out = new java.util.ArrayList<>();
         for (JSONObject p : Market.enabledPlugins(c)) {
             JSONObject cap = p.optJSONObject("capabilities");
             org.json.JSONArray hooks = cap == null ? p.optJSONArray("hooks") : cap.optJSONArray("hooks");
@@ -40,7 +40,9 @@ public final class PluginHooks {
                 if (h == null) continue;
                 if (!event.equals(h.optString("on", ""))) continue;
                 String sc = h.optString("script", "");
-                if (!sc.isEmpty() && new File(sc).isFile()) out.add(sc);
+                if (!sc.isEmpty() && new File(sc).isFile()) {
+                    out.add(new String[]{p.optString("id", ""), sc});
+                }
             }
         }
         return out;
@@ -51,7 +53,9 @@ public final class PluginHooks {
      * @return null 表示放行；否则是"拦截原因"（给模型看）
      */
     public static String before(Context c, String event, JSONObject payload) {
-        for (String script : scripts(c, event)) {
+        for (String[] pair : scripts(c, event)) {
+            String pluginId = pair[0];
+            String script = pair[1];
             try {
                 String cmd = Python.commandFor(c, new File(script));
                 ProcessBuilder pb = new ProcessBuilder("/system/bin/sh", "-c", cmd);
@@ -71,10 +75,12 @@ public final class PluginHooks {
                 if (!o.optBoolean("allow", true)) {
                     String reason = o.optString("reason", "被插件拦下");
                     Log.i(TAG, "钩子拦截 " + event + "：" + reason);
+                    Audit.record(c, pluginId, "拦截", reason);
                     return reason;
                 }
             } catch (Throwable t) {
                 Log.i(TAG, "钩子执行失败（放行）：" + t);
+                Audit.record(c, pluginId, "钩子异常", String.valueOf(t));
             }
         }
         return null;
