@@ -418,6 +418,25 @@ public class FilesActivity extends Activity {
     /** 预览：图片直接显示，其它按文本截断显示；二进制告知大小。 */
     private void preview(File f) {
         String n = f.getName().toLowerCase();
+        // 文档类交给本地渲染器（docx/xlsx/pdf/pptx），其余走下面的图片/文本分支
+        if (WebOffice.canRender(f.getName())) {
+            View rendered = WebOffice.build(this, f);
+            if (rendered != null) {
+                ScrollView wrap = new ScrollView(this);
+                wrap.addView(rendered);
+                new AlertDialog.Builder(this, R.style.DshDialog)
+                        .setTitle(f.getName())
+                        .setView(wrap)
+                        .setNegativeButton("关闭", null)
+                        .setNeutralButton("用其他应用打开", new DialogInterface.OnClickListener() {
+                            @Override public void onClick(DialogInterface d, int w) {
+                                openWith(f);
+                            }
+                        })
+                        .show();
+                return;
+            }
+        }
         if (n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".webp") || n.endsWith(".gif")) {
             ImageView iv = new ImageView(this);
             iv.setAdjustViewBounds(true);

@@ -125,6 +125,18 @@ public final class Tests {
             total += 2; fails.add("APK 选择用例异常 " + e);
         }
 
+        // ---- 预览类型判定：四种文档才走本地渲染 ----
+        total++; if (!WebOffice.canRender("a.docx") || !WebOffice.canRender("b.XLSX")
+                || !WebOffice.canRender("c.pdf") || !WebOffice.canRender("d.pptx")) {
+            fails.add("四种文档都应判为可渲染");
+        }
+        total++; if (WebOffice.canRender("a.txt") || WebOffice.canRender("b.png")) {
+            fails.add("文本/图片不该判为文档渲染");
+        }
+        total++; if (WebOffice.canRender("c.doc") || WebOffice.canRender("d.xls")) {
+            fails.add("老格式（doc/xls）不该假装能渲染");
+        }
+
         // ---- 列表显示：大小与项目名 ----
         total++; if (!"512 B".equals(Apks.humanSize(512))) fails.add("humanSize 字节档错");
         total++; if (!"2 KB".equals(Apks.humanSize(2048))) fails.add("humanSize KB 档错");

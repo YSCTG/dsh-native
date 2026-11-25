@@ -1800,6 +1800,21 @@ public class MainActivity extends Activity implements Agent.Listener {
     /** 内嵌预览：图片渲染出来，文本读前几 KB，二进制给提示。 */
     private void fillFileBody(LinearLayout body, File f, boolean image, boolean pdf,
                              boolean audio, boolean video, boolean html) {
+            // 文档类（docx/xlsx/pdf/pptx）先用本地渲染器画出来
+            if (WebOffice.canRender(f.getName())) {
+                View rendered = WebOffice.build(this, f);
+                if (rendered != null) {
+                    body.addView(rendered, new LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, dp(460)));
+                    TextView tip2 = new TextView(this);
+                    tip2.setText("（本地渲染 · 点标题可用系统应用打开）");
+                    tip2.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+                    tip2.setTextColor(getColor(R.color.label_tertiary));
+                    body.addView(tip2);
+                    return;
+                }
+            }
+
         try {
             if (html) {
                 // HTML 直接在内嵌 WebView 里渲染，带 JS
