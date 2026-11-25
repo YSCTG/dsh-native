@@ -15,6 +15,7 @@ import android.graphics.Typeface;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.Switch;
+import java.io.File;
 import java.util.List;
 import android.view.Gravity;
 import android.view.View;
@@ -497,6 +498,145 @@ public class SettingsActivity extends Activity {
      * 这里的每一步都对应真机上必须做的事：adbd 得先在 TCP 上监听，
      * 无线调试还要一次配对码；拿到的是 shell（uid 2000），不是 root。
      */
+
+    /**
+     * 编好的 APK 列表：每行能看到大小/时间/是否已装，并且能装能删。
+     *
+     * 以前是一个 setItems 对话框：点一下直接装，没有任何删除入口，也看不出装没装过。
+     */
+    private void showBuiltApks() {
+        final java.util.List<File> apks = Apks.all(this);
+        if (apks.isEmpty()) {
+            toast("还没有编好的 APK：先生成项目（app_new）再编（app_build / app_run）");
+            return;
+        }
+
+        float d = getResources().getDisplayMetrics().density;
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding((int) (18 * d), (int) (10 * d), (int) (18 * d), (int) (6 * d));
+
+        final AlertDialog[] holder = new AlertDialog[1];
+        for (final File apk : apks) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.setPadding(0, (int) (10 * d), 0, (int) (10 * d));
+
+            TextView name = new TextView(this);
+            name.setText(Apks.projectName(apk));
+            name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            name.setTextColor(getColor(R.color.label_primary));
+            row.addView(name);
+
+            String installed = Apks.installedVersion(this, apk);
+            String meta = Apks.humanSize(apk.length()) + " · "
+                    + new java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault())
+                        .format(new java.util.Date(apk.lastModified()))
+                    + (installed == null ? " · 未安装"
+                        : (" · 已安装" + (installed.isEmpty() ? "" : " " + installed)));
+            TextView sub = new TextView(this);
+            sub.setText(meta);
+            sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            sub.setTextColor(getColor(R.color.label_tertiary));
+            sub.setPadding(0, (int) (2 * d), 0, (int) (6 * d));
+            row.addView(sub);
+
+            LinearLayout btns = new LinearLayout(this);
+            btns.setOrientation(LinearLayout.HORIZONTAL);
+
+            TextView install = new TextView(this);
+            install.setText(installed == null ? "安装" : "重装");
+            install.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            install.setTextColor(getColor(R.color.accent));
+            install.setPadding((int) (14 * d), (int) (6 * d), (int) (14 * d), (int) (6 * d));
+            install.setBackgroundResource(R.drawable.bg_chip);
+            install.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    String err = Apks.install(SettingsActivity.this, apk);
+                    if (err != null) toast(err);
+                    else recreate();
+                }
+            });
+            btns.addView(install);
+
+            TextView share = new TextView(this);
+            share.setText("分享");
+            share.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            share.setTextColor(getColor(R.color.label_secondary));
+            share.setPadding((int) (14 * d), (int) (6 * d), (int) (14 * d), (int) (6 * d));
+            share.setBackgroundResource(R.drawable.bg_chip);
+            LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            slp.leftMargin = (int) (8 * d);
+            share.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    String err = Apks.share(SettingsActivity.this, apk);
+                    if (err != null) toast(err);
+                }
+            });
+            btns.addView(share, slp);
+
+            TextView del = new TextView(this);
+            del.setText("删除");
+            del.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            del.setTextColor(getColor(R.color.danger));
+            del.setPadding((int) (14 * d), (int) (6 * d), (int) (14 * d), (int) (6 * d));
+            del.setBackgroundResource(R.drawable.bg_chip);
+            LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            dlp.leftMargin = (int) (8 * d);
+            del.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    confirmDeleteApk(apk, holder[0]);
+                }
+            });
+            btns.addView(del, dlp);
+
+            row.addView(btns);
+            box.addView(row);
+            divider(box);
+        }
+
+        ScrollView sc = new ScrollView(this);
+        sc.addView(box);
+        holder[0] = new AlertDialog.Builder(this, R.style.DshDialog)
+                .setTitle("编好的 App")
+                .setView(sc)
+                .setPositiveButton("关闭", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface dlg, int w) { }
+                })
+                .create();
+        holder[0].show();
+    }
+
+    /** 删除前问一句：只删安装包，还是连项目一起删。 */
+    private void confirmDeleteApk(final File apk, final AlertDialog listDialog) {
+        final String name = Apks.projectName(apk);
+        new AlertDialog.Builder(this, R.style.DshDialog)
+                .setTitle("删除 " + name)
+                .setMessage("项目目录：" + apk.getParentFile().getAbsolutePath()
+                        + "\n\n只删安装包，还是连源码一起删？")
+                .setPositiveButton("连项目一起删", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        int n = Apks.deleteProject(apk);
+                        toast("已删除项目 " + name + "（" + n + " 个文件）");
+                        if (listDialog != null) listDialog.dismiss();
+                        recreate();
+                    }
+                })
+                .setNeutralButton("只删 APK", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        boolean ok = apk.delete();
+                        toast(ok ? ("已删除 " + apk.getName()) : "删除失败");
+                        if (listDialog != null) listDialog.dismiss();
+                        recreate();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+
     private void adbDialog() {
         final float d = getResources().getDisplayMetrics().density;
         LinearLayout box = new LinearLayout(this);
@@ -1143,6 +1283,12 @@ public class SettingsActivity extends Activity {
                         toast(Migrate.export(SettingsActivity.this));
                     }
                 });
+        divider(envCard);
+        actionRow(envCard, "编好的 App（APK）", "在侧栏的「文件」里看：编好的安装包点一下就能装", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new android.content.Intent(SettingsActivity.this, FilesActivity.class));
+            }
+        });
         divider(envCard);
         actionRow(envCard, "Android shell（adb）", AdbCli.status(this),
                 new View.OnClickListener() {

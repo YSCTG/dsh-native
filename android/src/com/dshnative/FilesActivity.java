@@ -258,8 +258,15 @@ public class FilesActivity extends Activity {
         name.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
         texts.addView(name);
 
+        final boolean apk = !f.isDirectory() && f.getName().toLowerCase().endsWith(".apk");
+        final String installed = apk ? Apks.installedVersion(this, f) : null;
+
         TextView meta = new TextView(this);
-        meta.setText(f.isDirectory() ? "目录" : humanSize(f.length()));
+        meta.setText(f.isDirectory() ? "目录"
+                : (humanSize(f.length())
+                   + (apk ? (installed == null ? " · 未安装"
+                             : (" · 已安装" + (installed.isEmpty() ? "" : " " + installed)))
+                          : "")));
         meta.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         meta.setTextColor(getColor(R.color.label_tertiary));
         meta.setPadding(0, dp(2), 0, 0);
@@ -268,8 +275,13 @@ public class FilesActivity extends Activity {
         r.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         r.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                if (f.isDirectory()) open(f);
-                else preview(f);
+                if (f.isDirectory()) { open(f); return; }
+                if (apk) {                       // APK 的默认动作是装，不是预览
+                    String err = Apks.install(FilesActivity.this, f);
+                    if (err != null) toast(err);
+                    return;
+                }
+                preview(f);
             }
         });
         r.setOnLongClickListener(new View.OnLongClickListener() {
@@ -278,20 +290,55 @@ public class FilesActivity extends Activity {
         return r;
     }
 
-    /** 长按一个条目：重命名 / 删除 / 复制路径。 */
+    /** 长按一个条目：按类型给出可用动作。 */
     private void actions(final File f) {
-        final String[] items = {"重命名", "删除", "复制路径"};
+        boolean apk = f.getName().toLowerCase().endsWith(".apk");
+        java.util.List<String> items = new java.util.ArrayList<>();
+        if (apk) items.add("安装");
+        if (!f.isDirectory()) items.add("分享");
+        if (!f.isDirectory()) items.add("用其他应用打开");
+        items.add("重命名");
+        items.add("删除");
+        items.add("复制路径");
+        final String[] arr = items.toArray(new String[0]);
+
         new AlertDialog.Builder(this, R.style.DshDialog)
                 .setTitle(f.getName())
-                .setItems(items, new DialogInterface.OnClickListener() {
+                .setItems(arr, new DialogInterface.OnClickListener() {
                     @Override public void onClick(DialogInterface d, int which) {
-                        if (which == 0) rename(f);
-                        else if (which == 1) delete(f);
-                        else copyPath(f);
+                        String what = arr[which];
+                        if ("安装".equals(what)) {
+                            String err = Apks.install(FilesActivity.this, f);
+                            if (err != null) toast(err);
+                        } else if ("分享".equals(what)) {
+                            String err = Apks.share(FilesActivity.this, f);
+                            if (err != null) toast(err);
+                        } else if ("用其他应用打开".equals(what)) {
+                            openWith(f);
+                        } else if ("重命名".equals(what)) {
+                            rename(f);
+                        } else if ("删除".equals(what)) {
+                            delete(f);
+                        } else {
+                            copyPath(f);
+                        }
                     }
                 })
                 .setNegativeButton("取消", null)
                 .show();
+    }
+
+    /** 交给系统：任何类型的文件都能试一次（APK 会走安装器）。 */
+    private void openWith(File f) {
+        try {
+            android.net.Uri uri = FileProviderX.uriFor(this, f);
+            android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_VIEW);
+            i.setDataAndType(uri, Mimes.of(f.getName()));
+            i.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(android.content.Intent.createChooser(i, "打开 " + f.getName()));
+        } catch (Throwable t) {
+            toast("没有能打开它的应用：" + t.getMessage());
+        }
     }
 
     private void rename(final File f) {

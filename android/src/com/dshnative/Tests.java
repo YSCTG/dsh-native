@@ -107,6 +107,39 @@ public final class Tests {
             total += 4; fails.add("桌面索引用例异常 " + t);
         }
 
+        // ---- 选哪个 APK 去装：优先 *-signed.apk，而不是 unsigned ----
+        try {
+            File dir = new File(c.getCacheDir(), "apksel");
+            if (!dir.isDirectory()) dir.mkdirs();
+            new File(dir, "unsigned.apk").createNewFile();
+            new File(dir, "x-signed.apk").createNewFile();
+            new File(dir, "aligned.apk").createNewFile();
+            File picked = Apks.pick(dir);
+            total++; if (picked == null || !picked.getName().endsWith("-signed.apk")) {
+                fails.add("应优先挑 *-signed.apk，实际 " + (picked == null ? "null" : picked.getName()));
+            }
+            File empty = new File(c.getCacheDir(), "apkempty");
+            if (!empty.isDirectory()) empty.mkdirs();
+            total++; if (Apks.pick(empty) != null) fails.add("空目录应返回 null");
+        } catch (Throwable e) {
+            total += 2; fails.add("APK 选择用例异常 " + e);
+        }
+
+        // ---- 列表显示：大小与项目名 ----
+        total++; if (!"512 B".equals(Apks.humanSize(512))) fails.add("humanSize 字节档错");
+        total++; if (!"2 KB".equals(Apks.humanSize(2048))) fails.add("humanSize KB 档错");
+        total++; if (!"4.7 MB".equals(Apks.humanSize(4930000))) fails.add("humanSize MB 档错");
+        total++; if (!"tarotduel".equals(Apks.projectName(new java.io.File("/x/apps/tarotduel/tarotduel-signed.apk")))) {
+            fails.add("projectName 取错");
+        }
+
+        // ---- 停止原因文案：不能把看门狗说成"你按了停止" ----
+        total++; if (!Agent.stopNote("user").contains("你按了停止")) fails.add("用户停止文案不对");
+        total++; String wt = Agent.stopNote("watchdog-tool:sh");
+        if (!wt.contains("sh") || wt.contains("你按了停止")) fails.add("工具超时文案不对");
+        total++; String wi = Agent.stopNote("watchdog-idle");
+        if (!wi.contains("150 秒") || wi.contains("你按了停止")) fails.add("空转文案不对");
+
         // ---- 崩溃日志挑拣：优先 FATAL，不刷屏 ----
         total++; String ch = ApkBuilder.crashHint(
                 "I/x: 普通行\nE/AndroidRuntime: FATAL EXCEPTION: main\n  at demo.Crashme.onCreate");

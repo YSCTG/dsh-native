@@ -2,6 +2,9 @@ name: ios-env-probe
 
 # 只为验证：从 Windows 提交、在 GitHub 的 macOS runner 上能不能拿到
 # Xcode 工具链与 iOS 模拟器。不构建任何产品代码。
+#
+# 注意：macos-latest 是 arm64 池，实测经常 "not acquired by Runner of type hosted"
+# （容量不足）。这里改成 Intel 池 macos-13，作为可行的替代。
 on:
   workflow_dispatch:
   push:
@@ -10,7 +13,8 @@ on:
 
 jobs:
   probe:
-    runs-on: macos-latest
+    runs-on: macos-13
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -22,10 +26,10 @@ jobs:
       - name: Swift 版本
         run: swift --version
 
-      - name: 可用模拟器（前 20 行）
-        run: xcrun simctl list devices available | head -20
+      - name: 可用模拟器（前 15 行）
+        run: xcrun simctl list devices available | head -15
 
-      - name: 实际启动一台模拟器并截图
+      - name: 启动一台模拟器并截图
         run: |
           set -e
           DEV=$(xcrun simctl list devices available | grep -E "iPhone" | head -1 | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')

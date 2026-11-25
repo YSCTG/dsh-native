@@ -99,6 +99,16 @@ public class MainActivity extends Activity implements Agent.Listener {
     private final java.util.Set<String> runningSessions = new java.util.HashSet<>();
     /** 最近一次收到模型/工具动静的时间；看门狗用它判断"是不是真的卡住了"。 */
     private volatile long lastTurnEventAt = 0L;
+    /**
+     * 正在跑的工具名与开始时间。
+     *
+     * 为什么需要：一次工具调用中途没有事件（模型在等工具返回）。app_run、npm_install、
+     * adb install 都是分钟级的，用"150 秒没动静"去判卡死会把正常任务掐掉。
+     */
+    private volatile String activeTool = null;
+    private volatile long activeToolAt = 0L;
+    /** 进度 chip 是不是由"工具在跑"临时占用的（真的来了待办就让位）。 */
+    private volatile boolean toolChipShown = false;
     private Mode mode;
     private Session session;
     private boolean root;
@@ -1696,6 +1706,47 @@ public class MainActivity extends Activity implements Agent.Listener {
 
         card.addView(head);
 
+        // APK 单独给一排按钮：卡片上如果只有"点标题打开"，用户根本不知道能装
+        if (lower.endsWith(".apk")) {
+            LinearLayout apkRow = new LinearLayout(this);
+            apkRow.setOrientation(LinearLayout.HORIZONTAL);
+            LinearLayout.LayoutParams arp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            arp.topMargin = dp(8);
+
+            TextView inst = new TextView(this);
+            inst.setText("安装 APK");
+            inst.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            inst.setTextColor(getColor(R.color.accent));
+            inst.setPadding(dp(14), dp(7), dp(14), dp(7));
+            inst.setBackgroundResource(R.drawable.bg_chip);
+            inst.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    String err = Apks.install(MainActivity.this, f);
+                    if (err != null) toast(err);
+                }
+            });
+            apkRow.addView(inst);
+
+            TextView share = new TextView(this);
+            share.setText("分享");
+            share.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            share.setTextColor(getColor(R.color.label_secondary));
+            share.setPadding(dp(14), dp(7), dp(14), dp(7));
+            share.setBackgroundResource(R.drawable.bg_chip);
+            LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            slp.leftMargin = dp(8);
+            share.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    String err = Apks.share(MainActivity.this, f);
+                    if (err != null) toast(err);
+                }
+            });
+            apkRow.addView(share, slp);
+            card.addView(apkRow, arp);
+        }
+
         final LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
         body.setVisibility(View.GONE);
@@ -2248,15 +2299,32 @@ public class MainActivity extends Activity implements Agent.Listener {
         }
         @Override public void onTool(String n, String d) {
             lastTurnEventAt = System.currentTimeMillis();
+            activeTool = n;
+            activeToolAt = System.currentTimeMillis();
             if (fg()) MainActivity.this.onTool(n, d);
         }
-        @Override public void onToolDone(String n, long ms) { if (fg()) MainActivity.this.onToolDone(n, ms); }
-        @Override public void onUsage(int h, int m, int o, double c) { if (fg()) MainActivity.this.onUsage(h, m, o, c); }
-        @Override public void onTurnStats(int out, long ms) { if (fg()) MainActivity.this.onTurnStats(out, ms); }
+        @Override public void onToolDone(String n, long ms) {
+            lastTurnEventAt = System.currentTimeMillis();
+            if (n != null && n.equals(activeTool)) { activeTool = null; activeToolAt = 0L; }
+            if (fg()) MainActivity.this.onToolDone(n, ms);
+        }
+        @Override public void onUsage(int h, int m, int o, double c) {
+            lastTurnEventAt = System.currentTimeMillis();
+            if (fg()) MainActivity.this.onUsage(h, m, o, c);
+        }
+        @Override public void onTurnStats(int out, long ms) {
+            lastTurnEventAt = System.currentTimeMillis();
+            if (fg()) MainActivity.this.onTurnStats(out, ms);
+        }
         @Override public void onFilesTouched(java.util.List<String> p) {
+            lastTurnEventAt = System.currentTimeMillis();
             if (fg()) MainActivity.this.onFilesTouched(p);
         }
-        @Override public void onTodo(String sum) { if (fg()) MainActivity.this.onTodo(sum); }
+        @Override public void onTodo(String sum) {
+            lastTurnEventAt = System.currentTimeMillis();
+            toolChipShown = false;          // 真待办来了，让 chip 回到待办
+            if (fg()) MainActivity.this.onTodo(sum);
+        }
         @Override public void onStatus(String st) {
             lastTurnEventAt = System.currentTimeMillis();
             if (fg()) MainActivity.this.onStatus(st);
@@ -2267,7 +2335,10 @@ public class MainActivity extends Activity implements Agent.Listener {
                     ? msg.substring(0, 40) + "…" : msg)));
         }
         @Override public void onBusy(boolean busy) { if (fg()) MainActivity.this.onBusy(busy); }
-        @Override public void onRender(String html, String url) { if (fg()) MainActivity.this.onRender(html, url); }
+        @Override public void onRender(String html, String url) {
+            lastTurnEventAt = System.currentTimeMillis();
+            if (fg()) MainActivity.this.onRender(html, url);
+        }
 
         @Override public boolean confirm(String title, String body) {
             if (fg()) return MainActivity.this.confirm(title, body);
@@ -2324,22 +2395,56 @@ public class MainActivity extends Activity implements Agent.Listener {
         ui.postDelayed(new Runnable() {
             @Override public void run() {
                 try {
-                    if (running && lastTurnEventAt > 0
-                            && System.currentTimeMillis() - lastTurnEventAt > 150000L) {
-                        android.util.Log.w("DSHN", "看门狗：这一轮 150 秒无动静，判为卡死");
+                    if (!running || lastTurnEventAt <= 0) { ui.postDelayed(this, 5000); return; }
+
+                    long now = System.currentTimeMillis();
+                    long idle = now - lastTurnEventAt;
+                    String tool = activeTool;
+                    long toolAge = (tool != null && activeToolAt > 0) ? now - activeToolAt : 0;
+
+                    // 工具在跑 ≠ 卡死：给它 10 分钟；纯模型输出无动静才按 150 秒算
+                    long limit = tool != null ? 600000L : 150000L;
+                    long waited = tool != null ? toolAge : idle;
+
+                    // 长工具期间给个可见的进度，别让界面看着像死机
+                    if (tool != null && toolAge > 15000L && genStatus != null) {
+                        if (genStatus.getVisibility() != View.VISIBLE) {
+                            genStatus.setVisibility(View.VISIBLE);
+                            toolChipShown = true;
+                        }
+                        if (toolChipShown) {
+                            genStatus.setText("⏳ " + tool + " · " + (toolAge / 1000) + " 秒");
+                        }
+                    } else if (toolChipShown && genStatus != null && tool == null) {
+                        genStatus.setVisibility(View.GONE);
+                        toolChipShown = false;
+                    }
+
+                    if (waited > limit) {
+                        android.util.Log.w("DSHN", "看门狗：工具=" + tool + " 等待 " + (waited / 1000)
+                                + " 秒无任何输出，判为卡死");
                         Agent a = currentAgent();
-                        if (a != null) a.cancel();
+                        if (a != null) a.cancel(tool != null
+                                ? ("watchdog-tool:" + tool) : "watchdog-idle");
                         if (session != null) {
                             runningSessions.remove(session.id);
                             synchronized (agentPool) { agentPool.remove(session.id); }
                         }
                         running = false;
+                        activeTool = null;
+                        activeToolAt = 0L;
+                        if (toolChipShown && genStatus != null) {
+                            genStatus.setVisibility(View.GONE);
+                            toolChipShown = false;
+                        }
                         setSendState(false);
                         if (runningSessions.isEmpty()) {
                             RunService.stop(MainActivity.this);
                             KeepAlive.release();
                         }
-                        toast("网络卡住了，已中止这一轮，可以重新发送");
+                        toast(tool != null
+                                ? ("工具 " + tool + " 运行超过 10 分钟没有任何输出，已中止这一轮")
+                                : "模型 150 秒没有输出，已中止这一轮（可以直接重发）");
                     }
                 } catch (Throwable ignored) {}
                 ui.postDelayed(this, 5000);

@@ -416,7 +416,19 @@ public final class Agent {
             } catch (Throwable ignored) {}
         }
     }
-    public void cancel() {
+    /** 谁让这一轮停下的：user（按钮）/ watchdog-idle（模型没输出）/ watchdog-tool（工具太久）。 */
+    private volatile String cancelReason = null;
+
+    public void cancel() { cancel("user"); }
+
+    /**
+     * 停止这一轮，并记下原因。
+     *
+     * 以前只有一个无参 cancel()，于是"看门狗掐的"和"用户按的"在界面上都写成
+     * 「已停止（你按了停止）」—— 用户明明没按，这比不报还糟。
+     */
+    public void cancel(String reason) {
+        if (reason != null && cancelReason == null) cancelReason = reason;
         cancelled = true;
         client.cancel();
         Shell.killCurrent();      // 正在跑的命令立刻掐掉，别等它自己超时
@@ -1713,8 +1725,23 @@ public final class Agent {
      * 而当连接被 cancel 关掉时，异常信息是 "Socket closed"，看起来像网络故障——
      * 用户根本看不出自己停的这一下才是原因。
      */
+    /** 停止原因的文案（纯函数，便于单测）。 */
+    static String stopNote(String reason) {
+        String r = reason == null ? "user" : reason;
+        if (r.startsWith("watchdog-tool:")) {
+            String tool = r.substring("watchdog-tool:".length());
+            return "已中止：工具「" + tool + "」运行超过 10 分钟没有任何输出。"
+                    + "重发一次或让我换个做法都可以。";
+        }
+        if (r.startsWith("watchdog-idle")) {
+            return "已中止：模型连续 150 秒没有任何输出（这一轮没有任何动静）。"
+                    + "可以重发一次；如果总是这样，多半是网络或服务端在卡。";
+        }
+        return "已停止（你按了停止）。想接着跑就回一句「继续」，我从断的地方接上。";
+    }
+
     private void noteStopped() {
-        String note = "已停止（你按了停止）。想接着跑就回一句「继续」，我从断的地方接上。";
+        String note = stopNote(cancelReason);
         try {
             JSONObject m = new JSONObject();
             m.put("role", "assistant");
