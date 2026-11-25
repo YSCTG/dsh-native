@@ -59,6 +59,57 @@ public final class Market {
         catch (Throwable t) { return null; }
     }
 
+
+    /**
+     * 把**电脑版市场索引**（format 1：plugins[].name + versions[] + metadata）转成我们的条目。
+     *
+     * 只做一件事：把"它是什么、怎么用"（README/描述）转成技能。
+     * 电脑插件的 JS 跑不了——手机没有 Node/DSH 运行时，这点必须诚实标注。
+     */
+    public static List<JSONObject> desktopEntries(JSONObject cat) {
+        List<JSONObject> out = new ArrayList<>();
+        try {
+            JSONArray arr = cat.optJSONArray("plugins");
+            for (int i = 0; arr != null && i < arr.length(); i++) {
+                JSONObject e = arr.optJSONObject(i);
+                if (e == null) continue;
+                String name = e.optString("name", "");
+                if (name.isEmpty()) continue;
+                // 已经在原生清单里出现过（有 tools/capabilities）就跳过
+                if (e.optJSONArray("tools") != null || e.optJSONObject("capabilities") != null) continue;
+
+                JSONObject meta = e.optJSONObject("metadata");
+                String title = meta == null ? "" : meta.optString("title", "");
+                String desc = meta == null ? "" : meta.optString("description", "");
+                JSONArray vers = e.optJSONArray("versions");
+                String ver = "";
+                if (vers != null && vers.length() > 0) {
+                    JSONObject v0 = vers.optJSONObject(0);
+                    ver = v0 == null ? vers.optString(0, "") : v0.optString("version", "");
+                }
+
+                JSONObject o = new JSONObject();
+                o.put("id", "desk_" + name.replaceAll("[^A-Za-z0-9._-]+", "_").toLowerCase());
+                o.put("name", title.isEmpty() ? name : title);
+                o.put("version", ver);
+                o.put("category", "电脑插件");
+                o.put("description", (desc.isEmpty() ? name : desc)
+                        + "（电脑插件：只能把用法转成技能，原代码无法在手机上运行）");
+                o.put("npm", name);
+                o.put("_desktop", true);
+                o.put("tools", new JSONArray());
+                o.put("skills", new JSONArray());
+                out.add(o);
+            }
+        } catch (Throwable ignored) {}
+        return out;
+    }
+
+    /** 这个条目是不是电脑版索引来的。 */
+    public static boolean isDesktopEntry(JSONObject p) {
+        return p != null && p.optBoolean("_desktop", false);
+    }
+
     public static List<JSONObject> plugins(Context c) {
         List<JSONObject> out = new ArrayList<>();
         JSONObject cat = catalog(c);
@@ -69,6 +120,8 @@ public final class Market {
             JSONObject p = arr.optJSONObject(i);
             if (p != null) out.add(p);
         }
+        // 同一份文档里可能同时有原生清单与电脑版索引；后者转成"仅技能"的条目
+        out.addAll(desktopEntries(cat));
         return out;
     }
 
@@ -134,6 +187,20 @@ public final class Market {
             os.write(plugin.toString().getBytes("UTF-8"));
             os.close();
         } catch (Throwable ignored) {}
+    }
+
+
+    /**
+     * 安装一个电脑版插件条目：拉 npm 元数据 + README，转成"只含技能"的清单。
+     * 失败时返回原因，由界面显示（网络/包名不存在都可能）。
+     */
+    public static String convertDesktop(Context c, JSONObject entry) {
+        String npm = entry.optString("npm", "");
+        if (npm.isEmpty()) return "错误：这条没有 npm 包名";
+        DesktopImport.Result r = DesktopImport.fromNpm(c, npm);
+        if (r.manifest == null) return "转换失败：" + (r.error == null ? "未知原因" : r.error);
+        DesktopImport.install(c, r.manifest);
+        return null;
     }
 
     public static void uninstall(Context c, String id) {

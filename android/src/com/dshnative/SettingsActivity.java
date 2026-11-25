@@ -453,11 +453,28 @@ public class SettingsActivity extends Activity {
                 .setMessage(sb.toString())
                 .setNegativeButton("关闭", null);
         if (!installed || updatable) {
-            b.setPositiveButton(updatable ? "更新" : "安装", new DialogInterface.OnClickListener() {
+            final boolean desktop = Market.isDesktopEntry(mp);
+            b.setPositiveButton(updatable ? "更新" : (desktop ? "转换并安装（仅技能）" : "安装"),
+                    new DialogInterface.OnClickListener() {
                 @Override public void onClick(DialogInterface d, int w) {
-                    Market.install(SettingsActivity.this, mp);
-                    toast("已安装，新会话生效");
-                    recreate();
+                    if (desktop) {
+                        toast("正在从 npm 拉取并转换…");
+                        new Thread(new Runnable() {
+                            @Override public void run() {
+                                final String err = Market.convertDesktop(SettingsActivity.this, mp);
+                                runOnUiThread(new Runnable() {
+                                    @Override public void run() {
+                                        toast(err == null ? "已转换并安装（技能），新会话生效" : err);
+                                        recreate();
+                                    }
+                                });
+                            }
+                        }).start();
+                    } else {
+                        Market.install(SettingsActivity.this, mp);
+                        toast("已安装，新会话生效");
+                        recreate();
+                    }
                 }
             });
         } else {
