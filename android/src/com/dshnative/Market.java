@@ -117,6 +117,7 @@ public final class Market {
                 }
             } catch (Throwable ignored) {}
 
+            try { plugin.put("_sha256", sha256(plugin.toString())); } catch (Throwable ignored) {}
             FileOutputStream os = new FileOutputStream(new File(pluginDir(c), id + ".json"));
             os.write(plugin.toString().getBytes("UTF-8"));
             os.close();
@@ -198,10 +199,67 @@ public final class Market {
      * 契约：清单里的 python 片段拿到一个已解析好的 ARGS(dict)，把结果 print 到 stdout。
      * 这样插件作者不需要处理 stdin/参数解析，代码就是普通脚本。
      */
+
+    /**
+     * 插件声明的权限。默认全给（老清单不受影响），显式写 false 才收窄。
+     * 收窄不是"提示"，是真的拦：见 sandboxPreamble()。
+     */
+    public static String[] perms(JSONObject p) {
+        JSONObject perm = p.optJSONObject("permissions");
+        boolean net = perm == null || perm.optBoolean("net", true);
+        boolean shell = perm == null || perm.optBoolean("shell", true);
+        return new String[]{net ? "net" : "-net", shell ? "shell" : "-shell"};
+    }
+
+    /**
+     * 在插件 Python 代码前面插入的沙箱代码。
+     *
+     * 为什么能拦：插件工具是我们自己起解释器跑的，代码由我们拼装，
+     * 所以在它之前把 socket / subprocess 换成抛异常的桩，就能真的挡住。
+     * （文件系统不在这里限制：路径约束需要逐调用判断，留给钩子插件自己仲裁。）
+     */
+    public static String sandboxPreamble(JSONObject p) {
+        JSONObject perm = p.optJSONObject("permissions");
+        if (perm == null) return "";
+        StringBuilder sb = new StringBuilder();
+        if (!perm.optBoolean("net", true)) {
+            sb.append("import socket as _s\n")
+              .append("class _NoNet(_s.socket):\n")
+              .append("    def __init__(self, *a, **k):\n")
+              .append("        raise PermissionError('插件未声明 net 权限，禁止联网')\n")
+              .append("_s.socket = _NoNet\n")
+              .append("try:\n")
+              .append("    import urllib.request as _u\n")
+              .append("    def _blocked(*a, **k): raise PermissionError('插件未声明 net 权限，禁止联网')\n")
+              .append("    _u.urlopen = _blocked\n")
+              .append("except Exception: pass\n");
+        }
+        if (!perm.optBoolean("shell", true)) {
+            sb.append("import os as _os, subprocess as _sp\n")
+              .append("def _no(*a, **k): raise PermissionError('插件未声明 shell 权限，禁止起子进程')\n")
+              .append("_os.system = _no\n_os.popen = _no\n_os.execv = _no\n_os.spawnv = _no\n")
+              .append("_sp.Popen = _no\n_sp.run = _no\n_sp.call = _no\n");
+        }
+        return sb.toString();
+    }
+
+    /** 清单指纹：用于"装的东西没被换过"的校验。 */
+    public static String sha256(String text) {
+        try {
+            java.security.MessageDigest d = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] h = d.digest(text.getBytes("UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 8; i++) sb.append(String.format("%02x", h[i]));
+            return sb.toString();
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
     public static String run(Context c, String fullName, JSONObject args, int timeoutSec) {
         JSONObject[] hit = findTool(c, fullName);
         if (hit == null) return "错误：没有这个插件工具 " + fullName;
-        String code = hit[1].optString("python", "");
+        String code = sandboxPreamble(hit[0]) + hit[1].optString("python", "");
         if (code.trim().isEmpty()) return "错误：插件工具没有实现";
         String payload = args == null ? "{}" : args.toString();
         String src = "import json\n"

@@ -622,8 +622,12 @@ public class SettingsActivity extends Activity {
         // 市场装的原生插件：和内置插件一样用开关控制启停；卸载放到长按
         for (final JSONObject np : Market.installedPlugins(this)) {
             final String nid = np.optString("id", "");
-            switchRow(dshpCard, np.optString("name", nid),
-                    "v" + np.optString("version", "") + " · 市场插件 · 长按卸载",
+            String[] pm = Market.perms(np);
+            String permLine = "v" + np.optString("version", "") + " · 市场插件 · "
+                    + ("-net".equals(pm[0]) ? "禁联网" : "可联网") + " · "
+                    + ("-shell".equals(pm[1]) ? "禁命令" : "可执行命令")
+                    + (np.optString("_sha256", "").isEmpty() ? "" : " · 校验 " + np.optString("_sha256", ""));
+            switchRow(dshpCard, np.optString("name", nid), permLine,
                     Market.isOn(this, nid),
                     new CompoundButton.OnCheckedChangeListener() {
                         @Override public void onCheckedChanged(CompoundButton btn, boolean on) {
