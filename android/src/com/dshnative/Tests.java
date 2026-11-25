@@ -107,6 +107,26 @@ public final class Tests {
             total += 4; fails.add("桌面索引用例异常 " + t);
         }
 
+        // ---- adb devices 解析：只认 device，不认 unauthorized/offline ----
+        total++; if (!"127.0.0.1:5555".equals(AdbCli.parseSerial(
+                "List of devices attached\n127.0.0.1:5555\tdevice\n"))) {
+            fails.add("应认出 device 行");
+        }
+        total++; if (!AdbCli.parseSerial(
+                "List of devices attached\n127.0.0.1:5555\tunauthorized\n").isEmpty()) {
+            fails.add("unauthorized 不该当成可用设备");
+        }
+        total++; if (!AdbCli.parseSerial("List of devices attached\n\n").isEmpty()) {
+            fails.add("空列表应返回空");
+        }
+        total++; if (!AdbCli.looksUnauthorized(
+                "List of devices attached\n127.0.0.1:5555\tunauthorized\n")) {
+            fails.add("应识别出 unauthorized");
+        }
+        total++; if (AdbCli.looksUnauthorized("List of devices attached\n")) {
+            fails.add("没 unauthorized 时不该误报");
+        }
+
         // ---- 附件卡片判定：只有被"点名"的才挂卡 ----
         File tmp = null;
         try {

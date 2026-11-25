@@ -44,7 +44,8 @@ public final class ApkBuilder {
 
             String manifest = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
                     + "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n"
-                    + "    package=\"" + pkg + "\">\n"
+                    + "    package=\"" + pkg + "\"\n"
+                    + "    android:versionCode=\"1\" android:versionName=\"1.0\">\n"
                     + "    <uses-sdk android:minSdkVersion=\"26\" android:targetSdkVersion=\"28\" />\n"
                     + "    <application android:label=\"" + cls + "\">\n"
                     + "        <activity android:name=\"" + pkg + "." + cls + "\" android:exported=\"true\">\n"

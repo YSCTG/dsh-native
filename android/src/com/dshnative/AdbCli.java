@@ -52,17 +52,30 @@ public final class AdbCli {
         Prefs.get(c).edit().putBoolean("adb_shell_enabled", on).apply();
     }
 
-    /** 已连上的设备（从 adb devices 里取，只认 127.0.0.1/localhost 或我们记录过的串口）。 */
-    public static String serial(Context c) {
-        String out = run(c, new String[]{"devices"}, 8000);
-        for (String line : out.split("\n")) {
+    /**
+     * 从 {@code adb devices} 的输出里挑一个可用的串口（纯函数，便于单测）。
+     * 只认状态为 device 的行；unauthorized / offline 都不算。
+     */
+    public static String parseSerial(String devicesOutput) {
+        if (devicesOutput == null) return "";
+        for (String line : devicesOutput.split("\n")) {
             String t = line.trim();
-            if (!t.endsWith("device") || t.startsWith("List of")) continue;
-            String s = t.substring(0, t.length() - "device".length()).trim();
-            if (s.isEmpty() || s.startsWith("*")) continue;
-            return s;
+            if (t.isEmpty() || t.startsWith("List of") || t.startsWith("*")) continue;
+            String[] parts = t.split("\\s+");
+            if (parts.length < 2) continue;
+            if ("device".equals(parts[parts.length - 1])) return parts[0];
         }
         return "";
+    }
+
+    /** 输出里有没有"连上了但没授权"。 */
+    public static boolean looksUnauthorized(String devicesOutput) {
+        return devicesOutput != null && devicesOutput.contains("unauthorized");
+    }
+
+    /** 已连上的设备串口。 */
+    public static String serial(Context c) {
+        return parseSerial(run(c, new String[]{"devices"}, 8000));
     }
 
     public static boolean connected(Context c) {
@@ -88,6 +101,38 @@ public final class AdbCli {
         return out.isEmpty() ? "无输出（可能已配对）" : out;
     }
 
+    /** 候补连接地址：上次成功的、以及默认的本地 5555。 */
+    private static String[] candidates(Context c) {
+        String last = Prefs.get(c).getString("adb_host", "");
+        if (last == null || last.trim().isEmpty()) return new String[]{"127.0.0.1:5555"};
+        return new String[]{last.trim(), "127.0.0.1:5555"};
+    }
+
+    /**
+     * 确保有一条可用的 shell 通道：没有就重试连接，最多两轮。
+     * 返回串口，失败返回空串。
+     */
+    public static String ensureConnected(Context c) {
+        if (!installed(c)) return "";
+        String s = serial(c);
+        if (!s.isEmpty()) return s;
+        String dev = run(c, new String[]{"devices"}, 8000);
+        if (looksUnauthorized(dev)) return "";      // 授权问题，重连也没用
+        for (int round = 0; round < 2; round++) {
+            for (String h : candidates(c)) {
+                run(c, new String[]{"connect", h}, 15000);
+                s = serial(c);
+                if (!s.isEmpty()) {
+                    Prefs.get(c).edit().putString("adb_host", h).apply();
+                    Log.i(TAG, "adb 自愈成功 " + h);
+                    return s;
+                }
+            }
+            try { Thread.sleep(600); } catch (InterruptedException ignored) {}
+        }
+        return "";
+    }
+
     /** 连接某个 端口/主机；不传则连 127.0.0.1:5555。 */
     public static String connect(Context c, String hostPort) {
         String err = AbTools.ensure(c);
@@ -100,6 +145,7 @@ public final class AdbCli {
                     + "以及 adbd 是否在 " + target + " 上监听（插电脑执行一次 adb tcpip 5555）";
         }
         Log.i(TAG, "adb connect " + target + " → " + out.replace("\n", " "));
+        if (out.contains("connected to")) Prefs.get(c).edit().putString("adb_host", target).apply();
         Audit.record(c, "adb", "连接", target + " · " + oneLine(out));
         return out;
     }
@@ -111,11 +157,15 @@ public final class AdbCli {
     public static String shell(Context c, String cmd, int timeoutMs) {
         if (!enabled(c)) return "错误：Android shell 未启用（设置 → Android shell 打开后再用）";
         if (cmd == null || cmd.trim().isEmpty()) return "错误：命令为空";
-        String s = serial(c);
+        String s = ensureConnected(c);
         if (s.isEmpty()) {
-            String e = connect(c, "127.0.0.1:5555");
-            s = serial(c);
-            if (s.isEmpty()) return "错误：没有已连接的设备（" + oneLine(e) + "）";
+            String dev = run(c, new String[]{"devices"}, 8000);
+            if (looksUnauthorized(dev)) {
+                return "错误：设备未授权（unauthorized）。在设置里导入手已授权的 adbkey，"
+                        + "或用无线调试配对码配对后再连接。";
+            }
+            return "错误：连不上 adbd。adbd 需要在 TCP 上监听：插电脑执行一次 adb tcpip 5555，"
+                    + "或打开无线调试配对（当前候补地址 " + java.util.Arrays.toString(candidates(c)) + "）";
         }
         String out = run(c, new String[]{"-s", s, "shell", cmd}, timeoutMs);
         Audit.record(c, "adb", "shell", oneLine(cmd) + " → " + oneLine(out));
@@ -153,6 +203,34 @@ public final class AdbCli {
         } catch (Throwable t) {
             return "错误：" + t;
         }
+    }
+
+
+    /**
+     * 一键安装：{@code pm install -r <path>}。
+     *
+     * 为什么用 shell 而不是 Intent：应用内起安装器要用户点一次"安装"，
+     * 而 shell 身份下 pm install 是直接装完，适合"编完立刻装"的闭环。
+     * 只能装 workspace 这类 shell 读得到的位置（app 私有目录不行）。
+     */
+    public static String install(Context c, String apkPath) {
+        if (!enabled(c)) return "错误：Android shell 未启用（设置 → Android shell 打开后再用）";
+        String path = apkPath == null ? "" : apkPath.trim();
+        if (path.isEmpty()) return "错误：apk 路径为空";
+        if (!path.startsWith("/")) return "错误：请给绝对路径（例 /sdcard/DSHNative/apps/hello/hello-signed.apk）";
+        // pm install 的 system_server 读不了 /sdcard（SELinux: fuse），
+        // 必须先由 shell 拷到 /data/local/tmp 再装 —— 这是它自己的报错给的建议。
+        String staged = "/data/local/tmp/dsh-install.apk";
+        String cp = shell(c, "cp -f \"" + path + "\" " + staged + " && ls -l " + staged, 60000);
+        if (cp.contains("No such file") || cp.contains("Permission denied")) {
+            return "错误：复制 APK 到 /data/local/tmp 失败：" + oneLine(cp);
+        }
+        String out = shell(c, "pm install -r " + staged, 120000);
+        shell(c, "rm -f " + staged, 20000);
+        Log.i(TAG, "adb install " + path + " → " + oneLine(out));
+        Audit.record(c, "adb", "安装", path + " · " + oneLine(out));
+        if (out.contains("Success")) return "安装成功：" + path;
+        return out.isEmpty() ? "安装没有输出（可能失败）" : out;
     }
 
     /** 把本机 adb 跑起来；返回合并输出。 */

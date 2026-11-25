@@ -232,14 +232,17 @@ final class ToolCatalog {
                     "设备内 adb：以 shell 身份（uid 2000）做 app 身份做不到的事。"
                             + "action=status 看状态；connect 连本地端口；pair 用无线调试的配对码配一次；"
                             + "shell 执行命令（settings put / pm grant / pm install / screencap / dumpsys / logcat）；"
+                            + "install 用 pm install -r 直接装 workspace 里的 APK（编完即装）；"
                             + "import_key 导入一把已被本机授权的 adb 私钥（无线调试不可用时用这个）。"
                             + "前提：设置里打开「Android shell」，且 adbd 已在 TCP 上监听"
                             + "（插电脑执行一次 adb tcpip 5555，或用无线调试配对）。没连上时 shell 直接报错，"
                             + "不会悄悄退回 app 身份。",
-                    schema(props(new String[]{"action", "host", "code", "command", "timeout"},
-                                 new String[]{"string", "string", "string", "string", "integer"},
-                                 new String[]{"status|connect|pair|shell|import_key", "主机:端口（connect/pair）",
-                                         "6 位配对码（pair）", "要执行的命令（shell）",
+                    schema(props(new String[]{"action", "host", "code", "command", "path", "timeout"},
+                                 new String[]{"string", "string", "string", "string", "string", "integer"},
+                                 new String[]{"status|connect|pair|shell|install|import_key",
+                                         "主机:端口（connect/pair）", "6 位配对码（pair）",
+                                         "要执行的命令（shell）",
+                                         "APK 或 adbkey 的绝对路径（install / import_key）",
                                          "超时毫秒（默认 20000）"}),
                            new String[]{"action"})));
 
