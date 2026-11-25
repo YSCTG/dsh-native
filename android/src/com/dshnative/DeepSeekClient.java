@@ -209,7 +209,9 @@ public final class DeepSeekClient {
         c.setRequestMethod("POST");
         c.setDoOutput(true);
         c.setConnectTimeout(20000);
-        c.setReadTimeout(180000);
+        // 流式连接读超时。原来 180 秒，网络一抖就要干等三分钟才报错，
+        // 这段时间里用户发的消息全被当成"插话"，看起来就是"发什么都没用"。
+        c.setReadTimeout(60000);
         c.setRequestProperty("Content-Type", "application/json");
         c.setRequestProperty("Accept", "text/event-stream");
         c.setRequestProperty("Authorization", "Bearer " + apiKey);

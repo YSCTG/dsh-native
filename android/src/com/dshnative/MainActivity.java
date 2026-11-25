@@ -97,6 +97,8 @@ public class MainActivity extends Activity implements Agent.Listener {
     private static final int AGENT_POOL_MAX = 6;
     /** 正在跑的会话 id（可以有多个并行）。 */
     private final java.util.Set<String> runningSessions = new java.util.HashSet<>();
+    /** 最近一次收到模型/工具动静的时间；看门狗用它判断"是不是真的卡住了"。 */
+    private volatile long lastTurnEventAt = 0L;
     private Mode mode;
     private Session session;
     private boolean root;
@@ -184,6 +186,8 @@ public class MainActivity extends Activity implements Agent.Listener {
         try {
             Session.pruneEmpty(this, prefs.getString("session_id", ""));
         } catch (Throwable ignored) {}
+
+        startStallWatchdog();
 
         // 插件目录默认指向官方示例源（用户可在设置里改成任何同格式地址）
         try {
@@ -2099,7 +2103,12 @@ public class MainActivity extends Activity implements Agent.Listener {
                 addSteerChip(s);
                 toast("已插话，当前任务不会中断");
             } else if (!s.isEmpty()) {
-                toast("这一轮还没连上，稍等一下再发");
+                // 以前这里什么都不说，于是"发什么都没用"
+                long idle = lastTurnEventAt == 0 ? 0
+                        : (System.currentTimeMillis() - lastTurnEventAt) / 1000;
+                toast(running && idle > 60
+                        ? "这一轮好像卡住了（" + idle + " 秒没动静）。点 ■ 停止，或等它自己超时"
+                        : "这一轮还没连上，稍等一下再发");
             }
             return;
         }
@@ -2146,6 +2155,7 @@ public class MainActivity extends Activity implements Agent.Listener {
         final String sendTitle = session == null ? "" : session.title;
         if (sendSid != null) runningSessions.add(sendSid);
         abortRequested = false;
+        lastTurnEventAt = System.currentTimeMillis();
         assistantClosed = false;
         fileCardsShown.clear();
         pendingTools.clear();
@@ -2259,9 +2269,18 @@ public class MainActivity extends Activity implements Agent.Listener {
 
         private boolean fg() { return session != null && sid != null && sid.equals(session.id); }
 
-        @Override public void onAssistant(String d) { if (fg()) MainActivity.this.onAssistant(d); }
-        @Override public void onReasoning(String d) { if (fg()) MainActivity.this.onReasoning(d); }
-        @Override public void onTool(String n, String d) { if (fg()) MainActivity.this.onTool(n, d); }
+        @Override public void onAssistant(String d) {
+            lastTurnEventAt = System.currentTimeMillis();
+            if (fg()) MainActivity.this.onAssistant(d);
+        }
+        @Override public void onReasoning(String d) {
+            lastTurnEventAt = System.currentTimeMillis();
+            if (fg()) MainActivity.this.onReasoning(d);
+        }
+        @Override public void onTool(String n, String d) {
+            lastTurnEventAt = System.currentTimeMillis();
+            if (fg()) MainActivity.this.onTool(n, d);
+        }
         @Override public void onToolDone(String n, long ms) { if (fg()) MainActivity.this.onToolDone(n, ms); }
         @Override public void onUsage(int h, int m, int o, double c) { if (fg()) MainActivity.this.onUsage(h, m, o, c); }
         @Override public void onTurnStats(int out, long ms) { if (fg()) MainActivity.this.onTurnStats(out, ms); }
@@ -2269,7 +2288,10 @@ public class MainActivity extends Activity implements Agent.Listener {
             if (fg()) MainActivity.this.onFilesTouched(p);
         }
         @Override public void onTodo(String sum) { if (fg()) MainActivity.this.onTodo(sum); }
-        @Override public void onStatus(String st) { if (fg()) MainActivity.this.onStatus(st); }
+        @Override public void onStatus(String st) {
+            lastTurnEventAt = System.currentTimeMillis();
+            if (fg()) MainActivity.this.onStatus(st);
+        }
         @Override public void onError(String msg) {
             if (fg()) MainActivity.this.onError(msg);
             else toast("后台会话出错：" + (msg == null ? "" : (msg.length() > 40
@@ -2320,6 +2342,40 @@ public class MainActivity extends Activity implements Agent.Listener {
                 }
             }
         } catch (Throwable ignored) {}
+    }
+
+    /**
+     * 网络卡死看门狗。
+     *
+     * 连接挂住时 readTimeout 到期前，这一轮会一直占着 running，用户发的消息被当成"插话"，
+     * 失败又不提示——表现就是"发什么都没用"。这里在 150 秒没有任何动静时把它判死并收拾干净，
+     * 让人能重新发消息。
+     */
+    private void startStallWatchdog() {
+        ui.postDelayed(new Runnable() {
+            @Override public void run() {
+                try {
+                    if (running && lastTurnEventAt > 0
+                            && System.currentTimeMillis() - lastTurnEventAt > 150000L) {
+                        android.util.Log.w("DSHN", "看门狗：这一轮 150 秒无动静，判为卡死");
+                        Agent a = currentAgent();
+                        if (a != null) a.cancel();
+                        if (session != null) {
+                            runningSessions.remove(session.id);
+                            synchronized (agentPool) { agentPool.remove(session.id); }
+                        }
+                        running = false;
+                        setSendState(false);
+                        if (runningSessions.isEmpty()) {
+                            RunService.stop(MainActivity.this);
+                            KeepAlive.release();
+                        }
+                        toast("网络卡住了，已中止这一轮，可以重新发送");
+                    }
+                } catch (Throwable ignored) {}
+                ui.postDelayed(this, 5000);
+            }
+        }, 5000);
     }
 
     private Agent currentAgent() {
