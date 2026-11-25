@@ -138,8 +138,74 @@ public final class Market {
 
     public static void uninstall(Context c, String id) {
         try {
-            File f = new File(pluginDir(c), id + ".json");
-            if (f.isFile()) f.delete();
+            // 1) 清单
+            new File(pluginDir(c), id + ".json").delete();
+            // 2) 这个插件带来的附属目录：MCP 脚本、钩子脚本
+            // 附属目录的命名有三种：mcp_<id>、mcp_<id>_hook<N>、<id>_hook<N>
+            File[] all = pluginDir(c).listFiles();
+            if (all != null) {
+                for (File f : all) {
+                    if (!f.isDirectory()) continue;
+                    String n = f.getName();
+                    if (n.equals("mcp_" + id) || n.startsWith("mcp_" + id + "_")
+                            || n.startsWith(id + "_hook")) {
+                        deleteTree(f);
+                    }
+                }
+            }
+            // 3) 偏好：配置、开关、审计
+            Prefs.get(c).edit()
+                    .remove("plugin_cfg_" + id)
+                    .remove("plugin_on_" + id)
+                    .remove("audit_" + id)
+                    .apply();
+            // 4) 合并进技能表的条目
+            removeSkills(c, id);
+            android.util.Log.i("DSHN", "已卸载插件 " + id + "（清了脚本、配置与审计）");
+        } catch (Throwable ignored) {}
+    }
+
+
+    /** 读一个小文本文件（技能表、清单等）。 */
+    static String readTextFile(File f) {
+        try {
+            java.io.BufferedReader br = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(new java.io.FileInputStream(f), "UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) sb.append(line).append('\n');
+            br.close();
+            return sb.toString();
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    private static void deleteTree(File f) {
+        if (f == null || !f.exists()) return;
+        File[] kids = f.listFiles();
+        if (kids != null) for (File k : kids) deleteTree(k);
+        f.delete();
+    }
+
+    /** 从 skills-extra.json 里摘掉这个插件贡献的技能。 */
+    private static void removeSkills(Context c, String pluginId) {
+        try {
+            File f = new File(c.getFilesDir(), "skills-extra.json");
+            if (!f.isFile()) return;
+            String text = readTextFile(f);
+            org.json.JSONArray arr = new org.json.JSONArray(text);
+            org.json.JSONArray kept = new org.json.JSONArray();
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                if (pluginId.equals(o.optString("plugin", ""))) continue;
+                kept.put(o);
+            }
+            java.io.FileOutputStream os = new java.io.FileOutputStream(f);
+            os.write(kept.toString().getBytes("UTF-8"));
+            os.close();
+            Skill.invalidate();
         } catch (Throwable ignored) {}
     }
 

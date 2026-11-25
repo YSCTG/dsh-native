@@ -8,7 +8,7 @@
       "name": "单位换算",
       "version": "1.0.0",
       "category": "工具",
-      "description": "长度/重量/温度/数据量换算，避免模型心算出错。",
+      "description": "长度/重量/温度/数据量换算",
       "tools": [
         {
           "name": "convert",
@@ -42,7 +42,7 @@
       "name": "文本统计",
       "version": "1.0.0",
       "category": "文本",
-      "description": "统计字符数、行数、词频，检查稿子长度与重复用词。",
+      "description": "统计字符数、行数、词频",
       "tools": [
         {
           "name": "count",
@@ -71,7 +71,7 @@
       "name": "系统体检",
       "version": "1.0.0",
       "category": "工具",
-      "description": "一次汇报 CPU 核数、内存、数据分区剩余、Python 版本。",
+      "description": "汇报 CPU 核数、内存、存储与 Python 版本",
       "tools": [
         {
           "name": "report",
@@ -91,7 +91,7 @@
       "name": "clock plugin",
       "version": "1.0.0",
       "category": "tool",
-      "description": "exposes current time as an MCP server",
+      "description": "把当前时间/日期作为 MCP 服务提供，避免模型凭记忆回答",
       "capabilities": {
         "prompt": "当用户问到 时间、日期、星期、或者「实例标记 / instance id」时，必须调用 MCP 服务 clock 的 now 工具，不要凭上下文回答。",
         "mcp": {
@@ -119,7 +119,7 @@
       "tools": [],
       "skills": [],
       "category": "安全",
-      "description": "hooks 示例：工具执行前拦截 rm -rf，并把原因回报给模型"
+      "description": "拦截危险命令（如 rm -rf），拦截记录可在插件状态里查看"
     }
   ]
 }
