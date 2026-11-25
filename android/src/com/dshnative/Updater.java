@@ -208,6 +208,7 @@ public final class Updater {
 
     /** 下载 APK 到缓存目录，直连不通就换镜像。 */
     public static File download(Context c, Info info, Progress p) throws Exception {
+        cancelRequested = false;
         Exception last = null;
         // 1) 清单里指定的下载地址（可放国内对象存储，优先）
         java.util.List<String> urls = new java.util.ArrayList<>();
@@ -280,6 +281,9 @@ public final class Updater {
             a.startActivity(i);
         } catch (Throwable ignored) {}
     }
+
+    /** 用户点了取消。下载循环每读一块检查一次。 */
+    public static volatile boolean cancelRequested = false;
 
     /** 下载进度回调。 */
     public interface Progress {

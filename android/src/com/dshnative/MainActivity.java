@@ -2007,23 +2007,61 @@ public class MainActivity extends Activity implements Agent.Listener {
             return;
         }
         android.util.Log.i("DSHN", "更新 开始下载 " + info.apkUrl);
-        toast("开始下载 " + info.tag + "…");
+
+        final int[] lastPct = {-2};
+
+        // 真进度条：总大小已知就显示百分比，未知就显示已下载量
+        final android.widget.ProgressBar bar = new android.widget.ProgressBar(this, null,
+                android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(100);
+        bar.setProgress(0);
+        final TextView pct = new TextView(this);
+        pct.setText("正在下载 " + info.tag + "（0%）");
+        pct.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        pct.setTextColor(getColor(R.color.label_secondary));
+        LinearLayout pbox = new LinearLayout(this);
+        pbox.setOrientation(LinearLayout.VERTICAL);
+        pbox.setPadding(dp(22), dp(18), dp(22), dp(6));
+        pbox.addView(bar);
+        pbox.addView(pct);
+        final AlertDialog pdlg = new AlertDialog.Builder(this, R.style.DshDialog)
+                .setTitle("更新 " + info.tag)
+                .setView(pbox)
+                .setNegativeButton("取消", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        Updater.cancelRequested = true;
+                        toast("已取消下载");
+                    }
+                })
+                .setCancelable(false)
+                .show();
         new Thread(new Runnable() {
             @Override public void run() {
                 try {
                     File apk = Updater.download(MainActivity.this, info,
                             new Updater.Progress() {
-                                @Override public void onProgress(long got, long total) {
-                                    // 进度只打日志，避免每 64KB 弹一次 toast
-                                    if (total > 0 && got % (8L * 1024 * 1024) < 64 * 1024) {
-                                        android.util.Log.i("DSHN", "更新下载 " + got / 1024 / 1024
-                                                + "/" + total / 1024 / 1024 + " MB");
-                                    }
+                                @Override public void onProgress(final long got, final long total) {
+                                    final int p2 = total > 0 ? (int) (got * 100 / total) : -1;
+                                    if (p2 == lastPct[0]) return;
+                                    lastPct[0] = p2;
+                                    ui.post(new Runnable() {
+                                        @Override public void run() {
+                                            try {
+                                                bar.setProgress(Math.max(0, p2));
+                                                pct.setText(p2 >= 0
+                                                        ? String.format("正在下载 %s（%d%%）· %.1f/%.1f MB",
+                                                            info.tag, p2, got / 1048576.0, total / 1048576.0)
+                                                        : String.format("正在下载 %s · %.1f MB",
+                                                            info.tag, got / 1048576.0));
+                                            } catch (Throwable ignored) {}
+                                        }
+                                    });
                                 }
                             });
                     ui.post(new Runnable() {
                         @Override public void run() {
                             android.util.Log.i("DSHN", "更新 下载完成，转安装器");
+                            try { if (pdlg.isShowing()) pdlg.dismiss(); } catch (Throwable ignored) {}
                             toast("下载完成，交给系统安装");
                         }
                     });
@@ -2032,6 +2070,7 @@ public class MainActivity extends Activity implements Agent.Listener {
                     ui.post(new Runnable() {
                         @Override public void run() {
                             android.util.Log.i("DSHN", "更新 下载失败: " + e);
+                            try { if (pdlg.isShowing()) pdlg.dismiss(); } catch (Throwable ignored) {}
                             toast("下载失败：" + e.getMessage());
                         }
                     });
