@@ -93,14 +93,33 @@
       "category": "tool",
       "description": "exposes current time as an MCP server",
       "capabilities": {
-        "prompt": "when the user asks the time, date or weekday, call the MCP server 'clock' tool 'now' instead of guessing",
+        "prompt": "当用户问到 时间、日期、星期、或者「实例标记 / instance id」时，必须调用 MCP 服务 clock 的 now 工具，不要凭上下文回答。",
         "mcp": {
           "file": "server.py",
-          "code": "import sys, json, datetime\n\ndef main():\n    for line in sys.stdin:\n        line = line.strip()\n        if not line:\n            continue\n        try:\n            req = json.loads(line)\n        except Exception:\n            continue\n        mid = req.get(\"id\")\n        method = req.get(\"method\", \"\")\n        if method == \"initialize\":\n            res = {\"protocolVersion\": \"2024-11-05\",\n                   \"capabilities\": {\"tools\": {}},\n                   \"serverInfo\": {\"name\": \"clock\", \"version\": \"1.0.0\"}}\n        elif method == \"notifications/initialized\":\n            continue\n        elif method == \"tools/list\":\n            res = {\"tools\": [{\"name\": \"now\", \"description\": \"返回当前日期时间\",\n                              \"inputSchema\": {\"type\": \"object\", \"properties\": {}}}]}\n        elif method == \"tools/call\":\n            name = (req.get(\"params\") or {}).get(\"name\")\n            if name != \"now\":\n                res = {\"content\": [{\"type\": \"text\", \"text\": \"unknown tool\"}], \"isError\": True}\n            else:\n                t = datetime.datetime.now().strftime(\"%Y-%m-%d %H:%M:%S\")\n                res = {\"content\": [{\"type\": \"text\", \"text\": \"current time: \" + t}]}\n        else:\n            res = {}\n        sys.stdout.write(json.dumps({\"jsonrpc\": \"2.0\", \"id\": mid, \"result\": res}, ensure_ascii=False) + \"\\n\")\n        sys.stdout.flush()\n\nmain()\n"
+          "code": "import sys, json, datetime\n\ndef main():\n    for line in sys.stdin:\n        line = line.strip()\n        if not line:\n            continue\n        try:\n            req = json.loads(line)\n        except Exception:\n            continue\n        mid = req.get(\"id\")\n        method = req.get(\"method\", \"\")\n        if method == \"initialize\":\n            res = {\"protocolVersion\": \"2024-11-05\",\n                   \"capabilities\": {\"tools\": {}},\n                   \"serverInfo\": {\"name\": \"clock\", \"version\": \"1.0.0\"}}\n        elif method == \"notifications/initialized\":\n            continue\n        elif method == \"tools/list\":\n            res = {\"tools\": [{\"name\": \"now\", \"description\": \"返回当前日期时间\",\n                              \"inputSchema\": {\"type\": \"object\", \"properties\": {}}}]}\n        elif method == \"tools/call\":\n            name = (req.get(\"params\") or {}).get(\"name\")\n            if name != \"now\":\n                res = {\"content\": [{\"type\": \"text\", \"text\": \"unknown tool\"}], \"isError\": True}\n            else:\n                t = datetime.datetime.now().strftime(\"%Y-%m-%d %H:%M:%S\")\n                res = {\"content\": [{\"type\": \"text\", \"text\": \"instance-id: QX7M2 / current time: \" + t}]}\n        else:\n            res = {}\n        sys.stdout.write(json.dumps({\"jsonrpc\": \"2.0\", \"id\": mid, \"result\": res}, ensure_ascii=False) + \"\\n\")\n        sys.stdout.flush()\n\nmain()\n"
         }
       },
       "tools": [],
       "skills": []
+    },
+    {
+      "id": "guard",
+      "name": "命令守护",
+      "version": "1.0.0",
+      "capabilities": {
+        "prompt": "no special instructions",
+        "hooks": [
+          {
+            "on": "tool.before",
+            "file": "guard.py",
+            "code": "import sys, json\ntry:\n    req = json.loads(sys.stdin.readline())\nexcept Exception:\n    print(json.dumps({\"allow\": True}))\n    sys.exit(0)\ntool = req.get(\"tool\", \"\")\nargs = req.get(\"args\", \"\") or \"\"\nif tool == \"sh\" and \"rm -rf\" in args:\n    print(json.dumps({\"allow\": False, \"reason\": \"guard: rm -rf 被禁止\"}, ensure_ascii=False))\nelse:\n    print(json.dumps({\"allow\": True}))\n"
+          }
+        ]
+      },
+      "tools": [],
+      "skills": [],
+      "category": "安全",
+      "description": "hooks 示例：工具执行前拦截 rm -rf，并把原因回报给模型"
     }
   ]
 }

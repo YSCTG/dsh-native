@@ -204,6 +204,23 @@ public final class DesktopImport {
         try {
             String id0 = manifest.optString("id", "");
             // 插件声明了 MCP 服务：把脚本落盘，并把绝对路径写回清单（运行期只认路径）
+            // 钩子脚本同样落盘
+            try {
+                org.json.JSONObject capH = manifest.optJSONObject("capabilities");
+                org.json.JSONArray hooks = capH == null ? manifest.optJSONArray("hooks")
+                        : capH.optJSONArray("hooks");
+                for (int hi = 0; hooks != null && hi < hooks.length(); hi++) {
+                    org.json.JSONObject h = hooks.optJSONObject(hi);
+                    if (h == null || h.optString("code", "").isEmpty()) continue;
+                    String fn = h.optString("file", "hook" + hi + ".py");
+                    java.io.File hf = Market.mcpScript(c, id0 + "_hook" + hi, fn);
+                    java.io.FileOutputStream ho = new java.io.FileOutputStream(hf);
+                    ho.write(h.optString("code", "").getBytes("UTF-8"));
+                    ho.close();
+                    h.put("script", hf.getAbsolutePath());
+                }
+            } catch (Throwable ignored) {}
+
             try {
                 org.json.JSONObject cap = manifest.optJSONObject("capabilities");
                 org.json.JSONObject mcp = cap == null ? manifest.optJSONObject("mcp")

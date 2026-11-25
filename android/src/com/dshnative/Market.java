@@ -89,6 +89,22 @@ public final class Market {
             if (id.isEmpty()) return;
             // 插件若声明了 MCP 服务，把它的脚本落盘，并把真实路径写进清单，
             // 这样运行期（Mcp.all）只认一条绝对路径，不用再猜。
+            // 钩子脚本落盘（与导入路径保持一致）
+            try {
+                org.json.JSONObject capH = plugin.optJSONObject("capabilities");
+                org.json.JSONArray hooks = capH == null ? plugin.optJSONArray("hooks")
+                        : capH.optJSONArray("hooks");
+                for (int hi = 0; hooks != null && hi < hooks.length(); hi++) {
+                    org.json.JSONObject h = hooks.optJSONObject(hi);
+                    if (h == null || h.optString("code", "").isEmpty()) continue;
+                    java.io.File hf = mcpScript(c, id + "_hook" + hi, h.optString("file", "hook" + hi + ".py"));
+                    java.io.FileOutputStream ho = new java.io.FileOutputStream(hf);
+                    ho.write(h.optString("code", "").getBytes("UTF-8"));
+                    ho.close();
+                    h.put("script", hf.getAbsolutePath());
+                }
+            } catch (Throwable ignored) {}
+
             try {
                 org.json.JSONObject cap = plugin.optJSONObject("capabilities");
                 org.json.JSONObject mcp = cap == null ? plugin.optJSONObject("mcp") : cap.optJSONObject("mcp");

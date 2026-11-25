@@ -1232,6 +1232,16 @@ public final class Agent {
         }
     }
     private String executeGuarded(final String name, final String args) {
+        // 插件钩子：tool.before —— 可以在真正执行前拦下（做审计、白名单、危险命令拦截）
+        try {
+            org.json.JSONObject payload = new org.json.JSONObject();
+            payload.put("event", "tool.before");
+            payload.put("tool", name);
+            payload.put("args", args);
+            String veto = PluginHooks.before(ctx, "tool.before", payload);
+            if (veto != null) return "被插件拦下：" + veto;
+        } catch (Throwable ignored) {}
+
         final String[] box = new String[1];
         final Throwable[] err = new Throwable[1];
         Thread t = new Thread(new Runnable() {
