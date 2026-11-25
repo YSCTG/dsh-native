@@ -131,19 +131,11 @@ public final class WebOffice {
         String b64 = inline(f);
         String html = page("正在渲染表格…",
                 "<script>" + asset(c, "xlsx.full.min.js") + "</script>\n"
+                        + "<script>" + asset(c, "sheet-render.js") + "</script>\n"
                         + "<div id=\"out\"></div>\n"
                         + "<script>\n"
-                        + "const bytes = Uint8Array.from(atob(DOC), ch => ch.charCodeAt(0));\n"
-                        + "const wb = XLSX.read(bytes, { type: 'array' });\n"
-                        + "const out = document.getElementById('out');\n"
-                        + "wb.SheetNames.forEach((name, i) => {\n"
-                        + "  const h = document.createElement('div');\n"
-                        + "  h.className = 'sheetname'; h.textContent = name; out.appendChild(h);\n"
-                        + "  const t = XLSX.utils.sheet_to_html(wb.Sheets[name], { editable: false });\n"
-                        + "  const wrap = document.createElement('div');\n"
-                        + "  wrap.className = 'sheetwrap'; wrap.innerHTML = t; out.appendChild(wrap);\n"
-                        + "});\n"
-                        + "done();\n"
+                        + "try { renderSheet(DOC, document.getElementById('out')); done(); }\n"
+                        + "catch (e) { fail('渲染失败：' + e); }\n"
                         + "</script>", b64);
         return webView(c, html);
     }

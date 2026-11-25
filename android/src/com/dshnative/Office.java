@@ -514,8 +514,18 @@ public final class Office {
                     } else {
                         String s = String.valueOf(v);
                         if (s.startsWith("=")) {
+                            // 顺手算一遍当缓存值写进去：只读缓存的查看器（SheetJS）没有
+                            // 计算引擎，没有 <v> 就显示空白。
+                            Double cached = Formulas.eval(s.substring(1), rows);
                             sb.append("<c r=\"").append(ref).append("\"").append(style).append("><f>")
-                              .append(esc(s.substring(1))).append("</f></c>");
+                              .append(esc(s.substring(1))).append("</f>");
+                            if (cached != null) {
+                                double d = cached;
+                                String txt = (d == Math.rint(d) && Math.abs(d) < 1e15)
+                                        ? String.valueOf((long) d) : String.valueOf(d);
+                                sb.append("<v>").append(txt).append("</v>");
+                            }
+                            sb.append("</c>");
                         } else {
                             sb.append("<c r=\"").append(ref).append("\"").append(style)
                               .append(" t=\"inlineStr\"><is><t xml:space=\"preserve\">")

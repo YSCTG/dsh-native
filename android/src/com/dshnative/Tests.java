@@ -125,6 +125,29 @@ public final class Tests {
             total += 2; fails.add("APK 选择用例异常 " + e);
         }
 
+        // ---- 公式求值：给 xlsx 写缓存值用 ----
+        try {
+            org.json.JSONArray rows = new org.json.JSONArray(
+                    "[ [\"甲\",\"乙\"], [12,30], [45,7], [\"合计\",\"\"] ]");
+            total++; Double a = Formulas.eval("SUM(B2:B3)", rows);
+            if (a == null || Math.abs(a - 37) > 0.001) fails.add("SUM(B2:B3) 应得 37，实际 " + a);
+
+            total++; Double b = Formulas.eval("B2+B3", rows);
+            if (b == null || Math.abs(b - 37) > 0.001) fails.add("B2+B3 应得 37，实际 " + b);
+
+            total++; Double avg = Formulas.eval("AVERAGE(B2:B3)", rows);
+            if (avg == null || Math.abs(avg - 18.5) > 0.001) fails.add("AVERAGE 应得 18.5，实际 " + avg);
+
+            total++; if (Formulas.eval("NOSUCHFN(B2)", rows) != null) fails.add("不认识的函数应返回 null");
+            total++; if (Formulas.eval("B2/0", rows) != null) fails.add("除零应返回 null");
+            total++; if (Formulas.eval("B2+", rows) != null) fails.add("残缺表达式应返回 null");
+
+            total++; int[] pos = Formulas.cellPos("B3");
+            if (pos == null || pos[0] != 2 || pos[1] != 1) fails.add("B3 应解析为 [2][1]");
+        } catch (Throwable t) {
+            total += 7; fails.add("公式用例异常 " + t);
+        }
+
         // ---- 预览类型判定：四种文档才走本地渲染 ----
         total++; if (!WebOffice.canRender("a.docx") || !WebOffice.canRender("b.XLSX")
                 || !WebOffice.canRender("c.pdf") || !WebOffice.canRender("d.pptx")) {
