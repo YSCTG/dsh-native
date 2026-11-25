@@ -867,6 +867,18 @@ public final class Agent {
     private String execute(String name, String argsJson) {
         try {
             JSONObject a = new JSONObject(argsJson);
+            if ("adb".equals(name)) {
+                String act = a.optString("action", "status").trim();
+                if ("status".equals(act)) return AdbCli.status(ctx);
+                if ("connect".equals(act)) return AdbCli.connect(ctx, a.optString("host", ""));
+                if ("pair".equals(act)) {
+                    return AdbCli.pair(ctx, a.optString("host", ""), a.optString("code", ""));
+                }
+                if ("shell".equals(act)) {
+                    return AdbCli.shell(ctx, a.optString("command", ""), a.optInt("timeout", 20000));
+                }
+                return "错误：action 只能是 status / connect / pair / shell";
+            }
             if ("fs_list".equals(name)) return fsList(a.optString("path", ""));
             if ("fs_read".equals(name)) return fsRead(a.optString("path", ""), a.optInt("offset", 1), a.optInt("limit", READ_LIMIT));
             if ("fs_glob".equals(name)) return fsGlob(a.optString("pattern", ""), a.optString("path", ""));

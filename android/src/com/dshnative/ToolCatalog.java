@@ -228,6 +228,20 @@ final class ToolCatalog {
                                  new String[]{"要写入的文字", "ui_dump 里的 #序号（输入框那一行）"}),
                            new String[]{"text"})));
 
+            a.add("shell", tool("adb",
+                    "设备内 adb：以 shell 身份（uid 2000）做 app 身份做不到的事。"
+                            + "action=status 看状态；connect 连本地端口；pair 用无线调试的配对码配一次；"
+                            + "shell 执行命令（settings put / pm grant / pm install / screencap / dumpsys / logcat）。"
+                            + "前提：设置里打开「Android shell」，且 adbd 已在 TCP 上监听"
+                            + "（插电脑执行一次 adb tcpip 5555，或用无线调试配对）。没连上时 shell 直接报错，"
+                            + "不会悄悄退回 app 身份。",
+                    schema(props(new String[]{"action", "host", "code", "command", "timeout"},
+                                 new String[]{"string", "string", "string", "string", "integer"},
+                                 new String[]{"status|connect|pair|shell", "主机:端口（connect/pair）",
+                                         "6 位配对码（pair）", "要执行的命令（shell）",
+                                         "超时毫秒（默认 20000）"}),
+                           new String[]{"action"})));
+
             if (Plugin.isOn(a.ctx, "builtin.terminal")) a.add("shell", tool("sh",
                     "在手机上执行 shell 命令（app 身份；有 root 则以 root 执行）。不需要确认，直接跑；只有不可回滚的命令会问一次。"
                             + "慢任务（编译/解压/下载）用 timeout 指定秒数，默认 120、最大 600；不要跑会一直等输入的命令。",

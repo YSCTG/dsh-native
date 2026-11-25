@@ -12,6 +12,7 @@ import android.os.Bundle;
 import android.text.InputType;
 import android.util.TypedValue;
 import android.graphics.Typeface;
+import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.Switch;
 import java.util.List;
@@ -487,6 +488,79 @@ public class SettingsActivity extends Activity {
             });
         }
         b.show();
+    }
+
+
+    /**
+     * Android shell（adb）：用户显式开闸 + 配对/连接。
+     *
+     * 这里的每一步都对应真机上必须做的事：adbd 得先在 TCP 上监听，
+     * 无线调试还要一次配对码；拿到的是 shell（uid 2000），不是 root。
+     */
+    private void adbDialog() {
+        final float d = getResources().getDisplayMetrics().density;
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding((int) (20 * d), (int) (14 * d), (int) (20 * d), (int) (4 * d));
+
+        TextView tip = new TextView(this);
+        tip.setText("打开后，模型可以用 shell 身份（uid 2000）执行命令：\n"
+                + "settings put · pm grant/install · screencap · dumpsys · logcat\n\n"
+                + "前提（二选一）：\n"
+                + "① 开发者选项 → 无线调试：把「IP 端口」和 6 位配对码填在下面，先配对再连接。\n"
+                + "② 插一次电脑执行 adb tcpip 5555，然后直接连接 127.0.0.1:5555。\n\n"
+                + "读不到别的应用私有目录——这是 shell，不是 root。");
+        tip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        tip.setTextColor(getColor(R.color.label_secondary));
+        tip.setPadding(0, 0, 0, (int) (10 * d));
+        box.addView(tip);
+
+        final CheckBox enable = new CheckBox(this);
+        enable.setText("启用 Android shell");
+        enable.setChecked(AdbCli.enabled(this));
+        box.addView(enable);
+
+        final EditText host = new EditText(this);
+        host.setHint("IP:端口（例 192.168.1.7:37123，或 127.0.0.1:5555）");
+        host.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        box.addView(host);
+
+        final EditText code = new EditText(this);
+        code.setHint("6 位配对码（只有配对时需要）");
+        code.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        box.addView(code);
+
+        TextView state = new TextView(this);
+        state.setText(AdbCli.status(this));
+        state.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        state.setTextColor(getColor(R.color.label_tertiary));
+        state.setPadding(0, (int) (8 * d), 0, 0);
+        box.addView(state);
+
+        new AlertDialog.Builder(this, R.style.DshDialog)
+                .setTitle("Android shell（adb）")
+                .setView(box)
+                .setPositiveButton("连接", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface dlg, int w) {
+                        AdbCli.setEnabled(SettingsActivity.this, enable.isChecked());
+                        toast(AdbCli.connect(SettingsActivity.this, host.getText().toString()));
+                        recreate();
+                    }
+                })
+                .setNeutralButton("配对", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface dlg, int w) {
+                        AdbCli.setEnabled(SettingsActivity.this, enable.isChecked());
+                        toast(AdbCli.pair(SettingsActivity.this, host.getText().toString().trim(),
+                                code.getText().toString().trim()));
+                    }
+                })
+                .setNegativeButton("关闭", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface dlg, int w) {
+                        AdbCli.setEnabled(SettingsActivity.this, enable.isChecked());
+                        recreate();
+                    }
+                })
+                .show();
     }
 
     private void runPendingImport() {
@@ -1069,6 +1143,11 @@ public class SettingsActivity extends Activity {
                         toast(Migrate.export(SettingsActivity.this));
                     }
                 });
+        divider(envCard);
+        actionRow(envCard, "Android shell（adb）", AdbCli.status(this),
+                new View.OnClickListener() {
+            @Override public void onClick(View v) { adbDialog(); }
+        });
         divider(envCard);
         actionRow(envCard, "自启动 / 后台管理", "各家 ROM 不一样，点开自己确认", new View.OnClickListener() {
             @Override public void onClick(View v) { Compat.openAutostart(SettingsActivity.this); }
