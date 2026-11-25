@@ -72,6 +72,18 @@ public final class Market {
         return out;
     }
 
+
+    /** 目录缓存有多旧（毫秒）；没有缓存返回 Long.MAX_VALUE。 */
+    public static long cacheAgeMs(Context c) {
+        try {
+            java.io.File f = new java.io.File(c.getFilesDir(), "market-cache.json");
+            if (!f.isFile()) return Long.MAX_VALUE;
+            return System.currentTimeMillis() - f.lastModified();
+        } catch (Throwable t) {
+            return Long.MAX_VALUE;
+        }
+    }
+
     public static boolean installed(Context c, String id) {
         return new File(pluginDir(c), id + ".json").isFile();
     }
@@ -263,6 +275,39 @@ public final class Market {
      * 只返回用户存的还不够：插件第一次跑、用户还没配置时，默认值应该已经在 CFG 里，
      * 否则工具拿到的全是 None，插件得自己写一堆兜底代码。
      */
+
+    /** 已装插件的版本号；没装返回空串。 */
+    public static String installedVersion(Context c, String id) {
+        try {
+            java.io.File f = new java.io.File(pluginDir(c), id + ".json");
+            if (!f.isFile()) return "";
+            java.io.BufferedReader br = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(new java.io.FileInputStream(f), "UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) sb.append(line);
+            br.close();
+            return new org.json.JSONObject(sb.toString()).optString("version", "");
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    /** a 是否比 b 新（点分数字比较）。 */
+    public static boolean isNewerThan(String a, String b) {
+        try {
+            String[] x = a.replace("v", "").split("\\.");
+            String[] y = b.replace("v", "").split("\\.");
+            int n = Math.max(x.length, y.length);
+            for (int i = 0; i < n; i++) {
+                int xi = i < x.length ? Integer.parseInt(x[i].replaceAll("[^0-9]", "0")) : 0;
+                int yi = i < y.length ? Integer.parseInt(y[i].replaceAll("[^0-9]", "0")) : 0;
+                if (xi != yi) return xi > yi;
+            }
+        } catch (Throwable ignored) {}
+        return false;
+    }
+
     public static org.json.JSONObject cfg(Context c, org.json.JSONObject plugin) {
         org.json.JSONObject out = new org.json.JSONObject();
         try {

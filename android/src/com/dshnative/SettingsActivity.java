@@ -407,6 +407,71 @@ public class SettingsActivity extends Activity {
                 .show();
     }
 
+    /**
+     * 目录条目详情：装之前先看清要什么权限、能做什么。
+     * 一键安装不该等于盲装。
+     */
+    private void showCatalogEntry(final org.json.JSONObject mp) {
+        final String pid = mp.optString("id", "");
+        boolean installed = Market.installed(this, pid);
+        String instVer = installed ? Market.installedVersion(this, pid) : "";
+        String catVer = mp.optString("version", "");
+        boolean updatable = installed && Market.isNewerThan(catVer, instVer);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(mp.optString("description", "")).append("\n\n");
+
+        String[] pm = Market.perms(mp);
+        sb.append("权限：").append("-net".equals(pm[0]) ? "禁止联网" : "允许联网")
+          .append(" · ").append("-shell".equals(pm[1]) ? "禁止命令" : "可执行命令").append("\n");
+
+        org.json.JSONObject cap = mp.optJSONObject("capabilities");
+        org.json.JSONArray tools = mp.optJSONArray("tools");
+        org.json.JSONArray skills = mp.optJSONArray("skills");
+        org.json.JSONArray sets = cap == null ? null : cap.optJSONArray("settings");
+        org.json.JSONArray hooks = cap == null ? null : cap.optJSONArray("hooks");
+        org.json.JSONObject mcp = cap == null ? null : cap.optJSONObject("mcp");
+
+        StringBuilder capsb = new StringBuilder();
+        if (tools != null && tools.length() > 0) capsb.append(tools.length()).append(" 个工具 · ");
+        if (skills != null && skills.length() > 0) capsb.append(skills.length()).append(" 个技能 · ");
+        if (mcp != null) capsb.append("MCP 服务 · ");
+        if (hooks != null && hooks.length() > 0) capsb.append(hooks.length()).append(" 个钩子 · ");
+        if (sets != null && sets.length() > 0) capsb.append(sets.length()).append(" 项配置 · ");
+        if (capsb.length() == 0) capsb.append("无");
+        else capsb.setLength(capsb.length() - 3);
+        sb.append("能力：").append(capsb).append("\n");
+
+        if (installed) {
+            sb.append("当前安装：").append(instVer);
+            if (updatable) sb.append(" → 目录 ").append(catVer);
+        }
+        sb.append("\n来源：").append(Market.sourceLabel(this));
+
+        AlertDialog.Builder b = new AlertDialog.Builder(this, R.style.DshDialog)
+                .setTitle(mp.optString("name", pid) + "  " + catVer)
+                .setMessage(sb.toString())
+                .setNegativeButton("关闭", null);
+        if (!installed || updatable) {
+            b.setPositiveButton(updatable ? "更新" : "安装", new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface d, int w) {
+                    Market.install(SettingsActivity.this, mp);
+                    toast("已安装，新会话生效");
+                    recreate();
+                }
+            });
+        } else {
+            b.setPositiveButton("卸载", new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface d, int w) {
+                    Market.uninstall(SettingsActivity.this, pid);
+                    toast("已卸载，新会话生效");
+                    recreate();
+                }
+            });
+        }
+        b.show();
+    }
+
     private void runPendingImport() {
         final String src = prefs.getString("market_pending", "");
         if (src == null || src.isEmpty()) return;
@@ -674,6 +739,17 @@ public class SettingsActivity extends Activity {
             if (i < Plugin.BUILTINS.length - 1) divider(plugCard);
         }
 
+        // 目录缓存超过 10 分钟就悄悄刷一次：
+        // 否则用户看到的还是上次抓的目录（我遇到过"仓库里有 5 个、界面显示 3 个"）。
+        try {
+            long last = prefs.getLong("market_auto_at", 0);
+            if (System.currentTimeMillis() - last > 10 * 60 * 1000L
+                    && Market.cacheAgeMs(this) > 10 * 60 * 1000L) {
+                prefs.edit().putLong("market_auto_at", System.currentTimeMillis()).apply();
+                refreshMarket();
+            }
+        } catch (Throwable ignored) {}
+
         // 插件市场：独立板块（和「已装的插件」分开——这里只列可安装的）
         section("插件市场");
         LinearLayout marketCard = card();
@@ -689,19 +765,17 @@ public class SettingsActivity extends Activity {
             String sub = mp.optString("version", "") + " · " + mp.optString("category", "")
                     + " · " + mp.optString("description", "");
             divider(marketCard);
-            actionRow(marketCard, (on ? "✓ " : "") + mp.optString("name", pid)
-                            + (on ? "（已安装，点按移除）" : "（点按安装）"),
+            String instVer = on ? Market.installedVersion(this, pid) : "";
+            String state = on
+                    ? (Market.isNewerThan(mp.optString("version", ""), instVer)
+                        ? "（可更新 " + instVer + " → " + mp.optString("version", "") + "）"
+                        : "（已安装）")
+                    : "（点按查看并安装）";
+            actionRow(marketCard, (on ? "✓ " : "") + mp.optString("name", pid) + state,
                     sub,
                     new View.OnClickListener() {
                         @Override public void onClick(View v) {
-                            if (Market.installed(SettingsActivity.this, pid)) {
-                                Market.uninstall(SettingsActivity.this, pid);
-                                toast("已移除，新会话生效");
-                            } else {
-                                Market.install(SettingsActivity.this, mp);
-                                toast("已安装，新会话生效");
-                            }
-                            recreate();
+                            showCatalogEntry(mp);
                         }
                     });
         }
