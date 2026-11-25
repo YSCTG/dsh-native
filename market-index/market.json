@@ -16,11 +16,21 @@
           "params": {
             "type": "object",
             "properties": {
-              "value": {"type": "number"},
-              "from": {"type": "string"},
-              "to": {"type": "string"}
+              "value": {
+                "type": "number"
+              },
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
             },
-            "required": ["value", "from", "to"]
+            "required": [
+              "value",
+              "from",
+              "to"
+            ]
           },
           "python": "v = float(ARGS['value']); f = ARGS['from'].strip().lower(); t = ARGS['to'].strip().lower()\nL = {'mm':0.001,'cm':0.01,'m':1.0,'km':1000.0,'inch':0.0254,'ft':0.3048,'mi':1609.344}\nW = {'mg':1e-6,'g':0.001,'kg':1.0,'t':1000.0,'lb':0.45359237,'oz':0.0283495}\nD = {'b':1.0,'kb':1024.0,'mb':1024.0**2,'gb':1024.0**3,'tb':1024.0**4}\nif f in L and t in L: print(v*L[f]/L[t])\nelif f in W and t in W: print(v*W[f]/W[t])\nelif f in D and t in D: print(v*D[f]/D[t])\nelif f in ('c','f','k') and t in ('c','f','k'):\n    c = v if f=='c' else (v-32)*5/9 if f=='f' else v-273.15\n    print(round(c if t=='c' else c*9/5+32 if t=='f' else c+273.15, 6))\nelse: print('不支持: %s -> %s' % (f, t))"
         }
@@ -40,10 +50,16 @@
           "params": {
             "type": "object",
             "properties": {
-              "text": {"type": "string"},
-              "top": {"type": "integer"}
+              "text": {
+                "type": "string"
+              },
+              "top": {
+                "type": "integer"
+              }
             },
-            "required": ["text"]
+            "required": [
+              "text"
+            ]
           },
           "python": "import re, collections\nt = ARGS.get('text','')\ntop = int(ARGS.get('top') or 10)\nprint('字符数: %d' % len(t))\nprint('不含空白: %d' % len(re.sub(r'\\s','',t)))\nprint('行数: %d' % (t.count('\\n')+1))\nwords = re.findall(r'[\\u4e00-\\u9fff]|[A-Za-z0-9_]+', t.lower())\nfor w,n in collections.Counter(words).most_common(top):\n    print('  %s  %d' % (w,n))"
         }
@@ -60,10 +76,30 @@
         {
           "name": "report",
           "desc": "返回手机关键指标摘要。无参数。",
-          "params": {"type": "object", "properties": {}, "required": []},
+          "params": {
+            "type": "object",
+            "properties": {},
+            "required": []
+          },
           "python": "import os, platform, shutil\nprint('Python: %s' % platform.python_version())\nprint('CPU 核数: %s' % os.cpu_count())\ntry:\n    d = shutil.disk_usage('/data')\n    print('数据分区: 总 %.1f GB 可用 %.1f GB' % (d.total/2**30, d.free/2**30))\nexcept Exception as e: print('存储: %s' % e)\ntry:\n    for line in open('/proc/meminfo'):\n        if line.startswith(('MemTotal','MemAvailable')): print(line.strip())\nexcept Exception as e: print('内存: %s' % e)"
         }
       ],
+      "skills": []
+    },
+    {
+      "id": "clock",
+      "name": "clock plugin",
+      "version": "1.0.0",
+      "category": "tool",
+      "description": "exposes current time as an MCP server",
+      "capabilities": {
+        "prompt": "when the user asks the time, date or weekday, call the MCP server 'clock' tool 'now' instead of guessing",
+        "mcp": {
+          "file": "server.py",
+          "code": "import sys, json, datetime\n\ndef main():\n    for line in sys.stdin:\n        line = line.strip()\n        if not line:\n            continue\n        try:\n            req = json.loads(line)\n        except Exception:\n            continue\n        mid = req.get(\"id\")\n        method = req.get(\"method\", \"\")\n        if method == \"initialize\":\n            res = {\"protocolVersion\": \"2024-11-05\",\n                   \"capabilities\": {\"tools\": {}},\n                   \"serverInfo\": {\"name\": \"clock\", \"version\": \"1.0.0\"}}\n        elif method == \"notifications/initialized\":\n            continue\n        elif method == \"tools/list\":\n            res = {\"tools\": [{\"name\": \"now\", \"description\": \"返回当前日期时间\",\n                              \"inputSchema\": {\"type\": \"object\", \"properties\": {}}}]}\n        elif method == \"tools/call\":\n            name = (req.get(\"params\") or {}).get(\"name\")\n            if name != \"now\":\n                res = {\"content\": [{\"type\": \"text\", \"text\": \"unknown tool\"}], \"isError\": True}\n            else:\n                t = datetime.datetime.now().strftime(\"%Y-%m-%d %H:%M:%S\")\n                res = {\"content\": [{\"type\": \"text\", \"text\": \"current time: \" + t}]}\n        else:\n            res = {}\n        sys.stdout.write(json.dumps({\"jsonrpc\": \"2.0\", \"id\": mid, \"result\": res}, ensure_ascii=False) + \"\\n\")\n        sys.stdout.flush()\n\nmain()\n"
+        }
+      },
+      "tools": [],
       "skills": []
     }
   ]
