@@ -7,13 +7,14 @@ import SwiftUI
 ///
 /// 只做三件事：把 `ChatModel.rows` 画出来、把输入框的内容交出去、把状态显示在顶部。
 /// 所有引擎交互都发生在 `ChatModel` 里——视图不 await、不碰网络。
+@MainActor
 public struct ChatView: View {
 
     @ObservedObject private var model: ChatModel
     @State private var showKeySheet = false
 
     public init(model: ChatModel) {
-        self.model = model
+        _model = ObservedObject(wrappedValue: model)
     }
 
     public var body: some View {
@@ -61,7 +62,7 @@ public struct ChatView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
             }
-            .onChange(of: model.rows.count) { _, _ in
+            .onChange(of: model.rows.count) { _ in
                 if let last = model.rows.last {
                     withAnimation(.easeOut(duration: 0.15)) {
                         proxy.scrollTo(last.id, anchor: .bottom)

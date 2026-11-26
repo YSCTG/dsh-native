@@ -97,14 +97,20 @@ public final class ChatModel: ObservableObject {
         guard let sessionId = currentSession ?? ensureSession() else { return }
 
         let key = apiKey()
+        input = ""
+        rows.append(Row(role: "user", text: text))
+
+        // 没有 key 时进「演示模式」：本地回显。这样界面（气泡、滚动、状态）
+        // 不依赖网络和余额也能验证，省得第一次跑就卡在 key 上。
         if key.isEmpty {
-            status = "没有 API key"
+            rows.append(Row(role: "assistant",
+                            text: "（演示模式）收到：\(text)\n\n没有填 API key，所以这是本地回显。"
+                                + "填上 key 后就会真的调用 DeepSeek。"))
+            status = "演示模式（未填 key）"
             return
         }
 
-        input = ""
         busy = true
-        rows.append(Row(role: "user", text: text))
         rows.append(Row(role: "assistant", text: "", isStreaming: true))
         status = "思考中"
 

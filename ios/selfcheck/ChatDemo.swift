@@ -1023,14 +1023,20 @@ public final class ChatModel: ObservableObject {
         guard let sessionId = currentSession ?? ensureSession() else { return }
 
         let key = apiKey()
+        input = ""
+        rows.append(Row(role: "user", text: text))
+
+        // 没有 key 时进「演示模式」：本地回显。这样界面（气泡、滚动、状态）
+        // 不依赖网络和余额也能验证，省得第一次跑就卡在 key 上。
         if key.isEmpty {
-            status = "没有 API key"
+            rows.append(Row(role: "assistant",
+                            text: "（演示模式）收到：\(text)\n\n没有填 API key，所以这是本地回显。"
+                                + "填上 key 后就会真的调用 DeepSeek。"))
+            status = "演示模式（未填 key）"
             return
         }
 
-        input = ""
         busy = true
-        rows.append(Row(role: "user", text: text))
         rows.append(Row(role: "assistant", text: "", isStreaming: true))
         status = "思考中"
 
@@ -1121,13 +1127,14 @@ import SwiftUI
 ///
 /// 只做三件事：把 `ChatModel.rows` 画出来、把输入框的内容交出去、把状态显示在顶部。
 /// 所有引擎交互都发生在 `ChatModel` 里——视图不 await、不碰网络。
+@MainActor
 public struct ChatView: View {
 
     @ObservedObject private var model: ChatModel
     @State private var showKeySheet = false
 
     public init(model: ChatModel) {
-        self.model = model
+        _model = ObservedObject(wrappedValue: model)
     }
 
     public var body: some View {
@@ -1175,7 +1182,7 @@ public struct ChatView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
             }
-            .onChange(of: model.rows.count) { _, _ in
+            .onChange(of: model.rows.count) { _ in
                 if let last = model.rows.last {
                     withAnimation(.easeOut(duration: 0.15)) {
                         proxy.scrollTo(last.id, anchor: .bottom)

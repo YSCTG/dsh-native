@@ -62,3 +62,28 @@
 出错红字、发送/停止、新建会话、状态栏。
 
 **它从未被编译过**（Windows 没有 iOS SDK）。Playgrounds 的报错就是第一手验证信息。
+
+## 三个分层冒烟文件（iPad 更新后按顺序跑）
+
+| 文件 | 内容 | 通过意味着 |
+|---|---|---|
+| `EngineSelfCheck.swift` | 引擎 + 23 条断言 | 引擎的类型和逻辑都对 |
+| `ModelSmoke.swift` | 引擎 + 视图模型（**不含 SwiftUI**） | 并发 / Combine / `@MainActor` 那层没编错 |
+| `ChatDemo.swift` | 全部 + SwiftUI 界面 | 界面能跑 |
+
+**为什么要分层**：如果只看一个 50 KB 的文件报错，很难判断是引擎、视图模型还是 SwiftUI 的问题。
+三层分开跑，第一次报错就能定位到层。顺序是 1 → 2 → 3，哪一层挂了就停在那里。
+
+### 演示模式（不需要 API key）
+
+`ChatModel.send()` 在没有 key 时走本地回显：把你说的话原样回一遍，并注明是演示模式。
+所以界面（气泡、滚动、状态栏）不花钱、不依赖网络也能验证。
+填上 key 之后才真的调 DeepSeek。
+
+### 已提前降风险的几处（这层从未编译过）
+
+- `@MainActor` 标在整个 `ChatView` 上（Swift 6 下非隔离闭包调主线程方法会报错）
+- `@ObservedObject` 用显式 `ObservedObject(wrappedValue:)` 初始化
+- `onChange` 用单参数闭包（双参数版是 iOS 17 才有的 API）
+- 工具栏用 `navigationBarLeading/Trailing`（`topBarLeading` 要 iOS 17+）
+- 进度指示用 `scaleEffect` 而不是 `controlSize`
