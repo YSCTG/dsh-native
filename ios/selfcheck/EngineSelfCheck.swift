@@ -2223,16 +2223,21 @@ import Foundation
 /// 用法：在 Playgrounds 里运行本文件，看底部输出。
 enum SelfCheck {
 
+    /// 输出汇：命令行用 print，iPad 上换成"写进界面"。
+    static var sink: ((String) -> Void) = { line in Swift.print(line) }
+
+    private static func emit(_ line: String) { sink(line) }
+
     private static var passed = 0
     private static var failed: [String] = []
 
     private static func expect(_ cond: Bool, _ label: String) {
         if cond {
             passed += 1
-            print("  ✓ \(label)")
+            emit("  ✓ \(label)")
         } else {
             failed.append(label)
-            print("  ✗ \(label)")
+            emit("  ✗ \(label)")
         }
     }
 
@@ -2255,13 +2260,13 @@ enum SelfCheck {
         let ctx = ToolContext(workspace: root)
 
         // ---------- 路径沙箱 ----------
-        print("【路径沙箱】")
+        emit("【路径沙箱】")
         expectThrows("拒绝 ../etc/passwd") { _ = try ctx.resolve("../etc/passwd") }
         expect((try? ctx.resolve("sub/a.txt"))?.path.hasPrefix(root.standardizedFileURL.path) == true,
                "工作区内路径放行")
 
         // ---------- 工具参数 ----------
-        print("【工具参数】")
+        emit("【工具参数】")
         let args = AgentLoop.parseArguments(#"{"path":"a.txt","n":3,"ok":true}"#)
         expect(args["path"]?.stringValue == "a.txt", "解析 path")
         expect(args["n"]?.intValue == 3, "解析数字")
@@ -2273,12 +2278,12 @@ enum SelfCheck {
         }
 
         // ---------- 文本 ----------
-        print("【文本统计】")
+        emit("【文本统计】")
         expect(BuiltinTools.TextStats.summarize("a b\nc") == "字符 5 · 行 2 · 词 3", "英文统计")
         expect(BuiltinTools.TextStats.summarize("") == "字符 0 · 行 0 · 词 0", "空文本")
 
         // ---------- 文件原语 ----------
-        print("【文件原语】")
+        emit("【文件原语】")
         do {
             _ = try await BuiltinTools.WriteFile().run(
                 .object(["path": .string("d/x.txt"), "content": .string("hello 世界")]), in: ctx)
@@ -2293,7 +2298,7 @@ enum SelfCheck {
         }
 
         // ---------- fs_* ----------
-        print("【文件工具 fs_*】")
+        emit("【文件工具 fs_*】")
         do {
             _ = try await FSTools.WriteFile().run(
                 .object(["path": .string("proj/a.txt"),
@@ -2330,7 +2335,7 @@ enum SelfCheck {
         }
 
         // ---------- 发布产物（web app / Swift 项目 / IPA） ----------
-        print("【发布产物】")
+        emit("【发布产物】")
         do {
             let newOut = try await PublishTools.WebAppNew().run(
                 .object(["name": .string("自检应用"), "title": .string("自检应用")]), in: ctx)
@@ -2370,7 +2375,7 @@ enum SelfCheck {
         }
 
         // ---------- 工作流调度（假 runner，不联网） ----------
-        print("【工作流调度】")
+        emit("【工作流调度】")
         do {
             let items = (1...6).map { WorkflowRunner.Item(id: "t\($0)", prompt: "p\($0)") }
 
@@ -2400,7 +2405,7 @@ enum SelfCheck {
         }
 
         // ---------- Office 生成（docx / xlsx） ----------
-        print("【Office 生成】")
+        emit("【Office 生成】")
         expect(ZipWriter.crc32(Data("123456789".utf8)) == 0xCBF4_3926,
                "CRC32 标准向量（123456789 → 0xCBF43926）")
 
@@ -2442,7 +2447,7 @@ enum SelfCheck {
         }
 
         // ---------- 系统能力（只测不需要授权的部分） ----------
-        print("【系统工具】")
+        emit("【系统工具】")
         #if canImport(UIKit)
         do {
             _ = try await SystemTools.ClipWrite().run(
@@ -2472,7 +2477,7 @@ enum SelfCheck {
         }
 
         // ---------- 内嵌浏览器（用内联 HTML，不联网） ----------
-        print("【浏览器 WebKit】")
+        emit("【浏览器 WebKit】")
         do {
             let html = """
             <html><head><title>自检页</title></head><body>
@@ -2509,7 +2514,7 @@ enum SelfCheck {
         }
 
         // ---------- 会话存储 ----------
-        print("【会话存储】")
+        emit("【会话存储】")
         let store = SessionStore(root: root)
         do {
             let s = try store.create()
@@ -2535,19 +2540,19 @@ enum SelfCheck {
         expect(SessionStore.titleFrom(String(repeating: "字", count: 30)).hasSuffix("…"), "长标题截断")
 
         // ---------- schema ----------
-        print("【schema】")
+        emit("【schema】")
         let schema = JSONSchema(properties: [.init("path", "string", "路径")], required: ["path"])
         let obj = schema.jsonObject()
         expect(obj["type"] as? String == "object", "schema type")
         expect((obj["required"] as? [String]) == ["path"], "schema required")
 
         // ---------- 汇总 ----------
-        print("")
+        emit("")
         if failed.isEmpty {
-            print("全部通过（\(passed)/\(passed)）")
+            emit("全部通过（\(passed)/\(passed)）")
         } else {
-            print("失败 \(failed.count) 项 / 共 \(passed + failed.count) 项：")
-            failed.forEach { print("  · \($0)") }
+            emit("失败 \(failed.count) 项 / 共 \(passed + failed.count) 项：")
+            failed.forEach { emit("  · \($0)") }
         }
     }
 }
