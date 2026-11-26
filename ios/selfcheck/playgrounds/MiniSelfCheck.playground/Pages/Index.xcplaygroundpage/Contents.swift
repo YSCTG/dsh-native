@@ -42,17 +42,34 @@ public struct ToolContext: Sendable {
         self.audit = audit
     }
 
+
+    /// 路径归一化：解开软链接 + 标准化 + 去掉尾部斜杠。
+    /// iOS 上 `/var` 是指向 `/private/var` 的软链接，不归一就会误判越界。
+    static func normalized(_ url: URL) -> String {
+        var p = url.resolvingSymlinksInPath().standardizedFileURL.path
+        while p.count > 1 && p.hasSuffix("/") { p.removeLast() }
+        return p
+    }
+
     /// 把模型给的相对路径解析到工作区内，并挡住 `../` 逃逸。
     public func resolve(_ path: String) throws -> URL {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw ToolError.badArgument("path 为空") }
+
+        // 先把**根**解析成真实路径（根一定存在，能解析 /var → /private/var）。
+        // 然后用真实根去拼候选路径——候选文件通常还不存在，这时候
+        // resolvingSymlinksInPath() **不会**解析它的前缀，会得到 /var 开头，
+        // 与真实根的 /private/var 对不上，进而把合法路径误判成越界
+        // （iPad 上实测：写入/读取/分页/替换全部失败，根因就是这一处）。
+        let realRoot = workspace.resolvingSymlinksInPath().standardizedFileURL
         let candidate = trimmed.hasPrefix("/")
-            ? URL(fileURLWithPath: trimmed)
-            : workspace.appendingPathComponent(trimmed)
-        let root = workspace.standardizedFileURL.path
-        let target = candidate.standardizedFileURL.path
-        guard target == root || target.hasPrefix(root + "/") else {
-            throw ToolError.badArgument("越界：\(path) 不在工作区内")
+            ? URL(fileURLWithPath: trimmed).resolvingSymlinksInPath()
+            : realRoot.appendingPathComponent(trimmed)
+
+        let rootPath = normalized(realRoot)
+        let targetPath = normalized(candidate)
+        guard targetPath == rootPath || targetPath.hasPrefix(rootPath + "/") else {
+            throw ToolError.badArgument("越界：\(path) 不在工作区内（根 \(rootPath)）")
         }
         return candidate
     }

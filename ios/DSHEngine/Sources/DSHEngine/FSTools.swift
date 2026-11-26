@@ -14,6 +14,16 @@ public enum FSTools {
         [ListDir(), ReadFile(), WriteFile(), EditFile(), Glob(), Grep()]
     }
 
+    /// 相对工作区的路径。用归一化后的根比较，避免 /var 与 /private/var 不一致
+    /// 导致把绝对路径当成相对路径。
+    static func relative(_ url: URL, root: String) -> String {
+        let p = ToolContext.normalized(url)
+        if p.hasPrefix(root + "/") {
+            return String(p.dropFirst(root.count + 1))
+        }
+        return p
+    }
+
     // MARK: - fs_list
 
     struct ListDir: Tool {
@@ -151,7 +161,7 @@ public enum FSTools {
             let base = try ctx.resolve(args["path"]?.stringValue ?? ".")
             let regex = try NSRegularExpression(pattern: Self.globToRegex(pattern))
             var hits: [String] = []
-            let rootPath = ctx.workspace.standardizedFileURL.path
+            let rootPath = ToolContext.normalized(ctx.workspace)
 
             let walker = FileManager.default.enumerator(at: base,
                                                         includingPropertiesForKeys: [.isDirectoryKey])
@@ -159,7 +169,7 @@ public enum FSTools {
                 if hits.count >= 300 { break }
                 let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
                 if isDir { continue }
-                let rel = item.path.replacingOccurrences(of: rootPath + "/", with: "")
+                let rel = Self.relative(item, root: rootPath)
                 let range = NSRange(rel.startIndex..<rel.endIndex, in: rel)
                 if regex.firstMatch(in: rel, range: range) != nil {
                     hits.append(rel)
@@ -219,7 +229,7 @@ public enum FSTools {
                 includeRegex = try NSRegularExpression(pattern: Self.Glob.globToRegex(inc))
             }
 
-            let rootPath = ctx.workspace.standardizedFileURL.path
+            let rootPath = ToolContext.normalized(ctx.workspace)
             var files: [URL] = []
             var isDir: ObjCBool = false
             if FileManager.default.fileExists(atPath: base.path, isDirectory: &isDir), isDir.boolValue {
@@ -239,7 +249,7 @@ public enum FSTools {
             var scanned = 0
             for file in files {
                 if out.count >= 200 { break }
-                let rel = file.path.replacingOccurrences(of: rootPath + "/", with: "")
+                let rel = Self.relative(file, root: rootPath)
                 if let inc = includeRegex {
                     let r = NSRange(rel.startIndex..<rel.endIndex, in: rel)
                     if inc.firstMatch(in: rel, range: r) == nil { continue }

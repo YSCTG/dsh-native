@@ -54,16 +54,21 @@ public struct ToolContext: Sendable {
     public func resolve(_ path: String) throws -> URL {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw ToolError.badArgument("path 为空") }
+
+        // 先把**根**解析成真实路径（根一定存在，能解析 /var → /private/var）。
+        // 然后用真实根去拼候选路径——候选文件通常还不存在，这时候
+        // resolvingSymlinksInPath() **不会**解析它的前缀，会得到 /var 开头，
+        // 与真实根的 /private/var 对不上，进而把合法路径误判成越界
+        // （iPad 上实测：写入/读取/分页/替换全部失败，根因就是这一处）。
+        let realRoot = workspace.resolvingSymlinksInPath().standardizedFileURL
         let candidate = trimmed.hasPrefix("/")
-            ? URL(fileURLWithPath: trimmed)
-            : workspace.appendingPathComponent(trimmed)
-        // 关键：iOS 上 /var 与 /private/var 是同一目录的两种写法（symlink），
-        // standardizedFileURL **不**解开软链接，直接比较会误判成越界。
-        // 两边都 resolvingSymlinksInPath，并去掉尾部斜杠，才是可靠比较。
-        let rootPath = normalized(workspace)
+            ? URL(fileURLWithPath: trimmed).resolvingSymlinksInPath()
+            : realRoot.appendingPathComponent(trimmed)
+
+        let rootPath = normalized(realRoot)
         let targetPath = normalized(candidate)
         guard targetPath == rootPath || targetPath.hasPrefix(rootPath + "/") else {
-            throw ToolError.badArgument("越界：\(path) 不在工作区内")
+            throw ToolError.badArgument("越界：\(path) 不在工作区内（根 \(rootPath)）")
         }
         return candidate
     }
@@ -286,6 +291,16 @@ public enum FSTools {
         [ListDir(), ReadFile(), WriteFile(), EditFile(), Glob(), Grep()]
     }
 
+    /// 相对工作区的路径。用归一化后的根比较，避免 /var 与 /private/var 不一致
+    /// 导致把绝对路径当成相对路径。
+    static func relative(_ url: URL, root: String) -> String {
+        let p = ToolContext.normalized(url)
+        if p.hasPrefix(root + "/") {
+            return String(p.dropFirst(root.count + 1))
+        }
+        return p
+    }
+
     // MARK: - fs_list
 
     struct ListDir: Tool {
@@ -423,7 +438,7 @@ public enum FSTools {
             let base = try ctx.resolve(args["path"]?.stringValue ?? ".")
             let regex = try NSRegularExpression(pattern: Self.globToRegex(pattern))
             var hits: [String] = []
-            let rootPath = ctx.workspace.standardizedFileURL.path
+            let rootPath = ToolContext.normalized(ctx.workspace)
 
             let walker = FileManager.default.enumerator(at: base,
                                                         includingPropertiesForKeys: [.isDirectoryKey])
@@ -431,7 +446,7 @@ public enum FSTools {
                 if hits.count >= 300 { break }
                 let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
                 if isDir { continue }
-                let rel = item.path.replacingOccurrences(of: rootPath + "/", with: "")
+                let rel = Self.relative(item, root: rootPath)
                 let range = NSRange(rel.startIndex..<rel.endIndex, in: rel)
                 if regex.firstMatch(in: rel, range: range) != nil {
                     hits.append(rel)
@@ -491,7 +506,7 @@ public enum FSTools {
                 includeRegex = try NSRegularExpression(pattern: Self.Glob.globToRegex(inc))
             }
 
-            let rootPath = ctx.workspace.standardizedFileURL.path
+            let rootPath = ToolContext.normalized(ctx.workspace)
             var files: [URL] = []
             var isDir: ObjCBool = false
             if FileManager.default.fileExists(atPath: base.path, isDirectory: &isDir), isDir.boolValue {
@@ -511,7 +526,7 @@ public enum FSTools {
             var scanned = 0
             for file in files {
                 if out.count >= 200 { break }
-                let rel = file.path.replacingOccurrences(of: rootPath + "/", with: "")
+                let rel = Self.relative(file, root: rootPath)
                 if let inc = includeRegex {
                     let r = NSRange(rel.startIndex..<rel.endIndex, in: rel)
                     if inc.firstMatch(in: rel, range: r) == nil { continue }
