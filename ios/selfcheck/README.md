@@ -36,7 +36,7 @@
 【工具参数】
   ✓ 解析 path
   ...
-全部通过（51/51）
+全部通过（62/62）
 ```
 
 **如果出现编译错误**——那就是最有价值的信息：说明这堆 Swift 里有类型问题，
@@ -67,7 +67,7 @@
 
 | 文件 | 内容 | 通过意味着 |
 |---|---|---|
-| `EngineSelfCheck.swift` | 引擎 + 51 条断言 | 引擎的类型和逻辑都对 |
+| `EngineSelfCheck.swift` | 引擎 + 62 条断言 | 引擎的类型和逻辑都对 |
 | `ModelSmoke.swift` | 引擎 + 视图模型（**不含 SwiftUI**） | 并发 / Combine / `@MainActor` 那层没编错 |
 | `ChatDemo.swift` | 全部 + SwiftUI 界面 | 界面能跑 |
 
@@ -147,3 +147,14 @@ WorkflowRunner：同时跑多个子任务，按输入顺序收结果。
 | 顺序保持 | 结果 id 序列 == 输入 id 序列（完成顺序打乱也不影响） |
 | 错误隔离 | 一个失败，其余 5 个照常完成 |
 | 遇错即停 | stopOnError 时剩余任务标记为"跳过"，不静默丢弃 |
+
+### 发布产物（A / B / C 三条路）
+
+| 工具 | 产物 | 能干什么 |
+|---|---|---|
+| webapp_new / webapp_list | pps/<名字>/index.html | **纯手机闭环**：写完直接在内置 WebView 跑，不用签名 |
+| swiftpm_new | projects/<名字>/（Package.swift + SwiftUI 源码） | 交给 iPad 上的 **Swift Playgrounds** 编译运行（编译/签名是 Apple 做的） |
+| ipa_pack | dist/<名字>.ipa（Payload/…app/） | **只能打包，不能签名**；未签名装不上任何设备 |
+
+ipa_pack 的输出里会明确写"⚠️ 未签名：装不上任何设备"，
+并在包里放一份 UNSIGNED-README.txt 说明为什么——避免用户以为拿到了可用安装包。

@@ -114,6 +114,46 @@ enum SelfCheck {
             expect(false, "fs 工具异常：\(error)")
         }
 
+        // ---------- 发布产物（web app / Swift 项目 / IPA） ----------
+        print("【发布产物】")
+        do {
+            let newOut = try await PublishTools.WebAppNew().run(
+                .object(["name": .string("自检应用"), "title": .string("自检应用")]), in: ctx)
+            expect(newOut.contains("已创建 web app"), "webapp_new 创建成功")
+            let indexURL = try ctx.resolve("apps/自检应用/index.html")
+            let html = (try? String(contentsOf: indexURL, encoding: .utf8)) ?? ""
+            expect(html.contains("<!doctype html>"), "web app 是完整 HTML")
+            expect(html.contains("localStorage"), "web app 带持久化示例")
+
+            let listOut = try await PublishTools.WebAppList().run(.null, in: ctx)
+            expect(listOut.contains("自检应用"), "webapp_list 能列出")
+
+            let projOut = try await PublishTools.SwiftProjectNew().run(
+                .object(["name": .string("DemoApp"), "title": .string("记账 App")]), in: ctx)
+            expect(projOut.contains("已生成 Swift 项目"), "swiftpm_new 生成成功")
+            let pkgURL = try ctx.resolve("projects/DemoApp/Package.swift")
+            let pkg = (try? String(contentsOf: pkgURL, encoding: .utf8)) ?? ""
+            expect(pkg.contains("swift-tools-version"), "Package.swift 有 tools 版本声明")
+            let appURL = try ctx.resolve("projects/DemoApp/Sources/DemoApp/DemoAppApp.swift")
+            let appSrc = (try? String(contentsOf: appURL, encoding: .utf8)) ?? ""
+            expect(appSrc.contains("struct AppApp: App") || appSrc.contains(": App {"),
+                   "生成的源码里是 SwiftUI App")
+            expect(PublishTools.swiftIdentifier("记账 App") == "App",
+                   "中文标题的标识符回退为 ASCII")
+
+            let ipaOut = try await PublishTools.IpaPack().run(
+                .object(["name": .string("DemoApp"),
+                         "bundle_id": .string("com.example.demo")]), in: ctx)
+            expect(ipaOut.contains("未签名"), "ipa_pack 明确告知未签名")
+            let ipaURL = try ctx.resolve("dist/DemoApp.ipa")
+            let ipa = (try? Data(contentsOf: ipaURL)) ?? Data()
+            expect(ipa.count > 400, "ipa 有内容（\(ipa.count) 字节）")
+            expect(String(decoding: ipa, as: UTF8.self).contains("Payload/DemoApp.app/"),
+                   "ipa 里有标准 Payload 结构")
+        } catch {
+            expect(false, "发布产物异常：\(error)")
+        }
+
         // ---------- 工作流调度（假 runner，不联网） ----------
         print("【工作流调度】")
         do {
