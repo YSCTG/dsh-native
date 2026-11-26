@@ -1284,12 +1284,6 @@ public class SettingsActivity extends Activity {
                     }
                 });
         divider(envCard);
-        actionRow(envCard, "编好的 App（APK）", "在侧栏的「文件」里看：编好的安装包点一下就能装", new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                startActivity(new android.content.Intent(SettingsActivity.this, FilesActivity.class));
-            }
-        });
-        divider(envCard);
         actionRow(envCard, "Android shell（adb）", AdbCli.status(this),
                 new View.OnClickListener() {
             @Override public void onClick(View v) { adbDialog(); }
