@@ -125,6 +125,31 @@ public final class Tests {
             total += 2; fails.add("APK 选择用例异常 " + e);
         }
 
+        // ---- 截图临时文件：必须在私有缓存（不进相册）+ 用完即删 ----
+        try {
+            String shotDir = Shots.dir(c).getAbsolutePath();
+            total++; if (!shotDir.startsWith(c.getCacheDir().getAbsolutePath())) {
+                fails.add("截图目录不在 cacheDir 下：" + shotDir);
+            }
+            total++; if (shotDir.startsWith("/sdcard") || shotDir.contains("/DCIM")) {
+                fails.add("截图目录落在共享存储/相册目录：" + shotDir);
+            }
+            java.io.File f = Shots.newFile(c);
+            total++; if (!Shots.isShot(c, f.getAbsolutePath())) fails.add("isShot 认不出自己的截图");
+            total++; if (Shots.isShot(c, "/sdcard/DSHNative/x.png")) fails.add("isShot 误判外部文件");
+            // 落一个真文件再删
+            try {
+                f.getParentFile().mkdirs();
+                java.io.FileOutputStream fo = new java.io.FileOutputStream(f);
+                fo.write(new byte[]{1, 2, 3});
+                fo.close();
+            } catch (Throwable ignored) {}
+            Shots.delete(f.getAbsolutePath());
+            total++; if (f.exists()) fails.add("delete 之后文件还在");
+        } catch (Throwable t) {
+            total += 5; fails.add("截图临时文件用例异常 " + t);
+        }
+
         // ---- 会话搜索与导出 ----
         try {
             total++; String sn = SessionSearch.snippet("前文一段，关键命令 npm install 在后文", "NPM", 6);

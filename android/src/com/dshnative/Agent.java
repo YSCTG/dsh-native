@@ -129,6 +129,18 @@ public final class Agent {
         //noinspection ResultOfMethodCallIgnored
         sessionDir.mkdirs();
         Shell.attach(ctx);
+        // 清掉旧版本留在工作区的截图（它们已经进了相册），并让媒体库移除索引。
+        // 后台做：扫相册索引有点慢，不该挡住第一次对话。
+        final Context c1 = ctx;
+        final File ws1 = workspace;
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    Shots.purgeLegacy(c1, ws1);
+                    Shots.cleanup(c1);
+                } catch (Throwable ignored) {}
+            }
+        }).start();
         // 工具链解压要十几秒：后台做，别等第一次 sh 调用时才卡住
         final Context c0 = ctx;
         new Thread(new Runnable() {
@@ -612,6 +624,8 @@ public final class Agent {
                             shot.put("content", c2);
                             addMessage(shot);
                         }
+                        // 图已经塞进对话，临时文件没用了
+                        if (Shots.isShot(ctx, pendingShot)) Shots.delete(pendingShot);
                         pendingShot = null;
                     }
                 }
@@ -1185,10 +1199,9 @@ public final class Agent {
                 }
                 android.graphics.Bitmap bm = Screen.capture();
                 if (bm == null) return "截屏失败（可能刚授权还没出帧，稍等再试）";
-                File dir = new File(Ws.active(ctx), "uploads");
-                //noinspection ResultOfMethodCallIgnored
-                dir.mkdirs();
-                File out = new File(dir, "screen-" + System.currentTimeMillis() + ".png");
+                // 存到应用私有缓存：共享目录会被媒体库索引，截图就跑到相册里去了
+                File out = Shots.newFile(ctx);
+                Shots.cleanup(ctx);
                 try {
                     FileOutputStream os = new FileOutputStream(out);
                     bm.compress(android.graphics.Bitmap.CompressFormat.PNG, 90, os);
@@ -1201,8 +1214,8 @@ public final class Agent {
                 int w = bm.getWidth(), h = bm.getHeight();
                 bm.recycle();
                 pendingShot = out.getAbsolutePath();
-                return "已截屏 " + w + "x" + h + " 像素，保存于 " + out.getAbsolutePath()
-                        + "。下一轮你会直接看到这张图。";
+                return "已截屏 " + w + "x" + h + " 像素。下一轮你会直接看到这张图。"
+                        + "（截图是临时的：你看到之后它就会被删掉，不会留在相册里）";
             }
             if ("job_start".equals(name)) {
                 String cmd = a.optString("command", "").trim();
