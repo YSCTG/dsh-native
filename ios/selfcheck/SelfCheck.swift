@@ -158,10 +158,19 @@ enum SelfCheck {
     }
 }
 
-// Playgrounds 里允许顶层 await；用信号量兜住，保证输出打完再结束
+// 运行方式分两种环境，别用信号量阻塞主线程：
+//   Playgrounds：顶层代码占着主线程，`done.wait()` 会和 Task 抢主线程 → 直接卡死。
+//                正确做法是打开 needsIndefiniteExecution，让异步任务自己跑完打印。
+//   其它环境（命令行 / macOS 脚本）：没有 Playgrounds 的调度，才用信号量。
+#if canImport(PlaygroundSupport)
+import PlaygroundSupport
+PlaygroundPage.current.needsIndefiniteExecution = true
+Task { await SelfCheck.run() }
+#else
 let done = DispatchSemaphore(value: 0)
 Task {
     await SelfCheck.run()
     done.signal()
 }
 done.wait()
+#endif
