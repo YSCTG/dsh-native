@@ -114,6 +114,36 @@ enum SelfCheck {
             expect(false, "fs 工具异常：\(error)")
         }
 
+        // ---------- 工作流调度（假 runner，不联网） ----------
+        print("【工作流调度】")
+        do {
+            let items = (1...6).map { WorkflowRunner.Item(id: "t\($0)", prompt: "p\($0)") }
+
+            let runner = WorkflowRunner(concurrency: 3) { item in
+                try? await Task.sleep(nanoseconds: 60_000_000)
+                return .ok("done-\(item.id)")
+            }
+            let results = await runner.run(items)
+            expect(results.count == 6, "6 个子任务都拿到结果")
+            expect(results.map { $0.id } == items.map { $0.id }, "结果顺序等于输入顺序")
+            let peak = await runner.observedMaxInFlight()
+            expect(peak <= 3, "并发不超过上限（实测峰值 \(peak)）")
+            expect(peak >= 2, "确实并发执行过（峰值 \(peak)）")
+
+            let flaky = WorkflowRunner(concurrency: 2) { item in
+                item.id == "t2" ? .failed("boom") : .ok("ok")
+            }
+            let r2 = await flaky.run(items)
+            expect(r2.contains { $0.outcome.isFailure }, "单个失败被记录下来")
+            expect(r2.filter { !$0.outcome.isFailure }.count == 5, "其余任务照常完成（错误隔离）")
+
+            let stopper = WorkflowRunner(concurrency: 1) { item in
+                item.id == "t2" ? .failed("stop") : .ok("ok")
+            }
+            let r3 = await stopper.run(items, stopOnError: true)
+            expect(r3.contains { $0.outcome.text.contains("跳过") }, "stopOnError 会把剩余标记为跳过")
+        }
+
         // ---------- Office 生成（docx / xlsx） ----------
         print("【Office 生成】")
         expect(ZipWriter.crc32(Data("123456789".utf8)) == 0xCBF4_3926,
