@@ -47,8 +47,11 @@ enum SelfCheck {
         // ---------- 路径沙箱 ----------
         emit("【路径沙箱】")
         expectThrows("拒绝 ../etc/passwd") { _ = try ctx.resolve("../etc/passwd") }
-        expect((try? ctx.resolve("sub/a.txt"))?.path.hasPrefix(root.standardizedFileURL.path) == true,
-               "工作区内路径放行")
+        expect((try? ctx.resolve("sub/a.txt")) != nil, "工作区内路径放行")
+        // 回归：iOS 上 /var 与 /private/var 是同一目录的两种写法，
+        // 不归一会把合法路径误判为越界（iPad 上真抓到过）
+        expect(ToolContext.normalized(root) == ToolContext.normalized(ctx.workspace),
+               "软链接归一：根目录两侧一致")
 
         // ---------- 工具参数 ----------
         emit("【工具参数】")

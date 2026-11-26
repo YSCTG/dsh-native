@@ -42,6 +42,15 @@ public struct ToolContext: Sendable {
         self.audit = audit
     }
 
+
+    /// 路径归一化：解开软链接 + 标准化 + 去掉尾部斜杠。
+    /// iOS 上 `/var` 是指向 `/private/var` 的软链接，不归一就会误判越界。
+    static func normalized(_ url: URL) -> String {
+        var p = url.resolvingSymlinksInPath().standardizedFileURL.path
+        while p.count > 1 && p.hasSuffix("/") { p.removeLast() }
+        return p
+    }
+
     /// 把模型给的相对路径解析到工作区内，并挡住 `../` 逃逸。
     public func resolve(_ path: String) throws -> URL {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -49,9 +58,12 @@ public struct ToolContext: Sendable {
         let candidate = trimmed.hasPrefix("/")
             ? URL(fileURLWithPath: trimmed)
             : workspace.appendingPathComponent(trimmed)
-        let root = workspace.standardizedFileURL.path
-        let target = candidate.standardizedFileURL.path
-        guard target == root || target.hasPrefix(root + "/") else {
+        // 关键：iOS 上 /var 与 /private/var 是同一目录的两种写法（symlink），
+        // standardizedFileURL **不**解开软链接，直接比较会误判成越界。
+        // 两边都 resolvingSymlinksInPath，并去掉尾部斜杠，才是可靠比较。
+        let rootPath = normalized(workspace)
+        let targetPath = normalized(candidate)
+        guard targetPath == rootPath || targetPath.hasPrefix(rootPath + "/") else {
             throw ToolError.badArgument("越界：\(path) 不在工作区内")
         }
         return candidate
