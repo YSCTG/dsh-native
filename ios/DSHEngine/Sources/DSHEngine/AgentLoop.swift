@@ -42,7 +42,8 @@ public actor AgentLoop {
     /// 每产生一次工具调用就执行并把结果追加进历史，最多 `maxSteps` 步防死循环。
     public func runTurn(messages: inout [[String: Any]],
                         maxSteps: Int = 8,
-                        onText: @escaping @Sendable (String) -> Void = { _ in }) async throws -> TurnResult {
+                        onText: @escaping @Sendable (String) -> Void = { _ in },
+                        onTool: (@Sendable (String, String, String) -> Void)? = nil) async throws -> TurnResult {
         var collectedText = ""
         var called: [String] = []
         var finish: String?
@@ -98,6 +99,7 @@ public actor AgentLoop {
                 } else {
                     output = "错误：没有这个工具 \(info.name)"
                 }
+                onTool?(info.name, info.args, output)      // 让上层能持久化并显示 chip
                 messages.append(["role": "tool", "tool_call_id": id, "content": output])
             }
         }

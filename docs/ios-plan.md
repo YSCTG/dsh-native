@@ -149,3 +149,50 @@
 2. **执行端**：接受"需要一台电脑或服务器"吗？如果不接受，能力上限就是 B（声明式插件）
 3. **最低系统版本**：iOS 17+ 可以用最新 SwiftUI 与 App Intents；iOS 15+ 兼容面更广但要写降级
 4. **是否要 iPad / Mac Catalyst**：影响布局与里程碑
+
+---
+
+## 当前状态（2026-11-26 实测）
+
+### 能做的
+
+`ios/DSHEngine/` 是一个**跨平台 Swift 包**，不依赖 iOS SDK：
+
+```
+Sources/DSHEngine/
+  Tool.swift            工具协议 + JSONSchema/JSONValue + 路径沙箱
+  DeepSeekClient.swift  SSE 流式客户端（Foundation / FoundationNetworking）
+  AgentLoop.swift       工具循环（含 onText / onTool 回调）
+  AgentService.swift    服务层：会话 + 发送 + 事件流（actor）
+  SessionStore.swift    会话存储（JSONL，半行不坏全篇）
+  BuiltinTools.swift    fs_list / fs_read / fs_write / text_stats / net_fetch
+Tests/DSHEngineTests/   EngineTests(9) + SessionStoreTests(7)
+```
+
+### 做不到的（都是实测，不是推测）
+
+| 想法 | 结果 |
+|---|---|
+| 本机装 Xcode / iOS 模拟器 | 不可能：Windows 没有 iOS SDK |
+| Swift for Windows 构建 | 装了 6.4.3，缺 `link.exe` → `swift build` 直接报 toolchain invalid |
+| 补 MSVC（VS Build Tools C++ 工作负载） | **三次尝试全部失败**：`setup.exe modify` 返回 5007，`--includeRecommended` 变体返回 87（参数无效），winget `--override` 说"已安装、无升级"，忽略参数 |
+| GitHub macOS runner（免费） | **不可用**：6 次运行 `ios-env-probe` / `ios-engine` 全部长时间 queued，注解写的是 `not acquired by Runner of type hosted`（容量不足），arm64 池尤其严重；换 `macos-13` 也一样排 |
+
+### 因此现在的验证水位
+
+- ✅ **语法**：`pwsh ios/check-syntax.ps1`（`swiftc -parse`）——8 个文件全过。
+  这一关抓到过真错：`if let x = ... where cond` 在新版 Swift 已不允许。
+- ❌ **类型检查**：需要 Foundation 的 Windows 头文件（来自 MSVC），当前做不到。
+- ❌ **单元测试**：16 条用例写好了，但一次都没跑过（`swift test` 要链接）。
+- ❌ **SwiftUI 界面**：需要 iOS SDK，完全没写。
+
+### 结论
+
+引擎（最容易写错的部分）已经成形，但**没有任何行为被验证过**。继续在 Windows 上堆代码，
+只是在积累"没跑过的 Swift"。要往下走，必须先拿到一条能编译的通道：
+
+1. **一台 Mac**（哪怕是旧的 Mac mini）：`cd ios/DSHEngine && swift test` 立刻就能验。
+2. **付费 CI**（GitHub larger runner / Cirrus / Codemagic 免费额度）：不依赖本机。
+3. 明确接受"先写完 UI，最后一次性在 Mac 上调"——风险最高，我不推荐。
+
+在拿到通道之前，正确的动作是**停止增加无验证的代码**，而不是继续写界面。
