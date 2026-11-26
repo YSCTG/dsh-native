@@ -4190,6 +4190,9 @@ public class MainActivity extends Activity implements Agent.Listener {
         etKey.setHint("sk-…");
         etKey.setSingleLine(true);
         etKey.setText(apiKey());
+        // 默认打码，避免截图/录屏时把 key 带出去
+        etKey.setTransformationMethod(
+                android.text.method.PasswordTransformationMethod.getInstance());
 
         final EditText etBase = new EditText(this);
         etBase.setHint(DEFAULT_BASE);
@@ -4197,6 +4200,17 @@ public class MainActivity extends Activity implements Agent.Listener {
         etBase.setText(prefs.getString("base_url", ""));
 
         box.addView(etKey);
+
+        // 对没用过 AI 接口的人来说，"sk-…" 等于没有说明，这里给一个入口
+        TextView howTo = new TextView(this);
+        howTo.setText("还没有 key？点这里看怎么获取 →");
+        howTo.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        howTo.setTextColor(getColor(R.color.accent));
+        howTo.setPadding(0, dp(8), 0, dp(4));
+        howTo.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { KeyHelp.show(MainActivity.this); }
+        });
+        box.addView(howTo);
         box.addView(etBase);
 
         new AlertDialog.Builder(this, R.style.DshDialog)

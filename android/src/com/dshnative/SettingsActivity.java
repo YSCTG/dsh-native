@@ -1333,6 +1333,33 @@ public class SettingsActivity extends Activity {
             final android.content.SharedPreferences sp = getSharedPreferences("dshnative", MODE_PRIVATE);
             fA = field(f, "sk-…", false, false);
             fA.setText(Secret.get(sp));
+            // 默认打码：这个页面经常被截图（发教程、求助），明文 key 等于泄露
+            fA.setTransformationMethod(android.text.method.PasswordTransformationMethod.getInstance());
+            TextView howTo = new TextView(this);
+            howTo.setText("还没有 key？点这里看怎么获取 →");
+            howTo.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            howTo.setTextColor(getColor(R.color.accent));
+            howTo.setPadding(0, dp(3), 0, dp(6));
+            howTo.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { KeyHelp.show(SettingsActivity.this); }
+            });
+            f.addView(howTo);
+
+            final TextView toggle = new TextView(this);
+            toggle.setText("显示 key");
+            toggle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            toggle.setTextColor(getColor(R.color.label_secondary));
+            toggle.setPadding(0, 0, 0, dp(6));
+            toggle.setOnClickListener(new View.OnClickListener() {
+                boolean shown;
+                @Override public void onClick(View v) {
+                    shown = !shown;
+                    fA.setTransformationMethod(shown ? null
+                            : android.text.method.PasswordTransformationMethod.getInstance());
+                    toggle.setText(shown ? "隐藏 key" : "显示 key");
+                }
+            });
+            f.addView(toggle);
             fB = field(f, "base URL（留空用官方地址）", false, false);
             fB.setText(sp.getString("base_url", ""));
             formButtons(f, "保存", new View.OnClickListener() {
