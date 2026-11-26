@@ -210,7 +210,7 @@ Tests/DSHEngineTests/   EngineTests(9) + SessionStoreTests(7)
 所以 iPad 的实际价值是**补上"类型检查"这一环**——这是 Windows 上完全做不到的。
 为了让 iPad 上能跑，已经准备好：
 
-- `ios/selfcheck/EngineSelfCheck.swift`（31 KB）：引擎全部源码 + 19 条断言拼成的**单文件**，
+- `ios/selfcheck/EngineSelfCheck.swift`（31 KB）：引擎全部源码 + 23 条断言拼成的**单文件**，
   粘进 Playgrounds 就能运行（Playgrounds 不支持 SPM 多 target 结构）
 - `ios/selfcheck/README.md`：三步操作与期望输出
 - `build/make_playgrounds_bundle.py`：源码改动后重新生成单文件的脚本

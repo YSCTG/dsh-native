@@ -104,7 +104,7 @@ P4 补齐文档生成，P5 补齐编排，P6 才需要一台常开的机器。
 
 ## 进度（2026-11-26 续）
 
-- **P1 部分完成**：`fs_list/read/write/edit/glob/grep` 已写（`FSTools.swift`），自检扩到 26 条
+- **P1 部分完成**：`fs_list/read/write/edit/glob/grep` 已写（`FSTools.swift`），自检共 23 条断言
 - **界面**：`ChatModel` + `ChatView` + Playgrounds 入口已写，产出 `ChatDemo.swift`（50 KB 单文件）
 - 语法门禁：12 个文件全过
 - 仍未验证：SwiftUI 那一层从未编译过；自检也还没在 iPad 上跑过
