@@ -196,3 +196,24 @@ Tests/DSHEngineTests/   EngineTests(9) + SessionStoreTests(7)
 3. 明确接受"先写完 UI，最后一次性在 Mac 上调"——风险最高，我不推荐。
 
 在拿到通道之前，正确的动作是**停止增加无验证的代码**，而不是继续写界面。
+
+---
+
+## iPad 能做什么（2026-11-26 补充）
+
+有一台 iPad 可用。查证后结论：
+
+- ✅ **能**：编译运行 Swift、**类型检查**、在 App 项目里跑 SwiftUI、真机看效果
+- ❌ **不能**：XCTest（Playgrounds 没有测试运行器）、iOS 模拟器、Xcode 的归档流程
+- 依据：XCTest 无法在 Playgrounds 内运行，见 Apple 开发者论坛与 StackOverflow 的既有结论
+
+所以 iPad 的实际价值是**补上"类型检查"这一环**——这是 Windows 上完全做不到的。
+为了让 iPad 上能跑，已经准备好：
+
+- `ios/selfcheck/EngineSelfCheck.swift`（31 KB）：引擎全部源码 + 19 条断言拼成的**单文件**，
+  粘进 Playgrounds 就能运行（Playgrounds 不支持 SPM 多 target 结构）
+- `ios/selfcheck/README.md`：三步操作与期望输出
+- `build/make_playgrounds_bundle.py`：源码改动后重新生成单文件的脚本
+
+自检通过之后，下一步是在 Playgrounds 的 App 项目里写 SwiftUI，界面只订阅
+`AgentService.send()` 的事件流。
