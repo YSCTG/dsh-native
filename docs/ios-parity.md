@@ -104,7 +104,7 @@ P4 补齐文档生成，P5 补齐编排，P6 才需要一台常开的机器。
 
 ## 进度（2026-11-26 续）
 
-- **P1 部分完成**：`fs_list/read/write/edit/glob/grep` 已写（`FSTools.swift`），自检共 33 条断言
+- **P1 部分完成**：`fs_list/read/write/edit/glob/grep` 已写（`FSTools.swift`），自检共 44 条断言
 - **界面**：`ChatModel` + `ChatView` + Playgrounds 入口已写，产出 `ChatDemo.swift`（50 KB 单文件）
 - 语法门禁：12 个文件全过
 - **P2 部分完成**：`browser_open / browser_text / browser_js / browser_click / browser_type`
@@ -112,4 +112,7 @@ P4 补齐文档生成，P5 补齐编排，P6 才需要一台常开的机器。
   （`loadHTMLString` 加载内联页面 → 读标题/正文 → 点按钮 → 填输入框）
 - **P3 部分完成**：`clip_read/clip_write`、`notify`、`schedule_add/list/remove` 已写
   （`SystemTools.swift`）；自检加 4 条（剪贴板写读、日程加/列/删）
+- **P4 部分完成**：`office_write`（docx/xlsx）+ 自写 `ZipWriter`；OOXML 结构经
+  python-docx / openpyxl 实开验证；自检加 9 条（含 CRC32 标准向量）
+- **工具数 23**：内建 5 + 文件 6 + 浏览器 5 + 系统 6 + Office 1
 - 仍未验证：SwiftUI 那一层从未编译过；自检也还没在 iPad 上跑过

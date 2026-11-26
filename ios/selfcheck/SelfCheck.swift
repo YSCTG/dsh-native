@@ -114,6 +114,48 @@ enum SelfCheck {
             expect(false, "fs 工具异常：\(error)")
         }
 
+        // ---------- Office 生成（docx / xlsx） ----------
+        print("【Office 生成】")
+        expect(ZipWriter.crc32(Data("123456789".utf8)) == 0xCBF4_3926,
+               "CRC32 标准向量（123456789 → 0xCBF43926）")
+
+        let docx = OfficeTools.buildDocx(title: "自检标题",
+                                         paragraphs: ["第一段", "第二段"],
+                                         table: nil)
+        expect(docx.count > 400, "docx 有内容（\(docx.count) 字节）")
+        expect(docx.count > 3 && docx[0] == 0x50 && docx[1] == 0x4B
+                && docx[2] == 0x03 && docx[3] == 0x04,
+               "docx 以 zip 本地头 PK\\x03\\x04 开头")
+        let docxText = String(decoding: docx, as: UTF8.self)
+        expect(docxText.contains("word/document.xml"), "docx 含 document.xml 部件")
+        expect(docxText.contains("first") == false && docxText.contains("第一段"),
+               "docx 正文含中文")
+
+        let sheetsArg = AgentLoop.parseArguments(
+            #"[{"name":"数据","rows":[["甲",1],[2,"丙"]]}]"#)
+        if let xlsx = try? OfficeTools.buildXlsx(sheets: sheetsArg) {
+            let xlsxText = String(decoding: xlsx, as: UTF8.self)
+            expect(xlsx.count > 400, "xlsx 生成成功（\(xlsx.count) 字节）")
+            expect(xlsxText.contains("xl/workbook.xml"), "xlsx 含 workbook 部件")
+            expect(xlsxText.contains("worksheets/sheet1.xml"), "xlsx 含 sheet1")
+        } else {
+            expect(false, "xlsx 生成失败")
+        }
+
+        // 真写一个文件，验证 office_write 的落盘路径
+        do {
+            let out = try await OfficeTools.Write().run(
+                .object(["kind": .string("docx"),
+                         "path": .string("office/自检.docx"),
+                         "title": .string("落盘"),
+                         "paragraphs": .array([.string("正文")])]), in: ctx)
+            expect(out.contains("已生成"), "office_write 落盘成功")
+            let url = try ctx.resolve("office/自检.docx")
+            expect(FileManager.default.fileExists(atPath: url.path), "文件真的在")
+        } catch {
+            expect(false, "office_write 异常：\(error)")
+        }
+
         // ---------- 系统能力（只测不需要授权的部分） ----------
         print("【系统工具】")
         #if canImport(UIKit)
