@@ -1310,6 +1310,9 @@ public class SettingsActivity extends Activity {
         divider(aboutCard);
         actionRow(aboutCard, "审计 " + Policy.Audit.count(getFilesDir()) + " 条", "append-only + hash 链", null);
         divider(aboutCard);
+        actionRow(aboutCard, "许可：非商业使用",
+                "PolyForm Noncommercial 1.0.0 · 商用需授权", null);
+        divider(aboutCard);
         if (showGhForm) {
             LinearLayout f = card();
             final android.content.SharedPreferences sp2 = getSharedPreferences("dshnative", MODE_PRIVATE);

@@ -3,7 +3,7 @@
 [![Download APK](https://img.shields.io/badge/download-APK-2ea44f?style=flat-square&logo=android&logoColor=white)](https://github.com/YSCTG/dsh-native/releases/latest)
 ![Android 8+](https://img.shields.io/badge/android-8.0%2B-3ddc84?style=flat-square&logo=android&logoColor=white)
 ![arm64](https://img.shields.io/badge/arch-arm64--v8a-555?style=flat-square)
-![License MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
+![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue?style=flat-square)
 
 **[English](#english) · [中文](#中文)**
 
@@ -85,7 +85,7 @@ This project takes the other road: rewrite the loop natively.
 | Idle memory | not published | **74 MB PSS** (measured) |
 | Tool overhead | every call crosses the compatibility layer | direct `fork/exec` of a native binary |
 | Build | Flutter + Node + JDK + SDK/NDK on Linux | `aapt2 + javac + d8 + apksigner` |
-| License | AGPL-3.0 | **MIT** |
+| License | AGPL-3.0 | **PolyForm Noncommercial (非商用)** |
 | Ecosystem reach | runs anything you can `apt install` | fixed set of 42 tools |
 
 Both are legitimate. The trade is breadth for weight, and this project chose weight.
@@ -213,7 +213,14 @@ android/src/com/dshnative/
 
 ### License
 
-MIT — see [LICENSE](LICENSE). Use it, fork it, ship it, sell it.
+**PolyForm Noncommercial 1.0.0** — see [LICENSE](LICENSE).
+
+Free to download, use, modify and share for **noncommercial** purposes.
+Commercial use requires a separate license; open an issue to ask.
+Third-party components keep their own licenses — see [NOTICE.md](NOTICE.md).
+
+Releases up to **v34.7** were MIT and stay MIT for anyone who already has them
+([LICENSE-MIT-1.0.md](LICENSE-MIT-1.0.md)). A license change is not retroactive.
 
 ---
 
@@ -277,7 +284,7 @@ MIT — see [LICENSE](LICENSE). Use it, fork it, ship it, sell it.
 | 空闲内存 | 未公开 | **74 MB PSS**（实测） |
 | 工具开销 | 每次调用穿过兼容层 | 直接 `fork/exec` 原生二进制 |
 | 构建 | Flutter + Node + JDK + SDK/NDK | `aapt2 + javac + d8 + apksigner` |
-| 许可 | AGPL-3.0 | **MIT** |
+| 许可 | AGPL-3.0 | **PolyForm Noncommercial（非商用）** |
 | 生态广度 | `apt install` 能装的都能用 | 固定 48 个工具（+ MCP 扩展）|
 
 两条路都成立。这笔交易是"用广度换重量"，这个项目选了重量。
@@ -365,4 +372,10 @@ aapt2 compile -> aapt2 link -> javac -> d8 -> zipalign -> apksigner
 
 ### 许可
 
-MIT —— 见 [LICENSE](LICENSE)。用、改、发布、卖都行。
+**PolyForm Noncommercial 1.0.0** —— 见 [LICENSE](LICENSE)。
+
+免费下载、使用、修改、分享，**但不能商用**。商用需要单独授权（开 issue 谈）。
+随包分发的第三方组件按各自许可 —— 见 [NOTICE.md](NOTICE.md)。
+
+v34.7 及更早的版本是 MIT，且对已经拿到的人**永远有效**
+（[LICENSE-MIT-1.0.md](LICENSE-MIT-1.0.md)）。协议变更不追溯。
