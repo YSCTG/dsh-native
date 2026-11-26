@@ -36,7 +36,7 @@
 【工具参数】
   ✓ 解析 path
   ...
-全部通过（23/23）
+全部通过（27/27）
 ```
 
 **如果出现编译错误**——那就是最有价值的信息：说明这堆 Swift 里有类型问题，
@@ -67,7 +67,7 @@
 
 | 文件 | 内容 | 通过意味着 |
 |---|---|---|
-| `EngineSelfCheck.swift` | 引擎 + 23 条断言 | 引擎的类型和逻辑都对 |
+| `EngineSelfCheck.swift` | 引擎 + 27 条断言 | 引擎的类型和逻辑都对 |
 | `ModelSmoke.swift` | 引擎 + 视图模型（**不含 SwiftUI**） | 并发 / Combine / `@MainActor` 那层没编错 |
 | `ChatDemo.swift` | 全部 + SwiftUI 界面 | 界面能跑 |
 
@@ -87,3 +87,16 @@
 - `onChange` 用单参数闭包（双参数版是 iOS 17 才有的 API）
 - 工具栏用 `navigationBarLeading/Trailing`（`topBarLeading` 要 iOS 17+）
 - 进度指示用 `scaleEffect` 而不是 `controlSize`
+
+### 浏览器工具（P2）
+
+| 工具 | 作用 |
+|---|---|
+| `browser_open` | 打开网址，等加载完，返回标题 |
+| `browser_text` | 读正文纯文本（上限 2 万字符） |
+| `browser_js` | 执行任意 JS，结果字符串化返回 |
+| `browser_click` | 按 CSS 选择器点击 |
+| `browser_type` | 往输入框填值（触发 input/change，React 页面也认） |
+
+自检里这 4 条浏览器用例**不联网**：用 `loadHTMLString` 载入一段内联 HTML，
+再读标题、点按钮（验证 onclick 生效）、填输入框（验证 setter 与事件派发）。

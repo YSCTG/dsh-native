@@ -114,6 +114,43 @@ enum SelfCheck {
             expect(false, "fs 工具异常：\(error)")
         }
 
+        // ---------- 内嵌浏览器（用内联 HTML，不联网） ----------
+        print("【浏览器 WebKit】")
+        do {
+            let html = """
+            <html><head><title>自检页</title></head><body>
+            <h1 id="h">标题文字</h1>
+            <button id="b" onclick="document.getElementById('h').textContent='点过了'">按我</button>
+            <input id="i" value="">
+            </body></html>
+            """
+            _ = await WebBrowser.shared.loadHTML(html)
+            let title = await WebBrowser.shared.title()
+            let body = await WebBrowser.shared.text()
+            expect(title == "自检页", "读到页面标题")
+            expect(body.contains("标题文字"), "读到正文")
+
+            _ = try? await WebBrowser.shared.js(
+                "document.getElementById('b').click()")
+            let afterClick = await WebBrowser.shared.text()
+            expect(afterClick.contains("点过了"), "click() 生效")
+
+            _ = try? await WebBrowser.shared.js("""
+            (function(){
+              var el = document.getElementById('i');
+              var setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
+              setter.call(el, '填入成功');
+              el.dispatchEvent(new Event('input', {bubbles:true}));
+              return 'ok';
+            })()
+            """)
+            let val = (try? await WebBrowser.shared.js(
+                "document.getElementById('i').value")) ?? ""
+            expect(val == "填入成功", "输入框能被填值")
+        } catch {
+            expect(false, "浏览器用例异常：\(error)")
+        }
+
         // ---------- 会话存储 ----------
         print("【会话存储】")
         let store = SessionStore(root: root)
