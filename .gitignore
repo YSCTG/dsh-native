@@ -15,3 +15,6 @@ local.properties
 ios/**/.build/
 ios/**/.swiftpm/
 
+
+# iPad 复制页（临时产物）
+build/ioscopy/
