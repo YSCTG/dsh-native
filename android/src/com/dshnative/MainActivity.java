@@ -3112,16 +3112,142 @@ public class MainActivity extends Activity implements Agent.Listener {
         String pin = s.pinned ? "取消置顶" : "置顶";
         new android.app.AlertDialog.Builder(this, R.style.DshDialog)
                 .setTitle(s.title == null || s.title.isEmpty() ? "新会话" : s.title)
-                .setItems(new String[]{pin, "删除", "取消"}, new android.content.DialogInterface.OnClickListener() {
+                .setItems(new String[]{pin, "导出 Markdown", "删除", "取消"},
+                        new android.content.DialogInterface.OnClickListener() {
                     @Override public void onClick(android.content.DialogInterface d, int which) {
                         if (which == 0) {
                             togglePin(s);
                         } else if (which == 1) {
+                            exportSession(s);
+                        } else if (which == 2) {
                             confirmDeleteSession(s);
                         }
                     }
                 })
                 .show();
+    }
+
+    /** 导出成 Markdown，落盘后给出路径与分享入口。 */
+    private void exportSession(final Session s) {
+        try {
+            final java.io.File md = SessionExport.write(this, s);
+            new android.app.AlertDialog.Builder(this, R.style.DshDialog)
+                    .setTitle("已导出")
+                    .setMessage(md.getAbsolutePath())
+                    .setPositiveButton("分享", new android.content.DialogInterface.OnClickListener() {
+                        @Override public void onClick(android.content.DialogInterface d, int w) {
+                            String err = SessionExport.share(MainActivity.this, md);
+                            if (err != null) toast(err);
+                        }
+                    })
+                    .setNeutralButton("在文件里看", new android.content.DialogInterface.OnClickListener() {
+                        @Override public void onClick(android.content.DialogInterface d, int w) {
+                            startActivity(new android.content.Intent(MainActivity.this, FilesActivity.class));
+                        }
+                    })
+                    .setNegativeButton("关闭", null)
+                    .show();
+        } catch (Throwable t) {
+            toast("导出失败：" + t.getMessage());
+        }
+    }
+
+    /**
+     * 搜索会话：标题与正文一起搜，结果按"标题优先、正文按会话顺序"排。
+     *
+     * 手输两个字以上才搜——一个字会命中太多，翻起来比不搜还慢。
+     */
+    private void showSessionSearch() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(16), dp(10), dp(16), dp(4));
+
+        final android.widget.EditText input = new android.widget.EditText(this);
+        input.setHint("搜标题或正文，比如 部署 / npm / 塔罗");
+        input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        input.setSingleLine(true);
+        box.addView(input);
+
+        final TextView status = new TextView(this);
+        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        status.setTextColor(getColor(R.color.label_tertiary));
+        status.setPadding(0, dp(6), 0, dp(6));
+        box.addView(status);
+
+        final LinearLayout results = new LinearLayout(this);
+        results.setOrientation(LinearLayout.VERTICAL);
+        ScrollView sc = new ScrollView(this);
+        sc.addView(results);
+        box.addView(sc, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(360)));
+
+        final android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this, R.style.DshDialog)
+                .setTitle("搜索会话")
+                .setView(box)
+                .setNegativeButton("关闭", null)
+                .create();
+
+        input.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence cs, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence cs, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable e) {
+                String q = e == null ? "" : e.toString().trim();
+                results.removeAllViews();
+                if (q.length() < 2) {
+                    status.setText(q.isEmpty() ? "输入至少 2 个字开始搜" : "再多输一个字");
+                    return;
+                }
+                final java.util.List<SessionSearch.Hit> hits =
+                        SessionSearch.find(MainActivity.this, q, 40);
+                status.setText(hits.isEmpty() ? "没找到" : ("找到 " + hits.size() + " 处"));
+                for (final SessionSearch.Hit h : hits) {
+                    LinearLayout row = new LinearLayout(MainActivity.this);
+                    row.setOrientation(LinearLayout.VERTICAL);
+                    row.setPadding(dp(4), dp(8), dp(4), dp(8));
+
+                    TextView t = new TextView(MainActivity.this);
+                    String title = h.session.title == null || h.session.title.isEmpty()
+                            ? "新会话" : h.session.title;
+                    t.setText(title);
+                    t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+                    t.setTextColor(getColor(R.color.label_primary));
+                    t.setSingleLine(true);
+                    t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    row.addView(t);
+
+                    TextView sn = new TextView(MainActivity.this);
+                    sn.setText(h.snippet);
+                    sn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+                    sn.setTextColor(getColor(R.color.label_secondary));
+                    sn.setMaxLines(2);
+                    sn.setPadding(0, dp(2), 0, dp(2));
+                    row.addView(sn);
+
+                    TextView meta = new TextView(MainActivity.this);
+                    meta.setText(("标题".equals(h.role) ? "标题命中" : ("第 " + (h.index + 1) + " 条 · " + h.role))
+                            + " · " + relTime(h.session.updated));
+                    meta.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+                    meta.setTextColor(getColor(R.color.label_tertiary));
+                    row.addView(meta);
+
+                    row.setOnClickListener(new View.OnClickListener() {
+                        @Override public void onClick(View v) {
+                            dlg.dismiss();
+                            loadSession(h.session.id);
+                        }
+                    });
+                    results.addView(row);
+
+                    View div = new View(MainActivity.this);
+                    div.setBackgroundColor(getColor(R.color.border_l1));
+                    results.addView(div, new LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, dp(1)));
+                }
+            }
+        });
+
+        dlg.show();
+        input.requestFocus();
     }
 
     private void togglePin(Session s) {
@@ -3253,6 +3379,9 @@ public class MainActivity extends Activity implements Agent.Listener {
         drawerBody.addView(newSessionButton());
 
         drawerBody.addView(sectionLabel("工作区 · " + Workspaces.current(this).name));
+        drawerBody.addView(drawerRow("搜索会话", "在标题和正文里找", new View.OnClickListener() {
+            @Override public void onClick(View v) { closeDrawer(); showSessionSearch(); }
+        }));
         drawerBody.addView(drawerRow("⇄  切换 / 新建工作区", null,
                 new View.OnClickListener() {
             @Override public void onClick(View v) { closeDrawer(); showWorkspaceSheet(); }

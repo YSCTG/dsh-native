@@ -125,6 +125,39 @@ public final class Tests {
             total += 2; fails.add("APK 选择用例异常 " + e);
         }
 
+        // ---- 会话搜索与导出 ----
+        try {
+            total++; String sn = SessionSearch.snippet("前文一段，关键命令 npm install 在后文", "NPM", 6);
+            if (!sn.contains("npm install")) fails.add("片段应包含命中词，实际 " + sn);
+            total++; if (!sn.startsWith("…") && !SessionSearch.snippet(
+                    "npm install", "npm", 6).startsWith("npm")) fails.add("片段切分错");
+
+            total++; org.json.JSONObject m1 = new org.json.JSONObject();
+            m1.put("role", "user"); m1.put("content", "你好");
+            if (!"你好".equals(SessionSearch.textOf(m1))) fails.add("textOf 字符串形式取错");
+
+            total++; org.json.JSONObject m2 = new org.json.JSONObject();
+            m2.put("role", "user");
+            m2.put("content", new org.json.JSONArray().put(new org.json.JSONObject().put("text", "分片")));
+            if (!"分片".equals(SessionSearch.textOf(m2))) fails.add("textOf 分片数组取错");
+
+            total++; if (!"a-b-c".equals(SessionExport.safeName("a/b:c "))) {
+                fails.add("safeName 应把危险字符变短横，实际 " + SessionExport.safeName("a/b:c "));
+            }
+
+            total++; org.json.JSONArray msgs = new org.json.JSONArray();
+            msgs.put(new org.json.JSONObject().put("role", "system").put("content", "系统提示"));
+            msgs.put(new org.json.JSONObject().put("role", "user").put("content", "问题"));
+            msgs.put(new org.json.JSONObject().put("role", "assistant").put("content", "回答"));
+            msgs.put(new org.json.JSONObject().put("role", "tool").put("content", "输出"));
+            String md = SessionExport.toMarkdown("标题", msgs);
+            total++; if (!md.contains("## 你") || !md.contains("## 助手")) fails.add("Markdown 缺角色小节");
+            total++; if (md.contains("系统提示")) fails.add("系统提示不该出现在导出里");
+            total++; if (!md.contains("> **工具返回**")) fails.add("工具输出应折成引用块");
+        } catch (Throwable t) {
+            total += 8; fails.add("会话工具用例异常 " + t);
+        }
+
         // ---- 公式求值：给 xlsx 写缓存值用 ----
         try {
             org.json.JSONArray rows = new org.json.JSONArray(

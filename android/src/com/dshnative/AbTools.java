@@ -32,8 +32,8 @@ public final class AbTools {
     private static final String ZIP = "abt.zip";
     /** 工具链发布地址；跟着 App 版本走，改版本时同步。 */
     private static final String[] URLS = {
-            "https://github.com/YSCTG/dsh-native/releases/download/v34.6/abt.zip",
-            "https://gh-proxy.org/https://github.com/YSCTG/dsh-native/releases/download/v34.6/abt.zip",
+            "https://github.com/YSCTG/dsh-native/releases/download/v34.7/abt.zip",
+            "https://gh-proxy.org/https://github.com/YSCTG/dsh-native/releases/download/v34.7/abt.zip",
     };
     private static final long EXPECT_SIZE = 24541944;   // 约 16.5 MB
 
