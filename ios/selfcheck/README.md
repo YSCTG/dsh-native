@@ -49,3 +49,16 @@
 - 引擎代码从单文件拆回包结构（或先继续用单文件，够用）
 - 界面只订阅 `AgentService.send()` 的事件流
 - 依然没有 XCTest，所以每次改完仍跑一遍自检
+
+---
+
+## 带界面的单文件：ChatDemo.swift
+
+`ios/selfcheck/ChatDemo.swift`（约 50 KB）= 引擎 + SwiftUI 界面 + Playgrounds 入口。
+
+用法：Playgrounds 新建 Playground，粘贴全文，运行 → 出现聊天界面；右上角钥匙图标填 API key。
+
+界面包含：消息气泡（用户右、助手左）、流式追加、工具 chip（`· fs_read`）、
+出错红字、发送/停止、新建会话、状态栏。
+
+**它从未被编译过**（Windows 没有 iOS SDK）。Playgrounds 的报错就是第一手验证信息。
