@@ -4,11 +4,27 @@ import Foundation
 import SwiftUI
 import PlaygroundSupport
 
-// iPad / Playgrounds 里的入口：直接把聊天界面挂成实时视图。
+// iPad / Playgrounds 入口：三个页签——
+//   聊天：DeepSeek agent（引擎 + 工具）
+//   应用：本地 web app 启动器（点一个就跑）
+//   沙盒：内置 JS playground（真跑 JavaScriptCore）
 //
-// 注意：这里用的是**未验证**的 SwiftUI 代码（Windows 上编不了 SwiftUI）。
-// 如果 Playgrounds 报红字，把报错发回来——这是唯一的验证通道。
+// 三个页签都只用系统框架（SwiftUI / WebKit / JavaScriptCore），不依赖任何第三方库。
 
-let model = ChatModel()
-PlaygroundPage.current.setLiveView(ChatView(model: model))
+struct RootTabs: View {
+    var body: some View {
+        TabView {
+            ChatView(model: ChatModel())
+                .tabItem { Label("聊天", systemImage: "bubble.left.and.bubble.right") }
+
+            WebAppLauncher()
+                .tabItem { Label("应用", systemImage: "square.grid.2x2") }
+
+            JSPlayground()
+                .tabItem { Label("沙盒", systemImage: "chevron.left.forwardslash.chevron.right") }
+        }
+    }
+}
+
+PlaygroundPage.current.setLiveView(RootTabs())
 #endif

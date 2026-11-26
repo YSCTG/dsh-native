@@ -158,3 +158,30 @@ WorkflowRunner：同时跑多个子任务，按输入顺序收结果。
 
 ipa_pack 的输出里会明确写"⚠️ 未签名：装不上任何设备"，
 并在包里放一份 UNSIGNED-README.txt 说明为什么——避免用户以为拿到了可用安装包。
+
+### 三个页签（在 iPad 上能直接看）
+
+`ChatDemo.swift` 现在是一个 `TabView`：
+
+| 页签 | 内容 | 依赖 |
+|---|---|---|
+| 聊天 | DeepSeek agent（引擎 + 27 个工具） | 网络（没 key 时走演示模式） |
+| 应用 | 本地 web app 启动器：网格 → 点一个就跑 | 无 |
+| 沙盒 | 内置 JS playground：写代码 → 运行 → 看输出 | 无 |
+
+**"应用"页**跑的是 `apps/<名字>/index.html`，用 WKWebView +
+能力桥。桥的接口（页面的 JS 里可以直接用）：
+
+```js
+await dsh.readFile('data.json')        // 读本 app 目录下的文件
+await dsh.writeFile('out.txt', '你好')  // 写文件（父目录自动建）
+await dsh.list('.')                    // 列目录
+await dsh.notify('标题', '正文')        // 发本地通知
+```
+
+桥的根目录是**该 app 自己的目录**，不是整个工作区——被运行的代码不该有更大权限。
+
+**"沙盒"页**是 JavaScriptCore：真解释执行，不需要 JIT 授权。
+`console.log` 会被收进输出面板；异常显示成红字。默认示例里有排序、词频、递归 fib。
+
+这也是"内置 playground"的边界：**能内置解释器（JS），不能内置编译器（Swift）**。

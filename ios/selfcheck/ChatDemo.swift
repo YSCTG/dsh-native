@@ -2581,6 +2581,509 @@ public struct ChatView: View {
 }
 #endif
 
+// ---------- WebAppBridge.swift ----------
+import Foundation
+
+#if canImport(WebKit)
+import WebKit
+#endif
+#if canImport(UserNotifications)
+import UserNotifications
+#endif
+
+/// web app 的能力桥：让本地 HTML 能读工作区文件、发通知。
+///
+/// 设计要点：
+/// 1. **作用域只到该 app 自己的目录**——桥的根目录是 `apps/<名字>/`，
+///    不是整个工作区。web app 是被运行的代码，不该有超出自己目录的权限。
+/// 2. Promise 形式：JS 侧 `await dsh.readFile('a.txt')`，
+///    走 `postMessage` → 原生处理 → `evaluateJavaScript` 回填。
+/// 3. 只读/写文本。二进制、删除、执行一律不给——这是"应用"不是"终端"。
+public final class WebAppBridge: NSObject, WKScriptMessageHandler {
+
+    public static let handlerName = "dsh"
+
+    private let root: URL
+    private weak var webView: WKWebView?
+
+    public init(root: URL, webView: WKWebView?) {
+        self.root = root
+        self.webView = webView
+        super.init()
+    }
+
+    /// 注入到每个页面的桥脚本（在文档开始时加载）。
+    public static func bootstrapScript() -> String {
+        """
+        (function(){
+          var callbacks = {};
+          window.__dshResolve = function(r){
+            var cb = callbacks[r.id];
+            if (cb) { delete callbacks[r.id]; cb(r); }
+          };
+          function call(op, args){
+            return new Promise(function(resolve){
+              var id = String(Date.now()) + Math.random().toString(16).slice(2);
+              callbacks[id] = resolve;
+              try {
+                window.webkit.messageHandlers.\(handlerName).postMessage({id: id, op: op, args: args || {}});
+              } catch (e) {
+                resolve({ok: false, error: '没有原生桥：' + e});
+              }
+            });
+          }
+          window.dsh = {
+            readFile: function(p){ return call('read', {path: p}); },
+            writeFile: function(p, text){ return call('write', {path: p, text: text}); },
+            list: function(p){ return call('list', {path: (p || '.')}); },
+            notify: function(title, body){ return call('notify', {title: title, body: body}); }
+          };
+        })();
+        """
+    }
+
+    // MARK: - 消息处理
+
+    public func userContentController(_ controller: WKUserContentController,
+                                      didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any],
+              let id = body["id"] as? String,
+              let op = body["op"] as? String else { return }
+        let args = body["args"] as? [String: Any] ?? [:]
+
+        switch op {
+        case "read":
+            let path = args["path"] as? String ?? ""
+            reply(id: id, result: readText(path))
+        case "write":
+            let path = args["path"] as? String ?? ""
+            let text = args["text"] as? String ?? ""
+            reply(id: id, result: writeText(path, text))
+        case "list":
+            let path = args["path"] as? String ?? "."
+            reply(id: id, result: listDir(path))
+        case "notify":
+            let title = args["title"] as? String ?? "DSH"
+            let text = args["body"] as? String ?? ""
+            postNotification(title: title, body: text)
+            reply(id: id, result: ["ok": true, "value": "已请求通知"])
+        default:
+            reply(id: id, result: ["ok": false, "error": "不支持的操作：\(op)"])
+        }
+    }
+
+    // MARK: - 操作
+
+    /// 把相对路径解析到 app 目录内，挡 `../` 逃逸。
+    private func resolve(_ path: String) -> URL? {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        let candidate = trimmed.hasPrefix("/")
+            ? URL(fileURLWithPath: trimmed)
+            : root.appendingPathComponent(trimmed.isEmpty ? "." : trimmed)
+        let rootPath = root.standardizedFileURL.path
+        let target = candidate.standardizedFileURL.path
+        guard target == rootPath || target.hasPrefix(rootPath + "/") else { return nil }
+        return candidate
+    }
+
+    private func readText(_ path: String) -> [String: Any] {
+        guard let url = resolve(path),
+              let data = try? Data(contentsOf: url) else {
+            return ["ok": false, "error": "读不到 \(path)"]
+        }
+        if data.count > 512 * 1024 {
+            return ["ok": false, "error": "文件太大（超过 512 KB）"]
+        }
+        return ["ok": true, "value": String(decoding: data, as: UTF8.self)]
+    }
+
+    private func writeText(_ path: String, _ text: String) -> [String: Any] {
+        guard let url = resolve(path) else {
+            return ["ok": false, "error": "路径越界：\(path)"]
+        }
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                    withIntermediateDirectories: true)
+            try Data(text.utf8).write(to: url)
+            return ["ok": true, "value": "已写入 \(text.utf8.count) 字节"]
+        } catch {
+            return ["ok": false, "error": "写入失败：\(error.localizedDescription)"]
+        }
+    }
+
+    private func listDir(_ path: String) -> [String: Any] {
+        guard let url = resolve(path),
+              let items = try? FileManager.default.contentsOfDirectory(atPath: url.path) else {
+            return ["ok": false, "error": "读不到目录 \(path)"]
+        }
+        return ["ok": true, "value": items.sorted()]
+    }
+
+    private func postNotification(title: String, body: String) {
+        #if canImport(UserNotifications)
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            let req = UNNotificationRequest(identifier: UUID().uuidString,
+                                            content: content, trigger: nil)
+            center.add(req) { _ in }
+        }
+        #endif
+    }
+
+    /// 把结果回填给页面的 Promise。
+    ///
+    /// 做法：把结果序列化成 JSON，再**转义成单引号 JS 字符串**里的字面量，
+    /// 页面侧 `JSON.parse` 还原。这样引号/换行/反斜杠都不用逐个猜。
+    private func reply(id: String, result: [String: Any]) {
+        guard JSONSerialization.isValidJSONObject(result),
+              let data = try? JSONSerialization.data(withJSONObject: result),
+              var json = String(data: data, encoding: .utf8) else { return }
+        json = json
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\n", with: "\\n")
+        DispatchQueue.main.async { [weak self] in
+            self?.webView?.evaluateJavaScript("window.__dshResolve(JSON.parse('\(json)'))") { _, _ in }
+        }
+    }
+}
+
+// ---------- WebAppLauncher.swift ----------
+import Foundation
+
+#if canImport(SwiftUI) && canImport(WebKit)
+import SwiftUI
+import WebKit
+
+/// 本地 web app 的启动器：列出 `apps/*/index.html`，点一个就运行。
+@MainActor
+public struct WebAppLauncher: View {
+
+    @State private var apps: [Entry] = []
+    @State private var showingNew = false
+    @State private var newName = ""
+    @State private var running: Entry?
+
+    public struct Entry: Identifiable, Hashable {
+        public var id: String { dir.lastPathComponent }
+        public let dir: URL
+        public var title: String
+    }
+
+    private var workspace: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return docs.appendingPathComponent("workspace", isDirectory: true)
+    }
+
+    public init() {}
+
+    public var body: some View {
+        NavigationStack {
+            List {
+                if apps.isEmpty {
+                    Text("还没有 web app。点右上角 + 新建一个。")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(apps) { app in
+                    Button {
+                        running = app
+                    } label: {
+                        HStack(spacing: 12) {
+                            RoundedRectangle(cornerRadius: 9)
+                                .fill(Color.accentColor.opacity(0.18))
+                                .frame(width: 38, height: 38)
+                                .overlay(Text(String(app.title.prefix(1)))
+                                            .font(.headline))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(app.title)
+                                Text(app.dir.lastPathComponent)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "play.circle").font(.title3)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("应用")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        newName = ""
+                        showingNew = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingNew) { newAppSheet }
+            .sheet(item: $running) { app in
+                NavigationStack {
+                    WebAppRunner(appDir: app.dir, title: app.title)
+                        .navigationTitle(app.title)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarTrailing) {
+                                Button("完成") { running = nil }
+                            }
+                        }
+                }
+            }
+            .task { reload() }
+        }
+    }
+
+    private var newAppSheet: some View {
+        NavigationStack {
+            Form {
+                TextField("名字（目录名）", text: $newName)
+                    .autocorrectionDisabled()
+            }
+            .navigationTitle("新建 web app")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { showingNew = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("创建") {
+                        let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !name.isEmpty {
+                            create(name)
+                            reload()
+                        }
+                        showingNew = false
+                    }
+                    .disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+
+    // MARK: - 数据
+
+    private func reload() {
+        let appsDir = workspace.appendingPathComponent("apps", isDirectory: true)
+        let fm = FileManager.default
+        guard let dirs = try? fm.contentsOfDirectory(at: appsDir,
+                                                     includingPropertiesForKeys: [.isDirectoryKey])
+        else {
+            apps = []
+            return
+        }
+        var found: [Entry] = []
+        for dir in dirs {
+            let index = dir.appendingPathComponent("index.html")
+            guard fm.fileExists(atPath: index.path) else { continue }
+            let html = (try? String(contentsOf: index, encoding: .utf8)) ?? ""
+            found.append(Entry(dir: dir, title: Self.title(from: html) ?? dir.lastPathComponent))
+        }
+        apps = found.sorted { $0.title < $1.title }
+    }
+
+    private func create(_ name: String) {
+        let dir = workspace.appendingPathComponent("apps/\(name)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let html = PublishTools.webAppHTML(title: name)
+        try? Data(html.utf8).write(to: dir.appendingPathComponent("index.html"))
+    }
+
+    /// 从 `<title>` 里取显示名。
+    static func title(from html: String) -> String? {
+        guard let start = html.range(of: "<title>"),
+              let end = html.range(of: "</title>", range: start.upperBound..<html.endIndex)
+        else { return nil }
+        let t = String(html[start.upperBound..<end.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+}
+
+/// 跑一个本地 web app：WKWebView + 能力桥。
+@MainActor
+public struct WebAppRunner: UIViewRepresentable {
+
+    let appDir: URL
+    let title: String
+
+    public init(appDir: URL, title: String) {
+        self.appDir = appDir
+        self.title = title
+    }
+
+    /// 协调器负责**持有**桥对象：桥需要 webView 才能回填结果，
+    /// 而 webView 在 makeUIView 里才建出来，所以两边都得留在这里。
+    public final class Coordinator {
+        var bridge: WebAppBridge?
+        init() {}
+    }
+
+    public func makeCoordinator() -> Coordinator { Coordinator() }
+
+    public func makeUIView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        config.defaultWebpagePreferences.allowsContentJavaScript = true
+
+        let controller = WKUserContentController()
+        controller.addUserScript(WKUserScript(source: WebAppBridge.bootstrapScript(),
+                                              injectionTime: .atDocumentStart,
+                                              forMainFrameOnly: true))
+        config.userContentController = controller
+
+        let webView = WKWebView(frame: .zero, configuration: config)
+        let bridge = WebAppBridge(root: appDir, webView: webView)
+        controller.add(bridge, name: WebAppBridge.handlerName)
+        context.coordinator.bridge = bridge
+
+        let index = appDir.appendingPathComponent("index.html")
+        webView.loadFileURL(index, allowingReadAccessTo: appDir)
+        return webView
+    }
+
+    public func updateUIView(_ uiView: WKWebView, context: Context) {}
+}
+#endif
+
+// ---------- JSPlayground.swift ----------
+import Foundation
+
+#if canImport(SwiftUI) && canImport(JavaScriptCore)
+import SwiftUI
+import JavaScriptCore
+
+/// 内置 JS Playground：写代码、点运行、看输出。
+///
+/// 为什么是 JS 而不是 Swift：iOS 上没有可用的 Swift 编译器，未签名的二进制也不允许执行。
+/// JavaScriptCore 是系统自带的解释器，**不需要 JIT 授权**，所以这条路真的能跑。
+///
+/// 这也正好解释了"内置 playground"的边界：能内置的是解释器，不是编译器。
+@MainActor
+public struct JSPlayground: View {
+
+    @State private var code: String = JSPlayground.starter
+    @State private var output: [Line] = []
+
+    public struct Line: Identifiable {
+        public let id = UUID()
+        public let text: String
+        public let isError: Bool
+    }
+
+    public init() {}
+
+    public var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                TextEditor(text: $code)
+                    .font(.system(.body, design: .monospaced))
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .padding(8)
+                    .frame(maxHeight: .infinity)
+
+                Divider()
+
+                HStack {
+                    Button {
+                        run()
+                    } label: {
+                        Label("运行", systemImage: "play.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Spacer()
+                    Button("清空") { output = [] }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+
+                Divider()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if output.isEmpty {
+                            Text("输出会显示在这里")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(output) { line in
+                            Text(line.text)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(line.isError ? Color.red : Color.primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(12)
+                }
+                .frame(height: 200)
+            }
+            .navigationTitle("JS Playground")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    // MARK: - 执行
+
+    private func run() {
+        output = []
+        guard let ctx = JSContext() else {
+            output.append(Line(text: "拿不到 JSContext", isError: true))
+            return
+        }
+
+        // 把 console.log 收进数组，运行完一次性取出来
+        let collector = """
+        var __lines = [];
+        var console = {
+          log: function(){ __lines.push(Array.prototype.slice.call(arguments).map(fmt).join(' ')); },
+          error: function(){ __lines.push('错误: ' + Array.prototype.slice.call(arguments).map(fmt).join(' ')); }
+        };
+        function fmt(v){
+          if (typeof v === 'string') return v;
+          try { return JSON.stringify(v); } catch (e) { return String(v); }
+        }
+        """
+        ctx.evaluateScript(collector)
+
+        ctx.evaluateScript(code)
+        if let exception = ctx.exception {
+            let message = exception.toString() ?? "未知错误"
+            output.append(Line(text: "异常：\(message)", isError: true))
+            ctx.exception = nil
+        }
+
+        if let lines = ctx.objectForKeyedSubscript("__lines")?.toArray() as? [Any] {
+            for item in lines {
+                output.append(Line(text: "\(item)", isError: false))
+            }
+        }
+        if output.isEmpty {
+            output.append(Line(text: "（没有输出）", isError: false))
+        }
+    }
+
+    static let starter = """
+    // JavaScriptCore 里能跑的真代码，改完点「运行」
+    const nums = [3, 1, 4, 1, 5, 9];
+    console.log('原始:', nums);
+    console.log('排序:', [...nums].sort((a, b) => a - b));
+
+    const count = {};
+    for (const n of nums) count[n] = (count[n] || 0) + 1;
+    console.log('频次:', count);
+
+    // 纯计算不受限；没有网络、没有文件权限——这是刻意的
+    function fib(n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }
+    console.log('fib(10) =', fib(10));
+    """
+}
+#endif
+
 // ---------- PlaygroundEntry.swift ----------
 import Foundation
 
@@ -2588,12 +3091,28 @@ import Foundation
 import SwiftUI
 import PlaygroundSupport
 
-// iPad / Playgrounds 里的入口：直接把聊天界面挂成实时视图。
+// iPad / Playgrounds 入口：三个页签——
+//   聊天：DeepSeek agent（引擎 + 工具）
+//   应用：本地 web app 启动器（点一个就跑）
+//   沙盒：内置 JS playground（真跑 JavaScriptCore）
 //
-// 注意：这里用的是**未验证**的 SwiftUI 代码（Windows 上编不了 SwiftUI）。
-// 如果 Playgrounds 报红字，把报错发回来——这是唯一的验证通道。
+// 三个页签都只用系统框架（SwiftUI / WebKit / JavaScriptCore），不依赖任何第三方库。
 
-let model = ChatModel()
-PlaygroundPage.current.setLiveView(ChatView(model: model))
+struct RootTabs: View {
+    var body: some View {
+        TabView {
+            ChatView(model: ChatModel())
+                .tabItem { Label("聊天", systemImage: "bubble.left.and.bubble.right") }
+
+            WebAppLauncher()
+                .tabItem { Label("应用", systemImage: "square.grid.2x2") }
+
+            JSPlayground()
+                .tabItem { Label("沙盒", systemImage: "chevron.left.forwardslash.chevron.right") }
+        }
+    }
+}
+
+PlaygroundPage.current.setLiveView(RootTabs())
 #endif
 

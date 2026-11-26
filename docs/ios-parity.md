@@ -122,4 +122,5 @@ P4 补齐文档生成，P5 补齐编排，P6 才需要一台常开的机器。
 - **内置 Swift playground 不可行**：iOS 无可用 Swift 编译器、未签名二进制不允许执行、
   第三方拿不到 JIT 授权；Apple 只给了自家 Playgrounds 这个能力。
   可行的替代：内置 **JS/HTML playground**（JavaScriptCore 真能跑）+ 把 Swift 项目交给 Playgrounds
+- **界面三页签**：聊天 / 应用（web app 启动器 + 能力桥）/ 沙盒（JS playground）
 - 仍未验证：SwiftUI 那一层从未编译过；自检也还没在 iPad 上跑过
