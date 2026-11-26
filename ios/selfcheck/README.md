@@ -36,7 +36,7 @@
 【工具参数】
   ✓ 解析 path
   ...
-全部通过（27/27）
+全部通过（33/33）
 ```
 
 **如果出现编译错误**——那就是最有价值的信息：说明这堆 Swift 里有类型问题，
@@ -67,7 +67,7 @@
 
 | 文件 | 内容 | 通过意味着 |
 |---|---|---|
-| `EngineSelfCheck.swift` | 引擎 + 27 条断言 | 引擎的类型和逻辑都对 |
+| `EngineSelfCheck.swift` | 引擎 + 33 条断言 | 引擎的类型和逻辑都对 |
 | `ModelSmoke.swift` | 引擎 + 视图模型（**不含 SwiftUI**） | 并发 / Combine / `@MainActor` 那层没编错 |
 | `ChatDemo.swift` | 全部 + SwiftUI 界面 | 界面能跑 |
 
@@ -100,3 +100,15 @@
 
 自检里这 4 条浏览器用例**不联网**：用 `loadHTMLString` 载入一段内联 HTML，
 再读标题、点按钮（验证 onclick 生效）、填输入框（验证 setter 与事件派发）。
+
+### 系统工具（P3）
+
+| 工具 | 作用 | 验证方式 |
+|---|---|---|
+| `clip_read` / `clip_write` | 读写剪贴板 | 自检里写→读（离线） |
+| `notify` | 本地通知 | 需要授权，手动触发 |
+| `schedule_add` / `schedule_list` / `schedule_remove` | 定时提醒（存 `workspace/schedule.json`） | 自检里加→列→删（离线） |
+| 打开链接 | 只认 URL Scheme / Universal Link，不能任意启动 App | 手动 |
+
+`schedule_*` 的设计取舍：**提醒先记在 JSON 里**，通知只是"按时弹出来"的尽力而为。
+这样即使用户拒了通知权限，"提醒已记录"这件事仍然成立，不会静默丢。

@@ -114,6 +114,36 @@ enum SelfCheck {
             expect(false, "fs 工具异常：\(error)")
         }
 
+        // ---------- 系统能力（只测不需要授权的部分） ----------
+        print("【系统工具】")
+        #if canImport(UIKit)
+        do {
+            _ = try await SystemTools.ClipWrite().run(
+                .object(["text": .string("dsh-clip-测试-42")]), in: ctx)
+            let back = try await SystemTools.ClipRead().run(.null, in: ctx)
+            expect(back.contains("dsh-clip-测试-42"), "剪贴板写入后能读回")
+        } catch {
+            expect(false, "剪贴板异常：\(error)")
+        }
+        #endif
+
+        do {
+            let addOut = try await SystemTools.ScheduleAdd().run(
+                .object(["title": .string("自检提醒"), "after_seconds": .number(3600)]), in: ctx)
+            let listOut = try await SystemTools.ScheduleList().run(.null, in: ctx)
+            expect(addOut.contains("已加提醒"), "schedule_add 记录成功")
+            expect(listOut.contains("自检提醒"), "schedule_list 能列出")
+            if let id = addOut.split(separator: "（").last?.split(separator: "）").first {
+                let rmOut = try await SystemTools.ScheduleRemove().run(
+                    .object(["id": .string(String(id))]), in: ctx)
+                expect(rmOut.contains("已删除"), "schedule_remove 按 id 删除")
+            } else {
+                expect(false, "解析不出提醒 id")
+            }
+        } catch {
+            expect(false, "日程异常：\(error)")
+        }
+
         // ---------- 内嵌浏览器（用内联 HTML，不联网） ----------
         print("【浏览器 WebKit】")
         do {
