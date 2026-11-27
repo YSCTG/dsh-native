@@ -6,11 +6,14 @@ import DSHEngine
 struct DSHNativeApp: App {
     // CI 用 `simctl launch ... -selfcheck` 启动时，直接进入自检页
     private let selfCheck = CommandLine.arguments.contains("-selfcheck")
+    private let uiDemo = CommandLine.arguments.contains("-uidemo")
 
     var body: some Scene {
         WindowGroup {
             if selfCheck {
                 SelfCheckView()
+            } else if uiDemo {
+                UIDemoView()
             } else {
                 RootTabs()
             }

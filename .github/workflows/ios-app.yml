@@ -84,8 +84,16 @@ jobs:
           xcrun simctl io "$DEV" screenshot /tmp/selfcheck.png
           ls -l /tmp/selfcheck.png
 
+          # 3) 交互演示：App 自己驱动三个页签（请求/WebView/JS）
+          xcrun simctl terminate "$DEV" com.dshnative.mini || true
+          sleep 1
+          xcrun simctl launch "$DEV" com.dshnative.mini -uidemo || true
+          sleep 25
+          xcrun simctl io "$DEV" screenshot /tmp/uidemo.png
+          ls -l /tmp/uidemo.png
+
           # 把控制台里的结论也捞出来
-          xcrun simctl spawn "$DEV" log show --last 2m --predicate 'process == "DSHNative"' 2>/dev/null | grep -F "[selfcheck]" | tail -5 || true
+          xcrun simctl spawn "$DEV" log show --last 3m --predicate 'process == "DSHNative"' 2>/dev/null | grep -F "[selfcheck]" | tail -5 || true
           echo "device=$DEV" >> "$GITHUB_OUTPUT"
 
       - name: 上传截图
@@ -96,6 +104,7 @@ jobs:
           path: |
             /tmp/app.png
             /tmp/selfcheck.png
+            /tmp/uidemo.png
           if-no-files-found: warn
 
       - name: 失败时抓日志
