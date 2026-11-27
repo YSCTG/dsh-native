@@ -124,3 +124,50 @@ P4 补齐文档生成，P5 补齐编排，P6 才需要一台常开的机器。
   可行的替代：内置 **JS/HTML playground**（JavaScriptCore 真能跑）+ 把 Swift 项目交给 Playgrounds
 - **界面三页签**：聊天 / 应用（web app 启动器 + 能力桥）/ 沙盒（JS playground）
 - 仍未验证：SwiftUI 那一层从未编译过；自检也还没在 iPad 上跑过
+
+
+---
+
+## 现状（2026-11-27，经 GitHub macOS CI 验证）
+
+### 已完成并可自动验证
+
+| 层 | 内容 | 验证方式 |
+|---|---|---|
+| 引擎 | 编译 + 15 条 XCTest | `swift test`（macOS） |
+| 工具行为 | **48 条断言** | 模拟器 `-selfcheck` 截图 |
+| 界面 | 三页签构建/启动 | `xcodebuild` + `simctl` |
+| 运行时 | 网络/WebView/JS | `-uidemo` 截图 |
+| 真对话 | 真实 API 回复 | `-live` + Secret 截图 |
+| 工具调用 | 模型调 `fs_write`/`fs_read` | `-tools` 截图 + 容器内文件 |
+
+### 工具清单（iOS 侧，共 46 个）
+
+| 分类 | 工具 |
+|---|---|
+| 文件 | `fs_list` `fs_read` `fs_write` `fs_edit` `fs_glob` `fs_grep` |
+| 文本/网络 | `text_stats` `net_fetch` `web_search` |
+| 浏览器 | `browser_open` `browser_text` `browser_js` `browser_click` `browser_type` |
+| 系统 | `clip_read` `clip_write` `notify` `schedule_add` `schedule_list` `schedule_remove` |
+| 文档 | `office_write` `office_read` |
+| 发布 | `webapp_new` `webapp_list` `swiftpm_new` `ipa_pack` |
+| 平台 | `dev_info` `dev_selfcheck` `todo` `skill` |
+| 运维 | `screenshot` `dev_export` `task_create` `task_list` `task_update` `goal_set` `goal_get` `goal_clear` |
+| 子 agent | `subagent` `workflow` `loop` |
+| 交互 | `ask_user` `plan_present` |
+
+### 明确无法对齐的（边界）
+
+这些在 iOS 上**没有对应能力**，不是没做，是平台不给：
+
+| 安卓工具 | 为什么做不到 |
+|---|---|
+| `sh` `python` `npm_install` `app_build` `app_run` `job_*` | iOS 不允许创建进程；没有可用的解释器/编译器运行时 |
+| `ui_tap` `ui_type` `ui_gesture` `ui_dump` | 没有 AccessibilityService 等价物，第三方不能驱动别的 App |
+| `app_list` `app_launch`（任意 App） | 不能枚举已装应用；只能按 URL Scheme 拉起白名单内的 |
+| `screen.capture`（别人的屏幕） | ReplayKit 需用户主动开始录制，不属于 agent 能力 |
+| `adb` | 没有 shell 通道 |
+| `game_build` `dev_webui` `render` | 依赖安卓侧的本地 Web UI / 构建链 |
+| 安装 IPA / 签名 | 需 Apple 签发证书，手机上无法完成（只能打包，见 `ipa_pack`） |
+
+对应的替代方案见 `docs/ios-plan.md` 的"三条路"（web app / Swift 项目交 Playgrounds / 远端执行器）。
