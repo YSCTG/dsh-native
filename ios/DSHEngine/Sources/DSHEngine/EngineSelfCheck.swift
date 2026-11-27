@@ -112,6 +112,52 @@ public enum EngineSelfCheck {
         check(docx.count > 3 && docx[0] == 0x50 && docx[1] == 0x4B, "docx 是 zip 头")
         check(ZipWriter.crc32(Data("123456789".utf8)) == 0xCBF4_3926, "CRC32 标准向量")
 
+        // ---- 平台工具 ----
+        r.lines.append("【平台工具】")
+        do {
+            let info = try await PlatformTools.DevInfo().run(.null, in: ctx)
+            check(info.contains("系统") && info.contains("工作区"), "dev_info 有系统与工作区")
+
+            // todo：加两条 → 列出 → 标完成 → 清空
+            _ = try await PlatformTools.Todo().run(
+                .object(["action": .string("add"), "text": .string("写文档")]), in: ctx)
+            _ = try await PlatformTools.Todo().run(
+                .object(["action": .string("add"), "text": .string("跑测试")]), in: ctx)
+            let list = try await PlatformTools.Todo().run(
+                .object(["action": .string("list")]), in: ctx)
+            check(list.contains("1. [ ] 写文档") && list.contains("2. [ ] 跑测试"), "todo 添加与列出")
+            let done = try await PlatformTools.Todo().run(
+                .object(["action": .string("done"), "id": .number(1)]), in: ctx)
+            check(done.contains("已完成第 1 项"), "todo 标记完成")
+            let after = try await PlatformTools.Todo().run(
+                .object(["action": .string("list")]), in: ctx)
+            check(after.contains("[x] 写文档"), "todo 完成状态持久化")
+
+            // skill：写一个 md 再读
+            let skillsDir = ctx.workspace.appendingPathComponent("skills", isDirectory: true)
+            try? FileManager.default.createDirectory(at: skillsDir, withIntermediateDirectories: true)
+            try? Data("# 演示技能
+
+这是内容".utf8)
+                .write(to: skillsDir.appendingPathComponent("demo.md"))
+            let names = try await PlatformTools.Skill().run(
+                .object(["action": .string("list")]), in: ctx)
+            check(names.contains("demo"), "skill 列出")
+            let body = try await PlatformTools.Skill().run(
+                .object(["action": .string("read"), "name": .string("demo")]), in: ctx)
+            check(body.contains("这是内容"), "skill 读取")
+
+            // RSS 解析（纯函数，不联网）
+            let xml = """
+            <item><title>标题一</title><link>https://a.example/1</link></item>
+            <item><title>标题二</title><link>https://a.example/2</link></item>
+            """
+            let items = PlatformTools.WebSearch.parseRSS(xml, limit: 5)
+            check(items.count == 2 && items[0].title == "标题一", "web_search RSS 解析")
+        } catch {
+            check(false, "平台工具异常：\(error)")
+        }
+
         // ---- 客户端可构造 ----
         r.lines.append("【客户端】")
         _ = DeepSeekClient(config: .init(apiKey: "sk-test"))

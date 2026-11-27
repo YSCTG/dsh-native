@@ -181,7 +181,9 @@ public final class ChatModel: ObservableObject {
         let ws = docs.appendingPathComponent("workspace", isDirectory: true)
         let client = DeepSeekClient(config: .init(apiKey: key))
         let ctx = ToolContext(workspace: ws)
-        let tools = BuiltinTools.all() + FSTools.all() + WebTools.all() + SystemTools.all() + OfficeTools.all() + PublishTools.all()
+        let tools = BuiltinTools.all() + FSTools.all() + WebTools.all()
+            + SystemTools.all() + OfficeTools.all() + PublishTools.all()
+            + PlatformTools.all()
         let svc = AgentService(client: client,
                                store: store ?? SessionStore(root: docs),
                                context: ctx,

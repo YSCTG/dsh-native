@@ -9,8 +9,10 @@ import FoundationNetworking
 /// 所以每个原语都做成小而明确的能力，并且全部走 `ToolContext`（路径沙箱 + 审计）。
 public enum BuiltinTools {
 
+    /// 注意：fs_list / fs_read / fs_write 由 `FSTools` 提供（功能更全）。
+    /// 这里只留纯文本与网络两个原语，避免同名工具重复注册。
     public static func all() -> [any Tool] {
-        [ListFiles(), ReadFile(), WriteFile(), TextStats(), FetchURL()]
+        [TextStats(), FetchURL()]
     }
 
     // MARK: - 文件
