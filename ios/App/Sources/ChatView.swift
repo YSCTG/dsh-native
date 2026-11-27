@@ -2,6 +2,7 @@ import Foundation
 
 #if canImport(SwiftUI)
 import SwiftUI
+import DSHEngine
 
 /// 聊天界面。
 ///

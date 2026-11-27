@@ -2,6 +2,7 @@ import Foundation
 
 #if canImport(SwiftUI) && canImport(WebKit)
 import SwiftUI
+import DSHEngine
 import WebKit
 
 /// 本地 web app 的启动器：列出 `apps/*/index.html`，点一个就运行。

@@ -18,7 +18,7 @@ public enum PublishTools {
     // MARK: - web app
 
     /// web app 的模板：能直接跑，演示了最小可用的交互与持久化。
-    static func webAppHTML(title: String) -> String {
+    public static func webAppHTML(title: String) -> String {
         """
         <!doctype html>
         <html lang="zh-CN">
