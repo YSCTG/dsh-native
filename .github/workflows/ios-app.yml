@@ -1,0 +1,90 @@
+name: ios-app
+
+# 在 GitHub 的 macOS runner 上构建 iOS App（XcodeGen 生成工程），
+# 装进模拟器、启动、截图，把截图作为 artifact 传回来。
+#
+# 这条工作流解决的是之前"界面从没编译过"的问题：SwiftUI 的错误在
+# xcodebuild 里会直接以红字给出，截图能证明界面真的画出来了。
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'ios/App/**'
+      - 'ios/DSHEngine/**'
+      - '.github/workflows/ios-app.yml'
+
+jobs:
+  build-and-screenshot:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 工具链版本
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: 安装 XcodeGen
+        run: brew install xcodegen
+
+      - name: 生成 Xcode 工程
+        working-directory: ios/App
+        run: |
+          set -o pipefail
+          xcodegen generate 2>&1 | tail -20
+          ls -la
+
+      - name: 选一台模拟器
+        id: pick
+        run: |
+          DEV=$(xcrun simctl list devices available | grep -E "iPhone 1[5-9]" | head -1 | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/')
+          if [ -z "$DEV" ]; then
+            DEV=$(xcrun simctl list devices available | grep -E "iPhone" | head -1 | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/')
+          fi
+          echo "device=$DEV" >> "$GITHUB_OUTPUT"
+          echo "选中模拟器：$DEV"
+
+      - name: 构建（模拟器）
+        working-directory: ios/App
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project DSHNative.xcodeproj \
+            -scheme DSHNative \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=${{ steps.pick.outputs.device }}" \
+            -derivedDataPath build \
+            build 2>&1 | tail -60
+
+      - name: 装进模拟器并启动
+        id: run
+        run: |
+          set -o pipefail
+          DEV="${{ steps.pick.outputs.device }}"
+          xcrun simctl boot "$DEV" || true
+          xcrun simctl bootstatus "$DEV" -b || true
+          APP=$(find ios/App/build -name "DSHNative.app" -maxdepth 6 | head -1)
+          echo "app=$APP"
+          xcrun simctl install "$DEV" "$APP"
+          xcrun simctl launch "$DEV" com.dshnative.mini || true
+          sleep 8
+          xcrun simctl io "$DEV" screenshot /tmp/app.png
+          ls -l /tmp/app.png
+          echo "device=$DEV" >> "$GITHUB_OUTPUT"
+
+      - name: 上传截图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-screenshot
+          path: /tmp/app.png
+          if-no-files-found: warn
+
+      - name: 失败时抓日志
+        if: failure()
+        run: |
+          DEV="${{ steps.pick.outputs.device }}"
+          xcrun simctl spawn "$DEV" log show --last 3m --predicate 'process == "DSHNative"' 2>/dev/null | tail -40 || true
