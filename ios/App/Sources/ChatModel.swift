@@ -181,10 +181,12 @@ public final class ChatModel: ObservableObject {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let ws = docs.appendingPathComponent("workspace", isDirectory: true)
         let client = DeepSeekClient(config: .init(apiKey: key))
-        let ctx = ToolContext(workspace: ws)
+        let ctx = ToolContext(workspace: ws, sub: { prompt in
+            await ClientRun.once(client: client, prompt: prompt)
+        })
         let tools = BuiltinTools.all() + FSTools.all() + WebTools.all()
             + SystemTools.all() + OfficeTools.all() + PublishTools.all()
-            + PlatformTools.all() + OpsTools.all()
+            + PlatformTools.all() + OpsTools.all() + SubTools.all()
         let svc = AgentService(client: client,
                                store: store ?? SessionStore(root: docs),
                                context: ctx,

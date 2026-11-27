@@ -25,10 +25,16 @@ public struct ToolContext: Sendable {
     /// 审计回调：每次工具调用都会经过它（iOS 版保留这张表）。
     public let audit: @Sendable (String, String) -> Void
 
+    /// 跑一次**独立的**模型调用（子 agent / 工作流用）。
+    /// 由宿主注入：引擎本身不碰网络配置，测试里也能塞一个假的。
+    public let sub: (@Sendable (String) async -> String)?
+
     public init(workspace: URL, networkAllowed: Bool = true,
+                sub: (@Sendable (String) async -> String)? = nil,
                 audit: @escaping @Sendable (String, String) -> Void = { _, _ in }) {
         self.workspace = workspace
         self.networkAllowed = networkAllowed
+        self.sub = sub
         self.audit = audit
     }
 

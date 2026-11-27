@@ -17,6 +17,12 @@ public struct CheckReport: Sendable {
     }
 }
 
+private actor FakeCounter {
+    private(set) var calls: [String] = []
+    func hit(_ prompt: String) { calls.append(prompt) }
+    func all() -> [String] { calls }
+}
+
 public enum EngineSelfCheck {
 
     public static func run(workspace: URL) async -> CheckReport {
@@ -190,6 +196,44 @@ public enum EngineSelfCheck {
             }
         } catch {
             check(false, "运维工具异常：\(error)")
+        }
+
+        // ---- 子 agent（假 runner，不联网）----
+        r.lines.append("【子 agent】")
+        do {
+            // 没接 runner 时要给出明确错误，而不是静默返回空
+            var denied = false
+            do {
+                _ = try await SubTools.SubAgent().run(
+                    .object(["task": .string("做点事")]), in: ctx)
+            } catch { denied = true }
+            check(denied, "没有 runner 时明确报错")
+
+            // 塞一个假 runner：记录调用、模拟并发
+            let counter = FakeCounter()
+            let fakeCtx = ToolContext(workspace: ctx.workspace, sub: { prompt in
+                await counter.hit(prompt)
+                try? await Task.sleep(nanoseconds: 40_000_000)
+                return "收到：\(prompt)"
+            })
+
+            let one = try await SubTools.SubAgent().run(
+                .object(["task": .string("写一句介绍")]), in: fakeCtx)
+            check(one.contains("收到：写一句介绍"), "subagent 返回子模型结论")
+
+            let wf = try await SubTools.WorkflowTool().run(
+                .object(["tasks": .array([.string("A"), .string("B"), .string("C")]),
+                         "concurrency": .number(2)]), in: fakeCtx)
+            check(wf.contains("收到：A") && wf.contains("收到：C"), "workflow 覆盖全部任务")
+            let orderA = wf.range(of: "收到：A")!.lowerBound
+            let orderC = wf.range(of: "收到：C")!.lowerBound
+            check(orderA < orderC, "workflow 结果按输入顺序")
+
+            let loop = try await SubTools.LoopTool().run(
+                .object(["task": .string("收尾"), "max_rounds": .number(2)]), in: fakeCtx)
+            check(loop.contains("轮都没看到") || loop.contains("完成"), "loop 有终止条件")
+        } catch {
+            check(false, "子 agent 异常：\(error)")
         }
 
         // ---- 客户端可构造 ----
