@@ -1,4 +1,5 @@
 import SwiftUI
+import DSHEngine
 
 /// 设置页：填 API key、选模型、配 MCP 地址。
 ///
