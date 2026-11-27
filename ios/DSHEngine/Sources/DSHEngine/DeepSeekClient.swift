@@ -64,6 +64,10 @@ public struct DeepSeekClient: Sendable {
             throw ClientError.http(http.statusCode)
         }
 
+        // 工具调用在流里是**分片**到达的：id/name 只在第一片，arguments 会被切成很多片。
+        // 所以这里按 index 累积，等流结束再一次性发出去——覆盖式写法会丢掉参数。
+        var toolAcc: [Int: (id: String, name: String, args: String)] = [:]
+
         // SSE：逐行 `data: {...}`，`data: [DONE]` 结束
         for try await line in bytes.lines {
             guard line.hasPrefix("data:") else { continue }
@@ -86,17 +90,37 @@ public struct DeepSeekClient: Sendable {
                     onEvent(.delta(c))
                 }
                 if let calls = delta["tool_calls"] as? [[String: Any]] {
-                    for c in calls {
-                        let id = c["id"] as? String ?? ""
-                        let fn = c["function"] as? [String: Any] ?? [:]
-                        onEvent(.toolCall(id: id,
-                                          name: fn["name"] as? String ?? "",
-                                          arguments: fn["arguments"] as? String ?? ""))
+                    for (pos, c) in calls.enumerated() {
+                        let idx = (c["index"] as? Int) ?? pos
+                        var acc = toolAcc[idx] ?? (id: "", name: "", args: "")
+                        if let id = c["id"] as? String, !id.isEmpty { acc.id = id }
+                        if let fn = c["function"] as? [String: Any] {
+                            if let n = fn["name"] as? String, !n.isEmpty { acc.name = n }
+                            if let a = fn["arguments"] as? String { acc.args += a }
+                        }
+                        toolAcc[idx] = acc
                     }
                 }
             }
             if let fr = first["finish_reason"] as? String {
+                // 参数已经收完，先把工具调用一次性发出去，再报完成
+                for (_, acc) in toolAcc.sorted(by: { $0.key < $1.key }) {
+                    if !acc.name.isEmpty {
+                        onEvent(.toolCall(id: acc.id.isEmpty ? UUID().uuidString : acc.id,
+                                          name: acc.name,
+                                          arguments: acc.args))
+                    }
+                }
+                toolAcc.removeAll()
                 onEvent(.done(finishReason: fr))
+            }
+        }
+        // 流没给 finish_reason 也要把攒下的发出去，否则工具调用会默默丢掉
+        for (_, acc) in toolAcc.sorted(by: { $0.key < $1.key }) {
+            if !acc.name.isEmpty {
+                onEvent(.toolCall(id: acc.id.isEmpty ? UUID().uuidString : acc.id,
+                                  name: acc.name,
+                                  arguments: acc.args))
             }
         }
     }
