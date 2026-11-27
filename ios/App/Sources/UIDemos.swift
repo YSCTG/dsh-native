@@ -95,3 +95,38 @@ struct MarkdownDemo: View {
         }
     }
 }
+
+/// `-tasks` 演示：造待办与任务，展示面板。
+struct TaskPanelDemo: View {
+    @State private var ready = false
+
+    var body: some View {
+        Group {
+            if ready { TaskPanelView() } else { ProgressView("准备示例数据…") }
+        }
+        .task { await seed() }
+    }
+
+    private func seed() async {
+        let ws = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("workspace", isDirectory: true)
+        try? FileManager.default.createDirectory(at: ws, withIntermediateDirectories: true)
+
+        let todos = """
+        [{"text":"修好 Excel 公式","done":true},
+         {"text":"写一份 README","done":false},
+         {"text":"把结果发给同事","done":false}]
+        """
+        try? Data(todos.utf8).write(to: ws.appendingPathComponent("todo.json"))
+
+        let tasks = """
+        [{"id":1,"text":"读原始表格","status":"done"},
+         {"id":2,"text":"改公式并校验","status":"doing"},
+         {"id":3,"text":"导出新文件","status":"todo"}]
+        """
+        try? Data(tasks.utf8).write(to: ws.appendingPathComponent("tasks.json"))
+
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        ready = true
+    }
+}

@@ -203,7 +203,9 @@ public final class ChatModel: ObservableObject {
                                   await ClientRun.once(client: client, prompt: prompt)
                               },
                               mcp: mcp)
-        let tools = BuiltinTools.all() + FSTools.all() + WebTools.all()
+        // 模式：极简 = 只聊天不给工具（对齐安卓的「极简模式」）
+        let mode = UserDefaults.standard.string(forKey: "dsh.mode") ?? "standard"
+        let tools: [any Tool] = mode == "minimal" ? [] : BuiltinTools.all() + FSTools.all() + WebTools.all()
             + SystemTools.all() + OfficeTools.all() + OfficeRead.all() + PublishTools.all()
             + PlatformTools.all() + OpsTools.all() + SubTools.all() + AskTools.all() + McpTools.all() + TeamTools.all() + LaunchTool.all()
         let svc = AgentService(client: client,

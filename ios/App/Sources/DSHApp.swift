@@ -12,6 +12,8 @@ struct DSHNativeApp: App {
     private let settings = CommandLine.arguments.contains("-settings")
     private let sessions = CommandLine.arguments.contains("-sessions")
     private let mdDemo = CommandLine.arguments.contains("-md")
+    private let filesDemo = CommandLine.arguments.contains("-files")
+    private let tasksDemo = CommandLine.arguments.contains("-tasks")
 
     var body: some Scene {
         WindowGroup {
@@ -21,6 +23,10 @@ struct DSHNativeApp: App {
                 UIDemoView()
             } else if tools {
                 ToolCallView()
+            } else if filesDemo {
+                FileBrowserView()
+            } else if tasksDemo {
+                TaskPanelDemo()
             } else if sessions {
                 SessionListDemo()
             } else if mdDemo {
@@ -43,6 +49,8 @@ struct RootTabs: View {
                 .tabItem { Label("聊天", systemImage: "bubble.left.and.bubble.right") }
             WebAppLauncher()
                 .tabItem { Label("应用", systemImage: "square.grid.2x2") }
+            FileBrowserView()
+                .tabItem { Label("文件", systemImage: "folder") }
             JSPlayground()
                 .tabItem { Label("沙盒", systemImage: "chevron.left.forwardslash.chevron.right") }
             SettingsView()

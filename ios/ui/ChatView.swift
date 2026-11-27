@@ -2,6 +2,7 @@ import Foundation
 
 #if canImport(SwiftUI)
 import SwiftUI
+import PhotosUI
 
 /// 聊天界面。
 ///
@@ -13,6 +14,8 @@ public struct ChatView: View {
     @ObservedObject private var model: ChatModel
     @State private var showKeySheet = false
     @State private var showSessions = false
+    @State private var showTasks = false
+    @State private var pickedImage: PhotosPickerItem?
 
     // ask_user：模型提问时弹出输入框（不接就会永久挂起）
     @State private var pendingQuestion: String?
@@ -42,6 +45,13 @@ public struct ChatView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
+                        showTasks = true
+                    } label: {
+                        Image(systemName: "checklist")
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
                         showKeySheet = true
                     } label: {
                         Image(systemName: "key")
@@ -54,8 +64,15 @@ public struct ChatView: View {
             .sheet(isPresented: $showSessions) {
                 SessionListView(model: model)
             }
+            .sheet(isPresented: $showTasks) {
+                TaskPanelView()
+            }
         }
         .onAppear { model.bootstrap() }
+        .onChange(of: pickedImage) { _, item in
+            guard let item else { return }
+            Task { await attachImage(item) }
+        }
         .task {
             // 界面侧轮询：有没有 agent 正在等用户回答
             while !Task.isCancelled {
@@ -146,8 +163,32 @@ public struct ChatView: View {
 
     // MARK: - 输入
 
+
+    /// 把选中的图片存进工作区 uploads/，并把路径写进输入框。
+    ///
+    /// DeepSeek 的对话接口目前不收图片，所以这里不假装"模型能看见"，
+    /// 只是把图存好、把路径给模型（它可以再用工具去处理）。
+    @MainActor
+    private func attachImage(_ item: PhotosPickerItem) async {
+        pickedImage = nil
+        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let dir = docs.appendingPathComponent("workspace/uploads", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let name = "photo-\(Int(Date().timeIntervalSince1970)).jpg"
+        let url = dir.appendingPathComponent(name)
+        try? data.write(to: url)
+        let note = "（已附加图片：uploads/\(name)，\(data.count) 字节）\n"
+        model.input += (model.input.isEmpty ? "" : "\n") + note
+    }
+
     private var composer: some View {
         HStack(spacing: 10) {
+            PhotosPicker(selection: $pickedImage, matching: .images) {
+                Image(systemName: "photo.badge.plus")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            }
             TextField("说点什么…", text: $model.input, axis: .vertical)
                 .lineLimit(1...5)
                 .padding(.horizontal, 12)

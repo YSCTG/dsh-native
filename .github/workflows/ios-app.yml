@@ -150,6 +150,20 @@ jobs:
           xcrun simctl io "$DEV" screenshot /tmp/md.png
           ls -l /tmp/md.png
 
+          # 8) 文件浏览 + 任务面板
+          xcrun simctl terminate "$DEV" com.dshnative.mini || true
+          sleep 1
+          xcrun simctl launch "$DEV" com.dshnative.mini -files || true
+          sleep 3
+          xcrun simctl io "$DEV" screenshot /tmp/files.png
+
+          xcrun simctl terminate "$DEV" com.dshnative.mini || true
+          sleep 1
+          xcrun simctl launch "$DEV" com.dshnative.mini -tasks || true
+          sleep 3
+          xcrun simctl io "$DEV" screenshot /tmp/tasks.png
+          ls -l /tmp/files.png /tmp/tasks.png
+
           # 把控制台里的结论也捞出来
           xcrun simctl spawn "$DEV" log show --last 3m --predicate 'process == "DSHNative"' 2>/dev/null | grep -F "[selfcheck]" | tail -5 || true
           echo "device=$DEV" >> "$GITHUB_OUTPUT"
@@ -168,6 +182,8 @@ jobs:
             /tmp/settings.png
             /tmp/sessions.png
             /tmp/md.png
+            /tmp/files.png
+            /tmp/tasks.png
           if-no-files-found: warn
 
       - name: 构建真机版并打包未签名 ipa

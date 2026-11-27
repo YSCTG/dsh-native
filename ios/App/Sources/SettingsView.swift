@@ -12,6 +12,7 @@ struct SettingsView: View {
     @AppStorage("dsh.model") private var model = "deepseek-chat"
     @AppStorage("dsh.baseUrl") private var baseUrl = ""
     @AppStorage("dsh.mcpUrl") private var mcpUrl = ""
+    @AppStorage("dsh.mode") private var mode = "standard"
 
     @State private var revealKey = false
     @State private var savedAt: Date?
@@ -67,6 +68,17 @@ struct SettingsView: View {
                     Text("DeepSeek API key")
                 } footer: {
                     Text("key 只存在本机。当前版本存在 UserDefaults 里，后续会换成 Keychain。")
+                }
+
+                Section {
+                    Picker("模式", selection: $mode) {
+                        Text("标准（可用工具）").tag("standard")
+                        Text("极简（只聊天）").tag("minimal")
+                    }
+                } header: {
+                    Text("模式")
+                } footer: {
+                    Text("极简模式不注册任何工具，模型只能说话不能动手。")
                 }
 
                 Section {
