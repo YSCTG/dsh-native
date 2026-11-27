@@ -184,7 +184,7 @@ public final class ChatModel: ObservableObject {
         let ctx = ToolContext(workspace: ws)
         let tools = BuiltinTools.all() + FSTools.all() + WebTools.all()
             + SystemTools.all() + OfficeTools.all() + PublishTools.all()
-            + PlatformTools.all()
+            + PlatformTools.all() + OpsTools.all()
         let svc = AgentService(client: client,
                                store: store ?? SessionStore(root: docs),
                                context: ctx,

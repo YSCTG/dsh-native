@@ -156,6 +156,42 @@ public enum EngineSelfCheck {
             check(false, "平台工具异常：\(error)")
         }
 
+        // ---- 运维工具 ----
+        r.lines.append("【运维工具】")
+        do {
+            // 任务板
+            let c1 = try await OpsTools.TaskCreate().run(.object(["text": .string("第一步")]), in: ctx)
+            check(c1.contains("#1"), "task_create 返回编号")
+            _ = try await OpsTools.TaskCreate().run(.object(["text": .string("第二步")]), in: ctx)
+            let tl = try await OpsTools.TaskList().run(.null, in: ctx)
+            check(tl.contains("#1 [todo] 第一步") && tl.contains("#2 [todo] 第二步"), "task_list 列出两条")
+            let tu = try await OpsTools.TaskUpdate().run(
+                .object(["id": .number(1), "status": .string("done")]), in: ctx)
+            check(tu.contains("#1 → done"), "task_update 改状态")
+
+            // 目标
+            _ = try await OpsTools.GoalSet().run(
+                .object(["text": .string("做完对齐"), "done": .string("工具数量匹配")]), in: ctx)
+            let gg = try await OpsTools.GoalGet().run(.null, in: ctx)
+            check(gg.contains("做完对齐") && gg.contains("工具数量匹配"), "goal_set/get")
+            let gc = try await OpsTools.GoalClear().run(.null, in: ctx)
+            check(gc.contains("已清除"), "goal_clear")
+
+            // 导出 zip
+            let ex = try await OpsTools.Export().run(.null, in: ctx)
+            check(ex.contains("已打包"), "dev_export 打包")
+            let zipName = ex.components(separatedBy: "→ ").last?.components(separatedBy: "（").first
+            if let name = zipName {
+                let z = ctx.workspace.appendingPathComponent(name)
+                let d = (try? Data(contentsOf: z)) ?? Data()
+                check(d.count > 3 && d[0] == 0x50 && d[1] == 0x4B, "导出的是合法 zip")
+            } else {
+                check(false, "解析不出导出文件名")
+            }
+        } catch {
+            check(false, "运维工具异常：\(error)")
+        }
+
         // ---- 客户端可构造 ----
         r.lines.append("【客户端】")
         _ = DeepSeekClient(config: .init(apiKey: "sk-test"))
