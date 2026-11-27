@@ -4,9 +4,16 @@ import DSHEngine
 // iOS App 入口（Xcode 工程用；Playgrounds 单文件版本用各自的 setLiveView 入口）
 @main
 struct DSHNativeApp: App {
+    // CI 用 `simctl launch ... -selfcheck` 启动时，直接进入自检页
+    private let selfCheck = CommandLine.arguments.contains("-selfcheck")
+
     var body: some Scene {
         WindowGroup {
-            RootTabs()
+            if selfCheck {
+                SelfCheckView()
+            } else {
+                RootTabs()
+            }
         }
     }
 }

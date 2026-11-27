@@ -69,10 +69,23 @@ jobs:
           APP=$(find ios/App/build -name "DSHNative.app" -maxdepth 6 | head -1)
           echo "app=$APP"
           xcrun simctl install "$DEV" "$APP"
+
+          # 1) 先正常启动，截主界面
           xcrun simctl launch "$DEV" com.dshnative.mini || true
           sleep 8
           xcrun simctl io "$DEV" screenshot /tmp/app.png
           ls -l /tmp/app.png
+
+          # 2) 再以 -selfcheck 启动，截自检结果（工具在 iOS 沙盒里跑一遍）
+          xcrun simctl terminate "$DEV" com.dshnative.mini || true
+          sleep 1
+          xcrun simctl launch "$DEV" com.dshnative.mini -selfcheck || true
+          sleep 10
+          xcrun simctl io "$DEV" screenshot /tmp/selfcheck.png
+          ls -l /tmp/selfcheck.png
+
+          # 把控制台里的结论也捞出来
+          xcrun simctl spawn "$DEV" log show --last 2m --predicate 'process == "DSHNative"' 2>/dev/null | grep -F "[selfcheck]" | tail -5 || true
           echo "device=$DEV" >> "$GITHUB_OUTPUT"
 
       - name: 上传截图
@@ -80,7 +93,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-screenshot
-          path: /tmp/app.png
+          path: |
+            /tmp/app.png
+            /tmp/selfcheck.png
           if-no-files-found: warn
 
       - name: 失败时抓日志
