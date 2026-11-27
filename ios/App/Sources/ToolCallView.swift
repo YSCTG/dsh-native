@@ -23,22 +23,38 @@ final class ToolCallModel: ObservableObject {
         }
 
         UserDefaults.standard.set(key, forKey: "dsh.apiKey")
-        let model = ChatModel()
-        model.bootstrap()
-
         let target = "tool-demo.txt"
-        model.input = "用 fs_write 工具在工作区写一个文件 \(target)，内容写「工具调用成功」，"
+        let prompt = "用 fs_write 工具在工作区写一个文件 \(target)，内容写「工具调用成功」，"
             + "然后用 fs_read 读回来，把读到的内容原样告诉我。不要问我，直接做。"
-        model.send()
-        status = "已发送，等待模型调用工具…"
 
-        for _ in 0..<120 {
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            if !model.busy { break }
+        // CI 的出口网络偶尔在握手阶段抖动（NSURLErrorDomain -1200），
+        // 这类错误重试一次基本就好；业务错误（401/400）不重试。
+        var model = ChatModel()
+        for attempt in 1...3 {
+            model = ChatModel()
+            model.bootstrap()
+            model.newSession()          // 每次用干净会话，避免继承上一轮的消息
+            model.input = prompt
+            model.send()
+            status = "第 \(attempt) 次尝试，等待模型调用工具…"
+
+            for _ in 0..<120 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                if !model.busy { break }
+            }
+
+            let last = model.rows.last?.text ?? ""
+            let transient = last.contains("NSURLErrorDomain")
+                || last.contains("-1200") || last.contains("TLS")
+                || last.contains("timed out") || last.contains("网络")
+            if !transient { break }
+            status = "第 \(attempt) 次网络失败，重试…"
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
         }
 
         lines = model.rows.map { "\($0.role.prefix(4))  \($0.text.prefix(90))" }
-        status = model.busy ? "超时" : "完成（\(model.status)）"
+        let bad = model.rows.contains { $0.role == "error" }
+        status = model.busy ? "超时" : (bad ? "结束，但有错误" : "完成（\(model.status)）")
 
         // 从磁盘直接确认文件真的被写出来了（不依赖模型的说法）
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -64,7 +80,8 @@ struct ToolCallView: View {
         VStack(spacing: 0) {
             Text(model.status)
                 .font(.headline)
-                .foregroundStyle(model.status.hasPrefix("完成") ? Color.green : Color.secondary)
+                .foregroundStyle(model.status.hasPrefix("完成") ? Color.green
+                                 : (model.status.contains("错误") || model.status.contains("超时") ? Color.red : Color.secondary))
                 .padding(12)
 
             HStack(spacing: 6) {
