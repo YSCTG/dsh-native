@@ -90,15 +90,23 @@ final class UIBasics: XCTestCase {
             XCTFail("待办列表没出现")
             return
         }
-        // 勾选前是 2 项未完成，勾掉一项后应变成 3 项（示范数据里有 1 项已完成）
-        let before = app.staticTexts.matching(
+        // 注意：XCUIElement 是**惰性查询**，label 必须当场取值，
+        // 否则点击后再读会拿到新值，等于自己跟自己比（第一版就踩了这个坑）。
+        let counter = app.staticTexts.matching(
             NSPredicate(format: "label BEGINSWITH '待办（'")).firstMatch
-        XCTAssertTrue(before.exists, "看不到待办计数")
+        XCTAssertTrue(counter.exists, "看不到待办计数")
+        let beforeLabel = counter.label
+
         first.tap()
-        let after = app.staticTexts.matching(
-            NSPredicate(format: "label BEGINSWITH '待办（'")).firstMatch
-        XCTAssertTrue(after.exists)
-        XCTAssertNotEqual(before.label, after.label, "勾选后计数没变，点击可能没生效")
+
+        var afterLabel = counter.label
+        for _ in 0..<20 {
+            if afterLabel != beforeLabel { break }
+            Thread.sleep(forTimeInterval: 0.1)
+            afterLabel = counter.label
+        }
+        XCTAssertNotEqual(afterLabel, beforeLabel,
+                          "勾选后计数没变（点击可能没生效）：\(beforeLabel)")
     }
 
     /// 文件页能进子目录（如果工作区里有 apps/）
