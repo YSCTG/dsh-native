@@ -57,9 +57,12 @@ final class SessionStoreTests: XCTestCase {
     func testTouchRenamesFromFirstUserText() throws {
         let store = SessionStore(root: try tempRoot())
         let s = try store.create()
-        try store.touch(s.id, firstUserText: "帮我把这个 Excel 里的公式修好")
+        // 18 个字，没到 20 字上限，不该被截断
+        let text = "帮我把这个 Excel 里的公式修好"
+        XCTAssertEqual(text.count, 18)
+        try store.touch(s.id, firstUserText: text)
         let all = try store.list()
-        XCTAssertEqual(all[0].title, "帮我把这个 Excel 里的公式修…")
+        XCTAssertEqual(all[0].title, text)
     }
 
     func testTitleFrom() {
