@@ -8,6 +8,7 @@ struct DSHNativeApp: App {
     private let selfCheck = CommandLine.arguments.contains("-selfcheck")
     private let uiDemo = CommandLine.arguments.contains("-uidemo")
     private let live = CommandLine.arguments.contains("-live")
+    private let tools = CommandLine.arguments.contains("-tools")
 
     var body: some Scene {
         WindowGroup {
@@ -15,6 +16,8 @@ struct DSHNativeApp: App {
                 SelfCheckView()
             } else if uiDemo {
                 UIDemoView()
+            } else if tools {
+                ToolCallView()
             } else if live {
                 LiveChatView()
             } else {

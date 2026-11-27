@@ -105,6 +105,28 @@ jobs:
             echo "没有配置 DEEPSEEK_KEY，跳过真实对话"
           fi
 
+          # 5) 工具调用端到端：让模型调 fs_write 写文件
+          if [ -n "${{ secrets.DEEPSEEK_KEY }}" ]; then
+            xcrun simctl terminate "$DEV" com.dshnative.mini || true
+            sleep 1
+            SIMCTL_CHILD_DEEPSEEK_KEY="${{ secrets.DEEPSEEK_KEY }}" \
+              xcrun simctl launch "$DEV" com.dshnative.mini -tools || true
+            sleep 60
+            xcrun simctl io "$DEV" screenshot /tmp/tools.png
+            ls -l /tmp/tools.png
+
+            # 用 shell 直接看 App 容器里的文件 —— 不依赖模型的说法
+            CONTAINER=$(xcrun simctl get_app_container "$DEV" com.dshnative.mini data)
+            echo "container=$CONTAINER"
+            ls -la "$CONTAINER/Documents/workspace/" 2>/dev/null || true
+            echo "--- tool-demo.txt ---"
+            cat "$CONTAINER/Documents/workspace/tool-demo.txt" 2>/dev/null || echo "(文件不存在)"
+
+            xcrun simctl spawn "$DEV" log show --last 2m --predicate 'process == "DSHNative"' 2>/dev/null | grep -F "[tools]" | tail -12 || true
+          else
+            echo "没有 DEEPSEEK_KEY，跳过工具调用演示"
+          fi
+
           # 把控制台里的结论也捞出来
           xcrun simctl spawn "$DEV" log show --last 3m --predicate 'process == "DSHNative"' 2>/dev/null | grep -F "[selfcheck]" | tail -5 || true
           echo "device=$DEV" >> "$GITHUB_OUTPUT"
@@ -119,6 +141,7 @@ jobs:
             /tmp/selfcheck.png
             /tmp/uidemo.png
             /tmp/live.png
+            /tmp/tools.png
           if-no-files-found: warn
 
       - name: 失败时抓日志
