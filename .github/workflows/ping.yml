@@ -1,0 +1,25 @@
+name: ping
+
+# 对照实验：确认这个仓库的 Actions 到底能不能跑起来。
+# 如果 ubuntu 也一直排队 → 账号级问题（计费/权限）；
+# 如果 ubuntu 秒起而 macOS 不动 → 只是 macOS 容量问题。
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/ping.yml'
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo "ubuntu runner works"
+      - run: uname -a
+
+  mac:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - run: echo "macos runner works"
+      - run: sw_vers
