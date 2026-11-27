@@ -37,6 +37,8 @@ struct SessionListDemo: View {
                 try? store.touch(s.id, firstUserText: item.0)
             }
         }
+        // 关键：先 bootstrap 让 ChatModel 拿到 store，否则 refreshSessions 永远是空
+        model.bootstrap()
         model.refreshSessions()
         // 留一点时间让列表渲染出来再截图
         try? await Task.sleep(nanoseconds: 300_000_000)
