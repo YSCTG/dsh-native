@@ -92,6 +92,19 @@ jobs:
           xcrun simctl io "$DEV" screenshot /tmp/uidemo.png
           ls -l /tmp/uidemo.png
 
+          # 4) 真实对话（需要仓库 Secret DEEPSEEK_KEY；没有就跳过）
+          if [ -n "${{ secrets.DEEPSEEK_KEY }}" ]; then
+            xcrun simctl terminate "$DEV" com.dshnative.mini || true
+            sleep 1
+            SIMCTL_CHILD_DEEPSEEK_KEY="${{ secrets.DEEPSEEK_KEY }}" \
+              xcrun simctl launch "$DEV" com.dshnative.mini -live || true
+            sleep 30
+            xcrun simctl io "$DEV" screenshot /tmp/live.png
+            ls -l /tmp/live.png
+          else
+            echo "没有配置 DEEPSEEK_KEY，跳过真实对话"
+          fi
+
           # 把控制台里的结论也捞出来
           xcrun simctl spawn "$DEV" log show --last 3m --predicate 'process == "DSHNative"' 2>/dev/null | grep -F "[selfcheck]" | tail -5 || true
           echo "device=$DEV" >> "$GITHUB_OUTPUT"
@@ -105,6 +118,7 @@ jobs:
             /tmp/app.png
             /tmp/selfcheck.png
             /tmp/uidemo.png
+            /tmp/live.png
           if-no-files-found: warn
 
       - name: 失败时抓日志
