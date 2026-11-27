@@ -104,7 +104,7 @@ P4 补齐文档生成，P5 补齐编排，P6 才需要一台常开的机器。
 
 ## 进度（2026-11-26 续）
 
-- **P1 部分完成**：`fs_list/read/write/edit/glob/grep` 已写（`FSTools.swift`），自检共 62 条断言
+- **P1 完成**：`fs_list/read/write/edit/glob/grep` 全部实现（`FSTools.swift`），并纳入自检（见下方 58 条断言）
 - **界面**：`ChatModel` + `ChatView` + Playgrounds 入口已写，产出 `ChatDemo.swift`（50 KB 单文件）
 - 语法门禁：12 个文件全过
 - **P2 部分完成**：`browser_open / browser_text / browser_js / browser_click / browser_type`
@@ -118,7 +118,7 @@ P4 补齐文档生成，P5 补齐编排，P6 才需要一台常开的机器。
 - **P5 部分完成**：WorkflowRunner（并发上限 / 顺序保持 / 错误隔离 / 遇错即停），
   自检加 7 条（用假 runner，离线验调度语义）
 - **发布路线 A/B/C 完成**：webapp_new/list、swiftpm_new、ipa_pack；自检 +11 条
-- **工具数 27**；**断言 62 条**
+- **工具数 52**；**断言 58 条**（模拟器 `-selfcheck` 实跑）
 - **内置 Swift playground 不可行**：iOS 无可用 Swift 编译器、未签名二进制不允许执行、
   第三方拿不到 JIT 授权；Apple 只给了自家 Playgrounds 这个能力。
   可行的替代：内置 **JS/HTML playground**（JavaScriptCore 真能跑）+ 把 Swift 项目交给 Playgrounds
