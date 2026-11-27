@@ -13,7 +13,7 @@ import UIKit
 public enum OpsTools {
 
     public static func all() -> [any Tool] {
-        [Screenshot(), Export(), TaskCreate(), TaskList(), TaskUpdate(),
+        [Screenshot(), Export(), TaskCreate(), TaskList(), TaskGet(), TaskUpdate(),
          GoalSet(), GoalGet(), GoalClear()]
     }
 
@@ -150,6 +150,24 @@ public enum OpsTools {
             let items = OpsTools.loadTasks(ctx)
             if items.isEmpty { return "（任务板是空的）" }
             return items.map { "#\($0.id) [\($0.status)] \($0.text)" }.joined(separator: "\n")
+        }
+    }
+
+    struct TaskGet: Tool {
+        let name = "task_get"
+        let description = "按编号读一条任务的详情。"
+        var parameters: JSONSchema {
+            JSONSchema(properties: [.init("id", "number", "任务编号")], required: ["id"])
+        }
+        func run(_ args: JSONValue, in ctx: ToolContext) async throws -> String {
+            guard let id = args["id"]?.intValue else {
+                throw ToolError.badArgument("缺少 id")
+            }
+            let items = OpsTools.loadTasks(ctx)
+            guard let t = items.first(where: { $0.id == id }) else {
+                throw ToolError.failed("没有 #\(id) 这条任务")
+            }
+            return "#\(t.id) [\(t.status)] \(t.text)"
         }
     }
 

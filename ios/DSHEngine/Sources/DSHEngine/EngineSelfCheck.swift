@@ -204,6 +204,8 @@ public enum EngineSelfCheck {
             let tu = try await OpsTools.TaskUpdate().run(
                 .object(["id": .number(1), "status": .string("done")]), in: ctx)
             check(tu.contains("#1 → done"), "task_update 改状态")
+            let tg = try await OpsTools.TaskGet().run(.object(["id": .number(1)]), in: ctx)
+            check(tg.contains("#1 [done] 第一步"), "task_get 读单条")
 
             // 目标
             _ = try await OpsTools.GoalSet().run(
