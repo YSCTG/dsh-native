@@ -29,12 +29,17 @@ public struct ToolContext: Sendable {
     /// 由宿主注入：引擎本身不碰网络配置，测试里也能塞一个假的。
     public let sub: (@Sendable (String) async -> String)?
 
+    /// MCP 客户端（宿主按设置注入；没有就是 nil）。
+    public let mcp: McpClient?
+
     public init(workspace: URL, networkAllowed: Bool = true,
                 sub: (@Sendable (String) async -> String)? = nil,
+                mcp: McpClient? = nil,
                 audit: @escaping @Sendable (String, String) -> Void = { _, _ in }) {
         self.workspace = workspace
         self.networkAllowed = networkAllowed
         self.sub = sub
+        self.mcp = mcp
         self.audit = audit
     }
 

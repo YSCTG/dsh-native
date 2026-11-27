@@ -181,12 +181,16 @@ public final class ChatModel: ObservableObject {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let ws = docs.appendingPathComponent("workspace", isDirectory: true)
         let client = DeepSeekClient(config: .init(apiKey: key))
-        let ctx = ToolContext(workspace: ws, sub: { prompt in
-            await ClientRun.once(client: client, prompt: prompt)
-        })
+        let mcpURL = UserDefaults.standard.string(forKey: "dsh.mcpUrl") ?? ""
+        let mcp = mcpURL.isEmpty ? nil : McpClient(endpoint: URL(string: mcpURL)!)
+        let ctx = ToolContext(workspace: ws,
+                              sub: { prompt in
+                                  await ClientRun.once(client: client, prompt: prompt)
+                              },
+                              mcp: mcp)
         let tools = BuiltinTools.all() + FSTools.all() + WebTools.all()
             + SystemTools.all() + OfficeTools.all() + OfficeRead.all() + PublishTools.all()
-            + PlatformTools.all() + OpsTools.all() + SubTools.all() + AskTools.all()
+            + PlatformTools.all() + OpsTools.all() + SubTools.all() + AskTools.all() + McpTools.all()
         let svc = AgentService(client: client,
                                store: store ?? SessionStore(root: docs),
                                context: ctx,

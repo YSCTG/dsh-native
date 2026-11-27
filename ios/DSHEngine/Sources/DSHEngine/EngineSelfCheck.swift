@@ -17,6 +17,36 @@ public struct CheckReport: Sendable {
     }
 }
 
+/// 假的 MCP 传输：不联网，按 method 返回固定结果，并记录收到过哪些方法。
+private final class FakeMcpTransport: McpTransport, @unchecked Sendable {
+    private var seen: [String] = []
+    private let lock = NSLock()
+
+    func methods() -> [String] { lock.lock(); defer { lock.unlock() }; return seen }
+
+    func post(_ body: Data) async throws -> Data {
+        let obj = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
+        let method = obj["method"] as? String ?? ""
+        let id = obj["id"] as? Int ?? 1
+        lock.lock(); seen.append(method); lock.unlock()
+
+        let result: [String: Any]
+        switch method {
+        case "resources/list":
+            result = ["resources": [
+                ["uri": "mcp://demo/notes", "name": "notes.md", "mimeType": "text/markdown"],
+                ["uri": "mcp://demo/data", "name": "data.json"],
+            ]]
+        case "resources/read":
+            result = ["contents": [["uri": "mcp://demo/notes", "text": "MCP 内容测试"]]]
+        default:
+            result = [:]
+        }
+        let response: [String: Any] = ["jsonrpc": "2.0", "id": id, "result": result]
+        return (try? JSONSerialization.data(withJSONObject: response)) ?? Data()
+    }
+}
+
 private actor FakeCounter {
     private(set) var calls: [String] = []
     func hit(_ prompt: String) { calls.append(prompt) }
@@ -297,6 +327,33 @@ public enum EngineSelfCheck {
             check(planText.contains("1. 第一步"), "plan.md 落盘")
         } catch {
             check(false, "提问/计划异常：\(error)")
+        }
+
+        // ---- MCP（假 transport，不联网）----
+        r.lines.append("【MCP】")
+        do {
+            // 没配置时明确报错
+            var denied = false
+            do {
+                _ = try await McpTools.Resources().run(.null, in: ctx)
+            } catch { denied = true }
+            check(denied, "没有 MCP 时明确报错")
+
+            let fake = FakeMcpTransport()
+            let client = McpClient(transport: fake)
+            let mcpCtx = ToolContext(workspace: ctx.workspace, mcp: client)
+
+            let list = try await McpTools.Resources().run(.null, in: mcpCtx)
+            check(list.contains("notes.md") && list.contains("mcp://demo/notes"), "mcp_resources 解析资源列表")
+
+            let body = try await McpTools.Read().run(
+                .object(["uri": .string("mcp://demo/notes")]), in: mcpCtx)
+            check(body.contains("MCP 内容测试"), "mcp_read 读到文本")
+
+            let calls = await fake.methods()
+            check(calls.contains("resources/list") && calls.contains("resources/read"), "请求方法正确")
+        } catch {
+            check(false, "MCP 异常：\(error)")
         }
 
         // ---- 客户端可构造 ----
