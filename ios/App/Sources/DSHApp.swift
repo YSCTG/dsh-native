@@ -10,6 +10,8 @@ struct DSHNativeApp: App {
     private let live = CommandLine.arguments.contains("-live")
     private let tools = CommandLine.arguments.contains("-tools")
     private let settings = CommandLine.arguments.contains("-settings")
+    private let sessions = CommandLine.arguments.contains("-sessions")
+    private let mdDemo = CommandLine.arguments.contains("-md")
 
     var body: some Scene {
         WindowGroup {
@@ -19,6 +21,10 @@ struct DSHNativeApp: App {
                 UIDemoView()
             } else if tools {
                 ToolCallView()
+            } else if sessions {
+                SessionListDemo()
+            } else if mdDemo {
+                MarkdownDemo()
             } else if settings {
                 SettingsView()
             } else if live {

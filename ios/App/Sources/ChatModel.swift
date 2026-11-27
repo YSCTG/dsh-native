@@ -82,6 +82,15 @@ public final class ChatModel: ObservableObject {
         }
     }
 
+    public func delete(_ id: String) {
+        try? store?.delete(id)
+        if currentSession == id {
+            currentSession = nil
+            rows = []
+        }
+        refreshSessions()
+    }
+
     public func newSession() {
         guard let store else { return }
         if let s = try? store.create() {

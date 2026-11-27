@@ -12,6 +12,7 @@ public struct ChatView: View {
 
     @ObservedObject private var model: ChatModel
     @State private var showKeySheet = false
+    @State private var showSessions = false
 
     // ask_user：模型提问时弹出输入框（不接就会永久挂起）
     @State private var pendingQuestion: String?
@@ -33,9 +34,10 @@ public struct ChatView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
-                        model.newSession()
+                        model.refreshSessions()
+                        showSessions = true
                     } label: {
-                        Image(systemName: "square.and.pencil")
+                        Image(systemName: "list.bullet")
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -48,6 +50,9 @@ public struct ChatView: View {
             }
             .sheet(isPresented: $showKeySheet) {
                 keySheet
+            }
+            .sheet(isPresented: $showSessions) {
+                SessionListView(model: model)
             }
         }
         .onAppear { model.bootstrap() }
@@ -120,18 +125,18 @@ public struct ChatView: View {
                     .textSelection(.enabled)
             }
         case "tool":
-            Text(row.text)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.leading, 4)
+            ToolChip(raw: row.text)
         case "error":
             Text(row.text)
                 .font(.caption)
                 .foregroundStyle(.red)
         default:
             VStack(alignment: .leading, spacing: 4) {
-                Text(row.text.isEmpty && row.isStreaming ? "…" : row.text)
-                    .textSelection(.enabled)
+                if row.text.isEmpty && row.isStreaming {
+                    Text("…").foregroundStyle(.secondary)
+                } else {
+                    MarkdownView(text: row.text)
+                }
                 if row.isStreaming {
                     ProgressView().scaleEffect(0.7)
                 }
