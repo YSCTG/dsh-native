@@ -13,6 +13,10 @@ public struct ChatView: View {
     @ObservedObject private var model: ChatModel
     @State private var showKeySheet = false
 
+    // ask_user：模型提问时弹出输入框（不接就会永久挂起）
+    @State private var pendingQuestion: String?
+    @State private var answerDraft = ""
+
     public init(model: ChatModel) {
         _model = ObservedObject(wrappedValue: model)
     }
@@ -47,6 +51,36 @@ public struct ChatView: View {
             }
         }
         .onAppear { model.bootstrap() }
+        .task {
+            // 界面侧轮询：有没有 agent 正在等用户回答
+            while !Task.isCancelled {
+                let q = await AskBroker.shared.pendingQuestion()
+                if q != pendingQuestion {
+                    answerDraft = ""
+                    pendingQuestion = q
+                }
+                try? await Task.sleep(nanoseconds: 400_000_000)
+            }
+        }
+        .alert("需要你的回答", isPresented: Binding(
+            get: { pendingQuestion != nil },
+            set: { if !$0 { pendingQuestion = nil } })) {
+            TextField("输入回答", text: $answerDraft)
+            Button("取消") {
+                let q = answerDraft
+                answerDraft = ""
+                pendingQuestion = nil
+                Task { await AskBroker.shared.answer("（跳过：" + q + "）") }
+            }
+            Button("回答") {
+                let text = answerDraft
+                answerDraft = ""
+                pendingQuestion = nil
+                Task { await AskBroker.shared.answer(text) }
+            }
+        } message: {
+            Text(pendingQuestion ?? "")
+        }
     }
 
     // MARK: - 消息列表
