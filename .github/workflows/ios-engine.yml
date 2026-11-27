@@ -25,8 +25,14 @@ jobs:
 
       - name: 构建
         working-directory: ios/DSHEngine
-        run: swift build -v 2>&1 | tail -40
+        shell: bash
+        run: |
+          set -o pipefail          # 管道里任何一步失败都要让 job 失败
+          swift build 2>&1 | tail -60
 
       - name: 单测
         working-directory: ios/DSHEngine
-        run: swift test 2>&1 | tail -40
+        shell: bash
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tail -60

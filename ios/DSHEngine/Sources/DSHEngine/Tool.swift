@@ -56,8 +56,8 @@ public struct ToolContext: Sendable {
             ? URL(fileURLWithPath: trimmed).resolvingSymlinksInPath()
             : realRoot.appendingPathComponent(trimmed)
 
-        let rootPath = normalized(realRoot)
-        let targetPath = normalized(candidate)
+        let rootPath = Self.normalized(realRoot)
+        let targetPath = Self.normalized(candidate)
         guard targetPath == rootPath || targetPath.hasPrefix(rootPath + "/") else {
             throw ToolError.badArgument("越界：\(path) 不在工作区内（根 \(rootPath)）")
         }
