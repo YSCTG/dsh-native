@@ -236,6 +236,36 @@ public enum EngineSelfCheck {
             check(false, "子 agent 异常：\(error)")
         }
 
+        // ---- 读文档（真 deflate 样本）----
+        r.lines.append("【读文档】")
+        do {
+            let docx = Fixtures.docxDeflated
+            check(docx.count > 200, "样本 docx 非空（\(docx.count) 字节）")
+            let zip = ZipReader(data: docx)
+            check(zip.entries().contains { $0.name == "word/document.xml" }, "ZipReader 能读中央目录")
+            check(zip.entries().contains { $0.method == 8 }, "样本是真 deflate（method=8）")
+            let xmlData = zip.read("word/document.xml")
+            check((xmlData?.count ?? 0) > 100, "deflate 解压成功（\(xmlData?.count ?? 0) 字节）")
+
+            let docxPath = ctx.workspace.appendingPathComponent("fixture.docx")
+            try? docx.write(to: docxPath)
+            let docxText = try await OfficeRead.Read().run(
+                .object(["path": .string("fixture.docx")]), in: ctx)
+            check(docxText.contains("季度报告"), "docx 抽到标题")
+            check(docxText.contains("第一段"), "docx 抽到正文")
+            check(docxText.contains("128"), "docx 抽到表格单元格")
+
+            let xlsxPath = ctx.workspace.appendingPathComponent("fixture.xlsx")
+            try? Fixtures.xlsxDeflated.write(to: xlsxPath)
+            let xlsxText = try await OfficeRead.Read().run(
+                .object(["path": .string("fixture.xlsx")]), in: ctx)
+            check(xlsxText.contains("名单"), "xlsx 抽到表名")
+            check(xlsxText.contains("张三") && xlsxText.contains("上海"), "xlsx 抽到共享字符串")
+            check(xlsxText.contains("42"), "xlsx 抽到数字单元格")
+        } catch {
+            check(false, "读文档异常：\(error)")
+        }
+
         // ---- 客户端可构造 ----
         r.lines.append("【客户端】")
         _ = DeepSeekClient(config: .init(apiKey: "sk-test"))
