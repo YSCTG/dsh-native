@@ -80,6 +80,7 @@ struct FileBrowserView: View {
                             }
                         }
                     }
+                    .accessibilityIdentifier("file-\(item.name)")
                 }
             }
             .navigationTitle(path.last ?? "文件")

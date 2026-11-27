@@ -43,6 +43,7 @@ public struct ChatView: View {
                     } label: {
                         Image(systemName: "list.bullet")
                     }
+                    .accessibilityIdentifier("open-sessions")
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
@@ -50,6 +51,7 @@ public struct ChatView: View {
                     } label: {
                         Image(systemName: "checklist")
                     }
+                    .accessibilityIdentifier("open-tasks")
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
@@ -191,6 +193,7 @@ public struct ChatView: View {
                     .foregroundStyle(.secondary)
             }
             TextField("说点什么…", text: $model.input, axis: .vertical)
+                .accessibilityIdentifier("composer")
                 .lineLimit(1...5)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
@@ -209,6 +212,7 @@ public struct ChatView: View {
                 } label: {
                     Image(systemName: "arrow.up.circle.fill").font(.title2)
                 }
+                .accessibilityIdentifier("send")
                 .disabled(model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }

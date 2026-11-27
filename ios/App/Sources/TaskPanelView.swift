@@ -48,6 +48,7 @@ struct TaskPanelView: View {
                                 Spacer()
                             }
                         }
+                        .accessibilityIdentifier("todo-\(index)")
                     }
                 } header: {
                     Text("待办（\(todos.filter { !$0.done }.count) 项未完成）")

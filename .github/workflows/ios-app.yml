@@ -184,7 +184,28 @@ jobs:
             /tmp/md.png
             /tmp/files.png
             /tmp/tasks.png
+            /tmp/uitest-screen.png
           if-no-files-found: warn
+
+      - name: 交互测试（XCUITest，真点真敲）
+        id: uitest
+        working-directory: ios/App
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project DSHNative.xcodeproj \
+            -scheme DSHNative \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=${{ steps.pick.outputs.device }}" \
+            -derivedDataPath build \
+            2>&1 | tail -80
+
+      - name: 交互测试截图
+        if: always()
+        run: |
+          DEV="${{ steps.pick.outputs.device }}"
+          xcrun simctl io "$DEV" screenshot /tmp/uitest-screen.png || true
+          ls -l /tmp/uitest-screen.png || true
 
       - name: 构建真机版并打包未签名 ipa
         if: always()

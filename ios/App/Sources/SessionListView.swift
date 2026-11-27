@@ -19,6 +19,7 @@ struct SessionListView: View {
                     } label: {
                         Label("新建会话", systemImage: "square.and.pencil")
                     }
+                    .accessibilityIdentifier("new-session")
                 }
 
                 Section {
@@ -47,6 +48,7 @@ struct SessionListView: View {
                                     }
                                 }
                             }
+                            .accessibilityIdentifier("session-\(s.id)")
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
                                     pendingDelete = s

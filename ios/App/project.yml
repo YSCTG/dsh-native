@@ -38,3 +38,28 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGNING_ALLOWED: NO
+
+  DSHNativeUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: DSHNative
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dshnative.mini.uitests
+        TEST_TARGET_NAME: DSHNative
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+
+schemes:
+  DSHNative:
+    build:
+      targets:
+        DSHNative: all
+        DSHNativeUITests: [test]
+    test:
+      targets:
+        - DSHNativeUITests
