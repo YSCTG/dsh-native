@@ -268,6 +268,37 @@ public enum EngineSelfCheck {
             check(false, "读文档异常：\(error)")
         }
 
+        // ---- 提问与计划 ----
+        r.lines.append("【提问/计划】")
+        do {
+            // ask_user：起一个任务挂起，界面侧"回答"后应拿到答案
+            let askTask = Task { () -> String in
+                (try? await AskTools.AskUser().run(
+                    .object(["question": .string("用哪种格式？")]), in: ctx)) ?? "异常"
+            }
+            // 等它把问题挂上去
+            var pending: String? = nil
+            for _ in 0..<40 {
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                pending = await AskBroker.shared.pendingQuestion()
+                if pending != nil { break }
+            }
+            check(pending == "用哪种格式？", "ask_user 会挂起并暴露问题")
+            await AskBroker.shared.answer("markdown")
+            let reply = await askTask.value
+            check(reply.contains("markdown"), "ask_user 拿到用户回答")
+
+            // plan_present：写 plan.md
+            let plan = try await AskTools.PlanPresent().run(
+                .object(["steps": .array([.string("第一步"), .string("第二步")])]), in: ctx)
+            check(plan.contains("第一步") && plan.contains("第二步"), "plan_present 返回计划")
+            let planURL = ctx.workspace.appendingPathComponent("plan.md")
+            let planText = (try? String(contentsOf: planURL, encoding: .utf8)) ?? ""
+            check(planText.contains("1. 第一步"), "plan.md 落盘")
+        } catch {
+            check(false, "提问/计划异常：\(error)")
+        }
+
         // ---- 客户端可构造 ----
         r.lines.append("【客户端】")
         _ = DeepSeekClient(config: .init(apiKey: "sk-test"))

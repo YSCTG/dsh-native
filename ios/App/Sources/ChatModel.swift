@@ -186,7 +186,7 @@ public final class ChatModel: ObservableObject {
         })
         let tools = BuiltinTools.all() + FSTools.all() + WebTools.all()
             + SystemTools.all() + OfficeTools.all() + OfficeRead.all() + PublishTools.all()
-            + PlatformTools.all() + OpsTools.all() + SubTools.all()
+            + PlatformTools.all() + OpsTools.all() + SubTools.all() + AskTools.all()
         let svc = AgentService(client: client,
                                store: store ?? SessionStore(root: docs),
                                context: ctx,
