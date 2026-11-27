@@ -127,6 +127,14 @@ jobs:
             echo "没有 DEEPSEEK_KEY，跳过工具调用演示"
           fi
 
+          # 6) 设置页截图
+          xcrun simctl terminate "$DEV" com.dshnative.mini || true
+          sleep 1
+          xcrun simctl launch "$DEV" com.dshnative.mini -settings || true
+          sleep 2
+          xcrun simctl io "$DEV" screenshot /tmp/settings.png
+          ls -l /tmp/settings.png
+
           # 把控制台里的结论也捞出来
           xcrun simctl spawn "$DEV" log show --last 3m --predicate 'process == "DSHNative"' 2>/dev/null | grep -F "[selfcheck]" | tail -5 || true
           echo "device=$DEV" >> "$GITHUB_OUTPUT"
@@ -142,6 +150,41 @@ jobs:
             /tmp/uidemo.png
             /tmp/live.png
             /tmp/tools.png
+            /tmp/settings.png
+          if-no-files-found: warn
+
+      - name: 构建真机版并打包未签名 ipa
+        if: always()
+        working-directory: ios/App
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project DSHNative.xcodeproj \
+            -scheme DSHNative \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build-device \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build 2>&1 | tail -30 || {
+              echo "真机版构建失败（模拟器版已通过，先不阻塞）"
+              exit 0
+            }
+          APP=$(find build-device -name "DSHNative.app" -maxdepth 6 | head -1)
+          echo "device app: $APP"
+          if [ -n "$APP" ]; then
+            rm -rf /tmp/payload && mkdir -p /tmp/payload/Payload
+            cp -R "$APP" /tmp/payload/Payload/
+            (cd /tmp/payload && zip -qry /tmp/DSHNative-unsigned.ipa Payload)
+            ls -lh /tmp/DSHNative-unsigned.ipa
+          fi
+
+      - name: 上传未签名 ipa
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-ipa
+          path: /tmp/DSHNative-unsigned.ipa
           if-no-files-found: warn
 
       - name: 失败时抓日志

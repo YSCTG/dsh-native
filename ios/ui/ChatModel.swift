@@ -179,7 +179,14 @@ public final class ChatModel: ObservableObject {
         if let service { return service }
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let ws = docs.appendingPathComponent("workspace", isDirectory: true)
-        let client = DeepSeekClient(config: .init(apiKey: key))
+        let modelName = UserDefaults.standard.string(forKey: "dsh.model") ?? "deepseek-chat"
+        let baseRaw = (UserDefaults.standard.string(forKey: "dsh.baseUrl") ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = baseRaw.isEmpty ? nil : URL(string: baseRaw)
+        let client = DeepSeekClient(config: .init(
+            baseURL: base ?? URL(string: "https://api.deepseek.com")!,
+            apiKey: key,
+            model: modelName))
         let mcpURL = UserDefaults.standard.string(forKey: "dsh.mcpUrl") ?? ""
         let mcp = mcpURL.isEmpty ? nil : McpClient(endpoint: URL(string: mcpURL)!)
         let ctx = ToolContext(workspace: ws,

@@ -9,6 +9,7 @@ struct DSHNativeApp: App {
     private let uiDemo = CommandLine.arguments.contains("-uidemo")
     private let live = CommandLine.arguments.contains("-live")
     private let tools = CommandLine.arguments.contains("-tools")
+    private let settings = CommandLine.arguments.contains("-settings")
 
     var body: some Scene {
         WindowGroup {
@@ -18,6 +19,8 @@ struct DSHNativeApp: App {
                 UIDemoView()
             } else if tools {
                 ToolCallView()
+            } else if settings {
+                SettingsView()
             } else if live {
                 LiveChatView()
             } else {
@@ -36,6 +39,8 @@ struct RootTabs: View {
                 .tabItem { Label("应用", systemImage: "square.grid.2x2") }
             JSPlayground()
                 .tabItem { Label("沙盒", systemImage: "chevron.left.forwardslash.chevron.right") }
+            SettingsView()
+                .tabItem { Label("设置", systemImage: "gearshape") }
         }
     }
 }
