@@ -136,9 +136,7 @@ public enum EngineSelfCheck {
             // skill：写一个 md 再读
             let skillsDir = ctx.workspace.appendingPathComponent("skills", isDirectory: true)
             try? FileManager.default.createDirectory(at: skillsDir, withIntermediateDirectories: true)
-            try? Data("# 演示技能
-
-这是内容".utf8)
+            try? Data("# 演示技能\n\n这是内容".utf8)
                 .write(to: skillsDir.appendingPathComponent("demo.md"))
             let names = try await PlatformTools.Skill().run(
                 .object(["action": .string("list")]), in: ctx)
