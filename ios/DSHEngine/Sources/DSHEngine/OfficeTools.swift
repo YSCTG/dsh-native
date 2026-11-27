@@ -43,11 +43,11 @@ public enum OfficeTools {
             let bytes: Data
             switch kind.lowercased() {
             case "docx":
-                bytes = Self.buildDocx(title: args["title"]?.stringValue ?? "",
-                                       paragraphs: Self.stringList(args["paragraphs"]),
+                bytes = OfficeTools.buildDocx(title: args["title"]?.stringValue ?? "",
+                                       paragraphs: OfficeTools.stringList(args["paragraphs"]),
                                        table: args["table"])
             case "xlsx":
-                bytes = try Self.buildXlsx(sheets: args["sheets"])
+                bytes = try OfficeTools.buildXlsx(sheets: args["sheets"])
             default:
                 throw ToolError.badArgument("kind 只支持 docx 或 xlsx")
             }

@@ -169,7 +169,7 @@ public enum FSTools {
                 if hits.count >= 300 { break }
                 let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
                 if isDir { continue }
-                let rel = Self.relative(item, root: rootPath)
+                let rel = FSTools.relative(item, root: rootPath)
                 let range = NSRange(rel.startIndex..<rel.endIndex, in: rel)
                 if regex.firstMatch(in: rel, range: range) != nil {
                     hits.append(rel)
@@ -226,7 +226,7 @@ public enum FSTools {
             let base = try ctx.resolve(args["path"]?.stringValue ?? ".")
             var includeRegex: NSRegularExpression? = nil
             if let inc = args["include"]?.stringValue, !inc.isEmpty {
-                includeRegex = try NSRegularExpression(pattern: Self.Glob.globToRegex(inc))
+                includeRegex = try NSRegularExpression(pattern: Glob.globToRegex(inc))
             }
 
             let rootPath = ToolContext.normalized(ctx.workspace)
@@ -249,7 +249,7 @@ public enum FSTools {
             var scanned = 0
             for file in files {
                 if out.count >= 200 { break }
-                let rel = Self.relative(file, root: rootPath)
+                let rel = FSTools.relative(file, root: rootPath)
                 if let inc = includeRegex {
                     let r = NSRange(rel.startIndex..<rel.endIndex, in: rel)
                     if inc.firstMatch(in: rel, range: r) == nil { continue }
