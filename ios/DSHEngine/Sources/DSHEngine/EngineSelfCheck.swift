@@ -356,6 +356,45 @@ public enum EngineSelfCheck {
             check(false, "MCP 异常：\(error)")
         }
 
+        // ---- 团队（假 runner）----
+        r.lines.append("【团队】")
+        do {
+            await TeamRegistry.shared.reset()
+            let teamCtx = ToolContext(workspace: ctx.workspace, sub: { prompt in
+                try? await Task.sleep(nanoseconds: 80_000_000)
+                return "结论：\(prompt)"
+            })
+
+            let s1 = try await TeamTools.Spawn().run(
+                .object(["name": .string("alpha"), "task": .string("查资料")]), in: teamCtx)
+            check(s1.contains("alpha"), "team_spawn 派活")
+            _ = try await TeamTools.Spawn().run(
+                .object(["name": .string("beta"), "task": .string("写草稿")]), in: teamCtx)
+
+            let listed = try await TeamTools.ListTeam().run(.null, in: teamCtx)
+            check(listed.contains("alpha") && listed.contains("beta"), "team_list 列出成员")
+
+            let waited = try await TeamTools.Wait().run(
+                .object(["name": .string("alpha"), "seconds": .number(5)]), in: teamCtx)
+            check(waited.contains("结论：查资料"), "team_wait 拿到结论")
+
+            let all = try await TeamTools.Collect().run(.null, in: teamCtx)
+            check(all.contains("结论：写草稿"), "team_collect 收齐")
+            await TeamRegistry.shared.reset()
+        } catch {
+            check(false, "团队异常：\(error)")
+        }
+
+        // ---- 拉起 App（只验参数）----
+        r.lines.append("【拉起】")
+        do {
+            var bad = false
+            do {
+                _ = try await LaunchTool.AppLaunch().run(.object(["url": .string("")]), in: ctx)
+            } catch { bad = true }
+            check(bad, "app_launch 拒绝空 url")
+        }
+
         // ---- 客户端可构造 ----
         r.lines.append("【客户端】")
         _ = DeepSeekClient(config: .init(apiKey: "sk-test"))
