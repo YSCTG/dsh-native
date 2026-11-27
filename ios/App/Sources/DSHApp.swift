@@ -14,6 +14,7 @@ struct DSHNativeApp: App {
     private let mdDemo = CommandLine.arguments.contains("-md")
     private let filesDemo = CommandLine.arguments.contains("-files")
     private let tasksDemo = CommandLine.arguments.contains("-tasks")
+    private let askDemo = CommandLine.arguments.contains("-ask")
 
     var body: some Scene {
         WindowGroup {
@@ -23,6 +24,13 @@ struct DSHNativeApp: App {
                 UIDemoView()
             } else if tools {
                 ToolCallView()
+            } else if askDemo {
+                // 演示 ask_user：进主界面后主动挂起一个提问，界面应弹出输入框
+                RootTabs()
+                    .task {
+                        try? await Task.sleep(nanoseconds: 900_000_000)
+                        _ = await AskBroker.shared.ask("用哪种格式？markdown 还是纯文本")
+                    }
             } else if filesDemo {
                 FileBrowserView()
             } else if tasksDemo {

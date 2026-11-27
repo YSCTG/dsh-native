@@ -150,6 +150,14 @@ jobs:
           xcrun simctl io "$DEV" screenshot /tmp/md.png
           ls -l /tmp/md.png
 
+          # 7.5) ask_user 弹窗
+          xcrun simctl terminate "$DEV" com.dshnative.mini || true
+          sleep 1
+          xcrun simctl launch "$DEV" com.dshnative.mini -ask || true
+          sleep 4
+          xcrun simctl io "$DEV" screenshot /tmp/ask.png
+          ls -l /tmp/ask.png
+
           # 8) 文件浏览 + 任务面板
           xcrun simctl terminate "$DEV" com.dshnative.mini || true
           sleep 1
@@ -183,6 +191,7 @@ jobs:
             /tmp/sessions.png
             /tmp/md.png
             /tmp/files.png
+            /tmp/ask.png
             /tmp/tasks.png
             /tmp/uitest-screen.png
           if-no-files-found: warn

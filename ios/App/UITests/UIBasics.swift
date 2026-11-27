@@ -119,5 +119,56 @@ final class UIBasics: XCTestCase {
             XCTAssertTrue(app.navigationBars["apps"].waitForExistence(timeout: 5),
                           "没进到 apps 目录")
         }
+    }    // MARK: - 渲染与交互的细节
+
+    /// 工具卡片点开能看到返回内容
+    func testToolChipExpands() throws {
+        let app = launch(["-md"])
+        let chip = app.buttons["tool-chip-fs_write"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 20), "工具卡片没出现")
+
+        // 默认是收起的
+        XCTAssertFalse(app.staticTexts["tool-detail-fs_write"].exists,
+                       "默认不该展开")
+
+        chip.tap()
+
+        let detail = app.staticTexts["tool-detail-fs_write"]
+        XCTAssertTrue(detail.waitForExistence(timeout: 5), "点了没展开")
+        XCTAssertTrue(detail.label.contains("已写入"), "展开后内容不对：\(detail.label)")
+    }
+
+    /// Markdown：标题与代码块都渲染成文本
+    func testMarkdownRenders() throws {
+        let app = launch(["-md"])
+        XCTAssertTrue(app.staticTexts["修复结果"].waitForExistence(timeout: 20),
+                      "标题没渲染出来")
+
+        // 代码块内容应以文本形式存在（等宽字体在 XCUITest 里体现为同一串文本）
+        let code = app.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS 'let formula'")).firstMatch
+        XCTAssertTrue(code.waitForExistence(timeout: 5), "代码块没渲染出来")
+
+        // 语言标签
+        XCTAssertTrue(app.staticTexts["swift"].exists, "代码块语言标签没显示")
+    }
+
+    /// ask_user：弹窗出现 → 输入 → 回答 → 弹窗消失
+    func testAskUserAlert() throws {
+        let app = launch(["-ask"])
+
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 25), "ask_user 弹窗没出现")
+
+        let field = alert.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "弹窗里没有输入框")
+        field.tap()
+        field.typeText("markdown")
+
+        let answer = alert.buttons["回答"]
+        XCTAssertTrue(answer.exists, "没有「回答」按钮")
+        answer.tap()
+
+        XCTAssertFalse(alert.waitForExistence(timeout: 3), "回答后弹窗没消失")
     }
 }

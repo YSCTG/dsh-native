@@ -47,6 +47,7 @@ struct ToolChip: View {
                 .clipShape(Capsule())
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("tool-chip-\(name)")
 
             if expanded, !detail.isEmpty {
                 Text(detail)
@@ -56,6 +57,7 @@ struct ToolChip: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.secondary.opacity(0.08))
                     .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .accessibilityIdentifier("tool-detail-\(name)")
             }
         }
     }
