@@ -251,6 +251,7 @@ public enum EngineSelfCheck {
             try? docx.write(to: docxPath)
             let docxText = try await OfficeRead.Read().run(
                 .object(["path": .string("fixture.docx")]), in: ctx)
+            r.lines.append("  docx 抽取：\(docxText.replacingOccurrences(of: "\n", with: "⏎").prefix(70))")
             check(docxText.contains("季度报告"), "docx 抽到标题")
             check(docxText.contains("第一段"), "docx 抽到正文")
             check(docxText.contains("128"), "docx 抽到表格单元格")
@@ -259,6 +260,7 @@ public enum EngineSelfCheck {
             try? Fixtures.xlsxDeflated.write(to: xlsxPath)
             let xlsxText = try await OfficeRead.Read().run(
                 .object(["path": .string("fixture.xlsx")]), in: ctx)
+            r.lines.append("  xlsx 抽取：\(xlsxText.replacingOccurrences(of: "\n", with: "⏎").prefix(70))")
             check(xlsxText.contains("名单"), "xlsx 抽到表名")
             check(xlsxText.contains("张三") && xlsxText.contains("上海"), "xlsx 抽到共享字符串")
             check(xlsxText.contains("42"), "xlsx 抽到数字单元格")

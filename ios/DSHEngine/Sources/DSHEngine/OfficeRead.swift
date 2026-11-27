@@ -57,13 +57,14 @@ public enum OfficeRead {
         }
         // 段落 <w:p> 之间换行；文字在 <w:t>
         var out = ""
-        let paragraphs = xml.components(separatedBy: "<w:p ")
-        for (i, para) in paragraphs.enumerated() {
-            if i == 0 { continue }      // 第一段是根节点之前的内容
-            let text = texts(in: para, tag: "w:t")
+        var i = xml.startIndex
+        // 段落以 </w:p> 结束：按关闭标签切，`<w:p>` 与 `<w:p ...>` 都能覆盖
+        while let end = xml.range(of: "</w:p>", range: i..<xml.endIndex) {
+            let block = String(xml[i..<end.lowerBound])
+            let text = texts(in: block, tag: "w:t")
             if !text.isEmpty { out += text + "\n" }
+            i = end.upperBound
         }
-        // 表格里的单元格也带 <w:p>，上面已经覆盖；如果完全没取到，退回全文抽 <w:t>
         if out.isEmpty { out = texts(in: xml, tag: "w:t") }
         return out
     }
@@ -131,19 +132,34 @@ public enum OfficeRead {
 
     // MARK: - 小工具
 
+    /// 取所有 `<tag ...>body</tag>` 的 body。
+    ///
+    /// 必须严格匹配标签边界：`<w:t` 是 `<w:tbl` 的前缀，宽松匹配会把表格元素
+    /// 当成文本元素（这是第一版的 bug，导致标题被吞掉）。
     static func texts(in chunk: String, tag: String) -> String {
         var out = ""
-        var search = chunk[chunk.startIndex...]
-        while let open = search.range(of: "<\(tag)") {
-            guard let close = search.range(of: "<\(tag)>", range: open.lowerBound..<search.endIndex)
-                    ?? search.range(of: "<\(tag) ", range: open.lowerBound..<search.endIndex)
-            else { break }
-            let afterOpen = close.upperBound
-            guard let gt = search[afterOpen...].firstIndex(of: ">") else { break }
-            let bodyStart = search.index(after: gt)
-            guard let end = search[bodyStart...].range(of: "</\(tag)>") else { break }
-            out += unescape(String(search[bodyStart..<end.lowerBound]))
-            search = search[end.upperBound...]
+        var i = chunk.startIndex
+        let openPrefix = "<\(tag)"
+        let closeTag = "</\(tag)>"
+
+        while let open = chunk.range(of: openPrefix, range: i..<chunk.endIndex) {
+            // 标签名后面必须是 '>' 或空白，才算同名标签
+            let after = open.upperBound
+            if after < chunk.endIndex {
+                let c = chunk[after]
+                if c != ">" && c != " " && c != "\n" && c != "\t" {
+                    i = after
+                    continue
+                }
+            }
+            guard let gt = chunk[after...].firstIndex(of: ">") else { break }
+            let bodyStart = chunk.index(after: gt)
+            guard let end = chunk.range(of: closeTag, range: bodyStart..<chunk.endIndex) else {
+                i = bodyStart
+                continue
+            }
+            out += unescape(String(chunk[bodyStart..<end.lowerBound]))
+            i = end.upperBound
         }
         return out
     }
