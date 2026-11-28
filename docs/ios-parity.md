@@ -135,13 +135,13 @@ P4 补齐文档生成，P5 补齐编排，P6 才需要一台常开的机器。
 | 层 | 内容 | 验证方式 |
 |---|---|---|
 | 引擎 | 编译 + 15 条 XCTest | `swift test`（macOS） |
-| 工具行为 | **58 条断言** | 模拟器 `-selfcheck` 截图 |
+| 工具行为 | **71 条断言** | 模拟器 `-selfcheck` 截图 |
 | 界面 | 三页签构建/启动 | `xcodebuild` + `simctl` |
 | 运行时 | 网络/WebView/JS | `-uidemo` 截图 |
 | 真对话 | 真实 API 回复 | `-live` + Secret 截图 |
 | 工具调用 | 模型调 `fs_write`/`fs_read` | `-tools` 截图 + 容器内文件 |
 
-### 工具清单（iOS 侧，共 **52** 个，脚本精确统计）
+### 工具清单（iOS 侧，共 **53** 个固定 + 动态插件）
 
 | 分类 | 工具 |
 |---|---|
@@ -158,6 +158,7 @@ P4 补齐文档生成，P5 补齐编排，P6 才需要一台常开的机器。
 | MCP | `mcp_resources` `mcp_read` |
 | 交互 | `ask_user` `plan_present` |
 | 拉起 | `app_launch`（仅 URL Scheme） |
+| 插件 | `plugin_list` + `workspace/plugins/*.js` 里的每个插件都会变成一个工具 |
 
 ### 明确无法对齐的（边界）
 

@@ -20,7 +20,7 @@ final class SelfCheckModel: ObservableObject {
         lines = report.lines
         summary = report.summary
         running = false
-        print("[selfcheck] " + summary)
+        print("[selfcheck] backend=\(SecretStore.backend.rawValue) assertion=\(summary)")
     }
 }
 
