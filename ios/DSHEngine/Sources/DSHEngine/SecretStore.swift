@@ -1,0 +1,87 @@
+import Foundation
+import Security
+
+/// API key 的存储：优先 Keychain，拿不到再退回 UserDefaults。
+///
+/// 为什么改：之前 key 存在 UserDefaults 里——那是明文 plist，iTunes/iCloud 备份里也带着。
+/// Keychain 会被系统加密，这是 iOS 上存密钥的常规做法。
+///
+/// 迁移：读的时候先看 Keychain，没有再看 UserDefaults；
+/// 一旦从旧位置读到，`migrateIfNeeded` 会把它搬进 Keychain 并删掉旧值。
+public enum SecretStore {
+
+    private static let service = "com.dshnative.secrets"
+
+    public enum StoreError: Error, CustomStringConvertible {
+        case status(OSStatus)
+        public var description: String {
+            switch self {
+            case .status(let s): return "Keychain 错误 \(s)"
+            }
+        }
+    }
+
+    /// 写入（已存在则覆盖）。
+    @discardableResult
+    public static func set(_ value: String, for key: String) -> Bool {
+        guard let data = value.data(using: .utf8) else { return false }
+
+        // 先试着更新，不存在再新增
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+        ]
+        let attrs: [String: Any] = [kSecValueData as String: data]
+        let updateStatus = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
+        if updateStatus == errSecSuccess { return true }
+
+        var insert = query
+        insert[kSecValueData as String] = data
+        insert[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        return SecItemAdd(insert as CFDictionary, nil) == errSecSuccess
+    }
+
+    /// 读取。
+    public static func get(_ key: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data,
+              let text = String(data: data, encoding: .utf8) else { return nil }
+        return text
+    }
+
+    /// 删除。
+    @discardableResult
+    public static func delete(_ key: String) -> Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
+    }
+
+    /// 把 UserDefaults 里的旧值搬进 Keychain（搬完删掉旧的）。
+    /// 返回是否发生了迁移。
+    @discardableResult
+    public static func migrateIfNeeded(key: String, legacyDefaultsKey: String) -> Bool {
+        let defaults = UserDefaults.standard
+        guard let legacy = defaults.string(forKey: legacyDefaultsKey), !legacy.isEmpty else {
+            return false
+        }
+        if get(key) == nil {
+            _ = set(legacy, for: key)
+        }
+        defaults.removeObject(forKey: legacyDefaultsKey)
+        return true
+    }
+}

@@ -50,13 +50,18 @@ public final class ChatModel: ObservableObject {
     // MARK: - key
 
     private func apiKey() -> String {
-        (UserDefaults.standard.string(forKey: "dsh.apiKey") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        // 先 Keychain，再退回旧的 UserDefaults（并顺带迁移）
+        if let k = SecretStore.get("apiKey"), !k.isEmpty { return k }
+        SecretStore.migrateIfNeeded(key: "apiKey", legacyDefaultsKey: "dsh.apiKey")
+        if let k = SecretStore.get("apiKey"), !k.isEmpty { return k }
+        return "" 
     }
 
     public func saveKey() {
         let k = draftKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !k.isEmpty else { return }
-        UserDefaults.standard.set(k, forKey: "dsh.apiKey")
+        SecretStore.set(k, forKey: "apiKey")
+        UserDefaults.standard.removeObject(forKey: "dsh.apiKey")   // 旧位置不留明文
         draftKey = ""
         service = nil                      // 换 key 后重建
         status = "已保存 key"

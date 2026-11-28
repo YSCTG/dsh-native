@@ -8,7 +8,7 @@ import DSHEngine
 /// 这里先把可用性做出来，Keychain 留作后续（页面上已注明）。
 struct SettingsView: View {
 
-    @AppStorage("dsh.apiKey") private var apiKey = ""
+    @State private var apiKey = ""
     @AppStorage("dsh.model") private var model = "deepseek-chat"
     @AppStorage("dsh.baseUrl") private var baseUrl = ""
     @AppStorage("dsh.mcpUrl") private var mcpUrl = ""
@@ -67,7 +67,7 @@ struct SettingsView: View {
                 } header: {
                     Text("DeepSeek API key")
                 } footer: {
-                    Text("key 只存在本机。当前版本存在 UserDefaults 里，后续会换成 Keychain。")
+                    Text("key 存进 iOS Keychain（系统加密），不写明文 plist；换机迁移请用导出功能。")
                 }
 
                 Section {
@@ -106,6 +106,9 @@ struct SettingsView: View {
 
                 Section {
                     Button("保存") {
+                        SecretStore.set(apiKey.trimmingCharacters(in: .whitespacesAndNewlines),
+                                        forKey: "apiKey")
+                        UserDefaults.standard.removeObject(forKey: "dsh.apiKey")
                         savedAt = Date()
                     }
                     .disabled(apiKey.isEmpty)
@@ -127,6 +130,13 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("设置")
+            .onAppear {
+                apiKey = SecretStore.get("apiKey") ?? ""
+                if apiKey.isEmpty {
+                    SecretStore.migrateIfNeeded(key: "apiKey", legacyDefaultsKey: "dsh.apiKey")
+                    apiKey = SecretStore.get("apiKey") ?? ""
+                }
+            }
         }
     }
 

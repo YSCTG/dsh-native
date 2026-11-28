@@ -449,6 +449,23 @@ public enum EngineSelfCheck {
             check(false, "插件异常：\(error)")
         }
 
+        // ---- 密钥存储（Keychain）----
+        r.lines.append("【密钥存储】")
+        do {
+            _ = SecretStore.delete("selfcheck-key")
+            check(SecretStore.get("selfcheck-key") == nil, "删除后读不到")
+            check(SecretStore.set("sk-测试值", forKey: "selfcheck-key"), "写入成功")
+            check(SecretStore.get("selfcheck-key") == "sk-测试值", "读回一致")
+            _ = SecretStore.set("sk-覆盖后", forKey: "selfcheck-key")
+            check(SecretStore.get("selfcheck-key") == "sk-覆盖后", "重复写入是覆盖")
+
+            let long = String(repeating: "a", count: 1200)
+            _ = SecretStore.set(long, forKey: "selfcheck-key")
+            check(SecretStore.get("selfcheck-key")?.count == 1200, "长值也能存")
+            _ = SecretStore.delete("selfcheck-key")
+            check(SecretStore.get("selfcheck-key") == nil, "清理干净")
+        }
+
         // ---- 客户端可构造 ----
         r.lines.append("【客户端】")
         _ = DeepSeekClient(config: .init(apiKey: "sk-test"))
