@@ -79,7 +79,7 @@ public enum SecretStore {
             return false
         }
         if get(key) == nil {
-            _ = set(legacy, for: key)
+            _ = set(legacy, forKey: key)
         }
         defaults.removeObject(forKey: legacyDefaultsKey)
         return true
