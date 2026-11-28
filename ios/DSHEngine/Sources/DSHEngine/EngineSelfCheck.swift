@@ -451,10 +451,11 @@ public enum EngineSelfCheck {
 
         // ---- 密钥存储（Keychain）----
         r.lines.append("【密钥存储】")
+        r.lines.append("  后端：\(SecretStore.backend.rawValue)")
         do {
             _ = SecretStore.delete("selfcheck-key")
             check(SecretStore.get("selfcheck-key") == nil, "删除后读不到")
-            check(SecretStore.set("sk-测试值", forKey: "selfcheck-key"), "写入成功")
+            check(SecretStore.set("sk-测试值", forKey: "selfcheck-key"), "写入成功（\(SecretStore.backend.rawValue)）")
             check(SecretStore.get("selfcheck-key") == "sk-测试值", "读回一致")
             _ = SecretStore.set("sk-覆盖后", forKey: "selfcheck-key")
             check(SecretStore.get("selfcheck-key") == "sk-覆盖后", "重复写入是覆盖")

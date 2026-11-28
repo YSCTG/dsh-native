@@ -11,6 +11,38 @@ import Security
 public enum SecretStore {
 
     private static let service = "com.dshnative.secrets"
+    private static let fallbackPrefix = "dsh.secret."
+
+    /// 当前实际用的后端。未签名的构建（比如 CI 里 CODE_SIGNING_ALLOWED=NO）
+    /// 拿不到 Keychain，会自动退回 UserDefaults，并在界面上如实说明。
+    public enum Backend: String, Sendable {
+        case keychain
+        case userDefaults
+    }
+
+    /// 探一次：能写进去就是 keychain，否则 userDefaults。
+    public private(set) static var detectedBackend: Backend?
+
+    public static var backend: Backend {
+        if let detectedBackend { return detectedBackend }
+        let probeKey = "probe"
+        let probeValue = "1"
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: probeKey,
+        ]
+        var insert = query
+        insert[kSecValueData as String] = Data(probeValue.utf8)
+        insert[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        let ok = SecItemAdd(insert as CFDictionary, nil) == errSecSuccess
+                  || SecItemUpdate(query as CFDictionary,
+                                   [kSecValueData as String: Data(probeValue.utf8)] as CFDictionary) == errSecSuccess
+        SecItemDelete(query as CFDictionary)
+        let backend: Backend = ok ? .keychain : .userDefaults
+        detectedBackend = backend
+        return backend
+    }
 
     public enum StoreError: Error, CustomStringConvertible {
         case status(OSStatus)
@@ -24,6 +56,10 @@ public enum SecretStore {
     /// 写入（已存在则覆盖）。
     @discardableResult
     public static func set(_ value: String, forKey key: String) -> Bool {
+        if backend == .userDefaults {
+            UserDefaults.standard.set(value, forKey: fallbackPrefix + key)
+            return true
+        }
         guard let data = value.data(using: .utf8) else { return false }
 
         // 先试着更新，不存在再新增
@@ -44,6 +80,9 @@ public enum SecretStore {
 
     /// 读取。
     public static func get(_ key: String) -> String? {
+        if backend == .userDefaults {
+            return UserDefaults.standard.string(forKey: fallbackPrefix + key)
+        }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -61,6 +100,10 @@ public enum SecretStore {
     /// 删除。
     @discardableResult
     public static func delete(_ key: String) -> Bool {
+        if backend == .userDefaults {
+            UserDefaults.standard.removeObject(forKey: fallbackPrefix + key)
+            return true
+        }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
