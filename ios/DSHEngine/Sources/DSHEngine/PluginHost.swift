@@ -81,10 +81,9 @@ public enum PluginHost {
     /// 生成可注册的工具列表。与内置工具重名的会被跳过（不让插件偷偷覆盖 fs_write）。
     public static func tools(in workspace: URL, reserved: Set<String>) -> [any Tool] {
         files(in: workspace).compactMap { url -> (any Tool)? in
-            // parse 返回 (Info?, 原因)：元组里第一项本身是可选，要再解一层
-            guard let parsed = parse(url, reserved: reserved),
-                  let info = parsed.0,
-                  !info.builtinConflicts else {
+            // parse 返回的是**非可选**元组 (Info?, 原因)，所以先解构再解包
+            let (maybeInfo, _) = parse(url, reserved: reserved)
+            guard let info = maybeInfo, !info.builtinConflicts else {
                 return nil
             }
             return PluginTool(info: info, url: url)
