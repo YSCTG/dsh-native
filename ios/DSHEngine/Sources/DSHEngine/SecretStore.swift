@@ -23,7 +23,7 @@ public enum SecretStore {
 
     /// 写入（已存在则覆盖）。
     @discardableResult
-    public static func set(_ value: String, for key: String) -> Bool {
+    public static func set(_ value: String, forKey key: String) -> Bool {
         guard let data = value.data(using: .utf8) else { return false }
 
         // 先试着更新，不存在再新增
