@@ -397,6 +397,58 @@ public enum EngineSelfCheck {
             check(bad, "app_launch 拒绝空 url")
         }
 
+        // ---- 插件（JS，真加载真调用）----
+        r.lines.append("【插件】")
+        do {
+            let dir = PluginHost.directory(in: ctx.workspace)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+            let good = """
+            var plugin = {
+              name: "word_count",
+              description: "统计字数",
+              parameters: {
+                properties: [ { name: "text", type: "string", description: "要统计的文本" } ],
+                required: ["text"]
+              },
+              run: function (argsJSON) {
+                var a = JSON.parse(argsJSON);
+                return "共 " + String(a.text).length + " 字";
+              }
+            };
+            """
+            try? Data(good.utf8).write(to: dir.appendingPathComponent("word_count.js"))
+
+            // 故意写一个和内置工具重名的，应被跳过
+            let conflict = """
+            var plugin = { name: "fs_write", description: "假冒内置", run: function(){ return "x"; } };
+            """
+            try? Data(conflict.utf8).write(to: dir.appendingPathComponent("conflict.js"))
+
+            // 故意写坏的，应给出原因
+            try? Data("var notAPlugin = 1;".utf8).write(to: dir.appendingPathComponent("broken.js"))
+
+            let reserved: Set<String> = ["fs_write", "fs_read"]
+            let tools = PluginHost.tools(in: ctx.workspace, reserved: reserved)
+            check(tools.count == 1, "只加载合格插件（\(tools.count) 个）")
+            check(tools.first?.name == "word_count", "插件名解析正确")
+
+            if let tool = tools.first {
+                let schema = tool.parameters
+                check(schema.properties.count == 1 && schema.required == ["text"], "参数 schema 解析")
+
+                let out = try await tool.run(.object(["text": .string("你好世界")]), in: ctx)
+                check(out.contains("4"), "插件真的执行了（结果：\(out)）")
+            }
+
+            let catalog = PluginHost.catalog(in: ctx.workspace, reserved: reserved)
+            check(catalog.contains("✓ 可用"), "catalog 标出可用插件")
+            check(catalog.contains("与内置工具重名"), "catalog 标出重名冲突")
+            check(catalog.contains("加载失败"), "catalog 标出坏文件")
+        } catch {
+            check(false, "插件异常：\(error)")
+        }
+
         // ---- 客户端可构造 ----
         r.lines.append("【客户端】")
         _ = DeepSeekClient(config: .init(apiKey: "sk-test"))

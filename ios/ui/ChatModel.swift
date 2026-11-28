@@ -208,10 +208,16 @@ public final class ChatModel: ObservableObject {
         let tools: [any Tool] = mode == "minimal" ? [] : BuiltinTools.all() + FSTools.all() + WebTools.all()
             + SystemTools.all() + OfficeTools.all() + OfficeRead.all() + PublishTools.all()
             + PlatformTools.all() + OpsTools.all() + SubTools.all() + AskTools.all() + McpTools.all() + TeamTools.all() + LaunchTool.all()
+        // 插件：把 workspace/plugins/*.js 变成工具（与内置重名的会被跳过）
+        let baseTools = tools
+        let reserved = Set(baseTools.map { $0.name })
+        let pluginTools = PluginHost.tools(in: ws, reserved: reserved)
+        let allTools = baseTools + pluginTools + PluginTools.all(reserved: reserved)
+
         let svc = AgentService(client: client,
                                store: store ?? SessionStore(root: docs),
                                context: ctx,
-                               tools: tools)
+                               tools: allTools)
         service = svc
         return svc
     }

@@ -118,6 +118,28 @@ public enum JSONValue: Sendable, Equatable {
         if case .object(let d) = self { return d[key] }
         return nil
     }
+
+    /// 转回 Foundation 值（给插件传参用）。
+    public var anyValue: Any {
+        switch self {
+        case .null: return NSNull()
+        case .bool(let b): return b
+        case .number(let n): return n
+        case .string(let s): return s
+        case .array(let a): return a.map { $0.anyValue }
+        case .object(let d): return d.mapValues { $0.anyValue }
+        }
+    }
+
+    /// 序列化成 JSON 字符串。
+    public static func stringify(_ value: JSONValue) -> String {
+        guard JSONSerialization.isValidJSONObject(value.anyValue),
+              let data = try? JSONSerialization.data(withJSONObject: value.anyValue),
+              let text = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return text
+    }
 }
 
 /// 参数 schema 的最小表达：类型 + 说明 + 必填。
